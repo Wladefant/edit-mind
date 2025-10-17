@@ -17,6 +17,7 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
         },
+        external: ['node-whisper'],
       },
     },
     resolve: {
@@ -30,6 +31,7 @@ export default defineConfig({
         input: {
           preload: resolve(__dirname, 'lib/preload/preload.ts'),
         },
+        external: ['node-whisper'],
       },
     },
     resolve: {
