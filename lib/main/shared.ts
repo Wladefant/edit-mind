@@ -1,5 +1,20 @@
-import { ipcMain } from 'electron'
+import path from 'path'
+
+export const THUMBNAILS_DIR = path.resolve('.thumbnails')
+
+import { ipcMain, type WebContents } from 'electron'
 import { ipcSchemas, validateArgs, validateReturn, type ChannelArgs, type ChannelReturn } from '@/lib/conveyor/schemas'
+
+/**
+ * Helper to create a sender function for a specific webContents
+ * @param webContents - The webContents to send the message to
+ * @returns A function to send a message to the specified webContents
+ */
+export const sender = (webContents: WebContents) => {
+  return <T extends keyof typeof ipcSchemas>(channel: T, ...args: ChannelArgs<T>) => {
+    webContents.send(channel, ...args)
+  }
+}
 
 /**
  * Helper to register IPC handlers
@@ -9,7 +24,7 @@ import { ipcSchemas, validateArgs, validateReturn, type ChannelArgs, type Channe
  */
 export const handle = <T extends keyof typeof ipcSchemas>(
   channel: T,
-  handler: (...args: ChannelArgs<T>) => ChannelReturn<T>
+  handler: (...args: ChannelArgs<T>) => ChannelReturn<T> | Promise<ChannelReturn<T>>
 ) => {
   ipcMain.handle(channel, async (_, ...args) => {
     try {
