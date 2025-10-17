@@ -1,5 +1,13 @@
 /// <reference types="electron-vite/node" />
 
+import { ConveyorApi } from '@/lib/conveyor/api'
+
+declare global {
+  interface Window {
+    conveyor: ConveyorApi
+  }
+}
+
 declare module '*.css' {
   const content: string
   export default content
