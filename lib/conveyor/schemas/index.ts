@@ -1,18 +1,20 @@
-import { z } from 'zod'
+import { z, type ZodPromise, type ZodTypeAny } from 'zod'
 import { windowIpcSchema } from './window-schema'
 import { appIpcSchema } from './app-schema'
+import { progressIpcSchema } from './progress-schema'
 
-// Define all IPC channel schemas in one place
 export const ipcSchemas = {
   ...windowIpcSchema,
   ...appIpcSchema,
+  ...progressIpcSchema,
 } as const
 
-// Extract types from Zod schemas
+type SchemaReturn<T extends ZodTypeAny> = T extends ZodPromise<infer U> ? U : T
+
 export type IPCChannels = {
   [K in keyof typeof ipcSchemas]: {
     args: z.infer<(typeof ipcSchemas)[K]['args']>
-    return: z.infer<(typeof ipcSchemas)[K]['return']>
+    return: z.infer<SchemaReturn<(typeof ipcSchemas)[K]['return']>>
   }
 }
 
