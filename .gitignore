@@ -4,3 +4,13 @@ out
 .DS_Store
 *.log*
 temp
+.thumbnails
+python/.venv
+.results
+.env
+known_faces.json
+faces.json
+.faces
+analysis_results
+*.pt
+output-videos
