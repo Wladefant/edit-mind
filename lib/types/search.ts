@@ -1,5 +1,5 @@
 import z from 'zod'
-import { VideoMetadataSummarySchema } from '../conveyor/schemas/app-schema'
+import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../conveyor/schemas/app-schema'
 import { ShotType, AspectRatio } from '.'
 
 export interface VideoSearchParams {
@@ -28,11 +28,8 @@ export type SearchQuery = {
   detectedText?: string
 }
 
-export interface SearchSuggestion {
-  text: string
-  icon: string
-  category: 'people' | 'emotion' | 'scene' | 'action' | 'color'
-}
+
+export type SearchSuggestion = z.infer<typeof searchSuggestionSchema>
 
 export type VideoMetadataSummary = z.infer<typeof VideoMetadataSummarySchema>
 

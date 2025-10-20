@@ -1,7 +1,7 @@
 import { ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { Scene } from '../types/scene'
+import { ExportedScene } from '../types/scene'
 import { Dimensions, FFmpegProcessResult } from '../types/video'
 import { spawnFFmpeg, validateBinaries } from './ffmpeg'
 import os from 'os'
@@ -23,7 +23,7 @@ const ENCODING_SETTINGS = {
   pixelFormat: 'yuv420p',
 } as const
 
-const validateScenes = (scenes: Scene[]): void => {
+const validateScenes = (scenes: ExportedScene[]): void => {
   if (scenes.length === 0) {
     throw new Error('At least one scene is required for stitching')
   }
@@ -101,7 +101,7 @@ const handleFFmpegProcess = (process: ChildProcess, operationName: string): Prom
     process.stderr?.on('data', (data) => {
       const message = data.toString()
       stderrOutput += message
-      console.error(`FFmpeg ${operationName}: ${message}`)
+      console.warn(`FFmpeg ${operationName} (warning): ${message}`)
     })
 
     process.on('close', (code) => {
@@ -145,7 +145,7 @@ const buildEncodingArgs = (): string[] => {
 }
 
 const processClip = async (
-  scene: Scene,
+  scene: ExportedScene,
   clipPath: string,
   dimensions: Dimensions,
   targetFps: number
@@ -165,6 +165,9 @@ const processClip = async (
     ...encodingArgs,
     '-y',
     clipPath,
+    '-hide_banner',
+    '-loglevel',
+    'error',
   ]
 
   const argsWithAudio = [...baseArgs.slice(0, 8), '-map', '0:v:0', '-map', '0:a:0?', ...baseArgs.slice(8)]
@@ -189,6 +192,9 @@ const processClip = async (
     '-map',
     '1:a:0',
     '-shortest',
+    '-hide_banner',
+    '-loglevel',
+    'error',
     ...baseArgs.slice(8),
   ]
 
@@ -200,30 +206,39 @@ const processClip = async (
   }
 }
 
-
-
 const createFileList = (clipPaths: string[], fileListPath: string): void => {
   const content = clipPaths.map((clipPath) => `file '${clipPath}'`).join('\n')
   fs.writeFileSync(fileListPath, content, 'utf-8')
 }
 
-
-
 const concatenateClips = async (fileListPath: string, outputPath: string): Promise<void> => {
   const encodingArgs = buildEncodingArgs()
 
-  const args = ['-f', 'concat', '-safe', '0', '-i', fileListPath, ...encodingArgs, '-y', outputPath]
+  const args = [
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    fileListPath,
+    ...encodingArgs,
+    '-y',
+    outputPath,
+    '-hide_banner',
+    '-loglevel',
+    'error',
+  ]
 
   const process = spawnFFmpeg(args)
   const result = await handleFFmpegProcess(process, 'concatenation')
 
-  if (result.code !== 0) {
+  if (result.code !== 0 && (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0)) {
     throw new Error(`Failed to concatenate clips: ${result.stderr || 'Unknown error'}`)
   }
 }
 
 export async function stitchVideos(
-  scenes: Scene[],
+  scenes: ExportedScene[],
   outputFileName: string,
   aspectRatio: string = DEFAULT_ASPECT_RATIO,
   targetFps: number = DEFAULT_FPS,

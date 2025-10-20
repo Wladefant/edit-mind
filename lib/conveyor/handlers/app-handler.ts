@@ -1,13 +1,13 @@
 import { type App, dialog, shell, type WebContents } from 'electron'
-import { FACES_DIR, handle, sender } from '@/lib/main/shared'
-import { findVideoFiles, generateThumbnail, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/utils/videos'
+import {  handle, sender } from '@/lib/main/shared'
+import { findVideoFiles, generateThumbnail} from '@/lib/utils/videos'
 import path from 'path'
 import fs from 'fs/promises'
 import { transcribeAudio } from '@/lib/utils/transcribe'
 import { analyzeVideo } from '@/lib/utils/frameAnalyze'
 import { createScenes } from '@/lib/utils/scenes'
 import { existsSync, mkdirSync } from 'fs'
-import { embedScenes, sceneToVectorFormat } from '@/lib/utils/embed'
+import { embedScenes } from '@/lib/utils/embed';
 import { Scene } from '@/lib/types/scene'
 import { generateSearchSuggestions } from '@/lib/utils/search'
 import { filterExistingVideos, getAllVideosWithScenes, queryCollection, updateMetadata } from '@/lib/services/vectorDb'
@@ -15,9 +15,9 @@ import { generateActionFromPrompt } from '@/lib/services/gemini'
 import { stitchVideos } from '@/lib/utils/sticher'
 import { exportToFcpXml } from '@/lib/utils/fcpxml'
 import { convertTimeToWords } from '@/lib/utils/time'
-import { VideoMetadataSummary } from '@/lib/types/search'
 import { pythonService } from '@/lib/services/pythonService'
 import { getLocationName } from '@/lib/utils/location'
+import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/constants'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)
@@ -82,7 +82,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
     await exportToFcpXml(finalJsonPath, finalXmlPath)
   })
-  handle('generateSearchSuggestions', (metadata: VideoMetadataSummary) => {
+  handle('generateSearchSuggestions', (metadata) => {
     try {
       const suggestions = generateSearchSuggestions(metadata)
       return suggestions

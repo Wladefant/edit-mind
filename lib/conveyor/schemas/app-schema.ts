@@ -5,7 +5,7 @@ const emotionSchema = z.object({
   emotion: z.string(),
 })
 
-const sceneSchema = z.object({
+export const sceneSchema = z.object({
   id: z.string(),
   startTime: z.number(),
   endTime: z.number(),
@@ -26,7 +26,7 @@ const sceneSchema = z.object({
   location: z.string(),
 })
 
-const videoSchema = z.object({
+export const videoSchema = z.object({
   source: z.string(),
   duration: z.union([z.string(), z.number()]),
   aspect_ratio: z.string(),
@@ -40,13 +40,13 @@ const videoSchema = z.object({
   dominantColorName: z.string().optional(),
 })
 
-const searchSuggestionSchema = z.object({
+export const searchSuggestionSchema = z.object({
   text: z.string(),
   icon: z.string(),
-  category: z.union([z.literal('people'), z.literal('emotion'), z.literal('scene'), z.literal('action')]),
+  category: z.union([z.literal('people'), z.literal('emotion'), z.literal('scene'), z.literal('action'), z.literal('color')]),
 })
 
-const exportedSceneSchema = z.object({
+export const exportedSceneSchema = z.object({
   startTime: z.number(),
   endTime: z.number(),
   source: z.string(),
@@ -109,7 +109,7 @@ export const appIpcSchema = {
     return: z.array(videoSchema),
   },
   generateSearchSuggestions: {
-    args: VideoMetadataSummarySchema,
+    args: z.array(VideoMetadataSummarySchema),
     return: z.array(searchSuggestionSchema),
   },
   searchDocuments: {

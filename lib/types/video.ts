@@ -1,16 +1,10 @@
+import z from "zod"
 import { Scene } from "./scene"
+import { videoSchema } from "../conveyor/schemas/app-schema"
 
-export interface Video {
-  source: string
-  duration: string | number
-  aspect_ratio: string
-  camera: string
-  category: string
-  createdAt: string
-  scenes?: Scene[]
-  sceneCount?: number
-  thumbnailUrl?: string
-}
+
+export type Video = z.infer<typeof videoSchema>
+
 export interface VideoWithScenes extends Video {
   scenes: Scene[]
   sceneCount: number

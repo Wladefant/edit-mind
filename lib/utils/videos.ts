@@ -3,8 +3,7 @@ import path from 'path'
 import { ChildProcess } from 'child_process'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import ffprobeStatic from 'ffprobe-static'
-import ffmpeg from 'fluent-ffmpeg'
+import ffprobeStatic from 'ffmpeg-ffprobe-static'
 import {
   BATCH_THUMBNAIL_QUALITY,
   DEFAULT_FPS,
@@ -18,6 +17,7 @@ import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
 import { spawnFFmpeg, validateBinaries } from './ffmpeg'
 import { validateFile } from './file'
+import ffmpeg from "fluent-ffmpeg"
 
 const execFileAsync = promisify(execFile)
 
@@ -148,11 +148,11 @@ export async function findVideoFiles(
           if (stats.isFile() && SUPPORTED_VIDEO_EXTENSIONS.test(item)) {
             return [{ path: fullPath, mtime: stats.mtime }]
           }
-        } catch (error) {
-          console.warn(
-            `Warning: Could not access ${fullPath}:`,
-            error instanceof Error ? error.message : 'Unknown error'
-          )
+        } catch  {
+          // console.warn(
+          //   `Warning: Could not access ${fullPath}:`,
+          //   error instanceof Error ? error.message : 'Unknown error'
+          // )
         }
 
         return []
@@ -193,7 +193,7 @@ export async function getCameraNameAndDate(videoFullPath: string): Promise<Camer
     await validateFile(videoFullPath)
     validateBinaries()
 
-    const { stdout } = await execFileAsync(ffprobeStatic.path, [
+    const { stdout } = await execFileAsync(ffprobeStatic.ffprobePath!, [
       '-v',
       'quiet',
       '-print_format',
@@ -237,7 +237,7 @@ export async function getVideoMetadata(videoFilePath: string): Promise<VideoMeta
   validateBinaries()
 
   return new Promise((resolve, reject) => {
-    ffmpeg.setFfprobePath(ffprobeStatic.path)
+    ffmpeg.setFfprobePath(ffprobeStatic.ffprobePath!)
 
     ffmpeg.ffprobe(videoFilePath, (err, metadata) => {
       if (err) {
