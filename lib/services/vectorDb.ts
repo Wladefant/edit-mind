@@ -7,12 +7,7 @@ import { Scene } from '../types/scene'
 import { SearchQuery } from '../types/search'
 import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
 
-const API_KEY = process.env.GEMINI_API_KEY
-
-const CHROMA_HOST = process.env.CHROMA_HOST || 'localhost'
-const CHROMA_PORT = process.env.CHROMA_PORT || '8000'
-const COLLECTION_NAME = 'video_content'
-const EMBEDDING_MODEL = 'text-embedding-004'
+import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '@/lib/constants';
 
 let client: ChromaClient | null = null
 let collection: Collection | null = null
@@ -20,10 +15,10 @@ let collection: Collection | null = null
 async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
   try {
     await initialize()
-    if (!API_KEY) {
+    if (!GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.')
     }
-    const genAI = new GoogleGenerativeAI(API_KEY)
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
     const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL })
 
     const ids: string[] = []

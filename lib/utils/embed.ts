@@ -1,29 +1,32 @@
 import { createHash } from 'crypto'
 import { Scene } from '../types/scene'
 import { gcd } from '../utils'
-import { generateThumbnail, getCameraNameAndDate, getVideoMetadata, THUMBNAILS_DIR } from './videos'
+import {
+  generateAllThumbnails,
+  getCameraNameAndDate,
+  getLocationFromVideo,
+  getVideoMetadata,
+} from './videos'
 import fs from 'fs/promises'
 import path from 'path'
 import { embedDocuments } from '../services/vectorDb'
+import { existsSync } from 'fs'
+import { formatLocation } from './location'
 
-const CONCURRENT_THUMBNAILS = 10
-const EMBEDDING_BATCH_SIZE = 200
+import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from '@/lib/constants';
 
-export const embedScenes = async (
-  scenes: Scene[],
-  videoFullPath: string,
-  videoName: string,
-  category?: string
-): Promise<void> => {
+export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
 
-  const videoStream = metadata.streams.find((stream: any) => stream.codec_type === 'video')
-  const duration = metadata.format.duration
+  const duration = metadata.duration
+  const { latitude, longitude, altitude } = await getLocationFromVideo(videoFullPath)
+  const location = formatLocation(latitude, longitude, altitude)
+
   const { camera, createdAt } = await getCameraNameAndDate(videoFullPath)
   const aspectRatio =
-    videoStream?.width && videoStream?.height
-      ? `${videoStream.width / gcd(videoStream.width, videoStream.height)}:${
-          videoStream.height / gcd(videoStream.width, videoStream.height)
+    metadata?.width && metadata?.height
+      ? `${metadata.width / gcd(metadata.width, metadata.height)}:${
+          metadata.height / gcd(metadata.width, metadata.height)
         }`
       : 'N/A'
 
@@ -33,65 +36,37 @@ export const embedScenes = async (
     for (let i = 0; i < scenes.length; i += EMBEDDING_BATCH_SIZE) {
       const batch = scenes.slice(i, i + EMBEDDING_BATCH_SIZE)
 
-      const thumbnailPromises: Promise<string[]>[] = []
-      for (let j = 0; j < batch.length; j += CONCURRENT_THUMBNAILS) {
-        const thumbnailBatch = batch.slice(j, j + CONCURRENT_THUMBNAILS)
-        thumbnailPromises.push(
-          Promise.all(
-            thumbnailBatch.map(async (scene) => {
-              const hash = createHash('sha256').update(`${videoFullPath}_${scene.startTime}`).digest('hex')
-              const thumbnailFile = `${hash}.jpg`
-              const thumbnailPath = path.join(THUMBNAILS_DIR, thumbnailFile)
+      const scenesData = batch.map((scene) => {
+        const hash = createHash('sha256').update(`${videoFullPath}_${scene.startTime}`).digest('hex')
+        const thumbnailFile = `${hash}.jpg`
+        const thumbnailPath = path.join(THUMBNAILS_DIR, thumbnailFile)
 
-              try {
-                await fs.access(thumbnailPath)
-              } catch {
-                await generateThumbnail(videoFullPath, thumbnailPath, scene.startTime)
-              }
-              scene.thumbnailUrl = thumbnailFile
-              return thumbnailFile
-            })
-          )
-        )
-      }
-      await Promise.all(thumbnailPromises)
-
-      const embeddingInputs = batch.map((scene, index) => {
-        const faces = scene.faces?.join(', ') || ''
-        const objects = scene.objects?.join(', ') || ''
-        const emotions =
-          scene.emotions
-            ?.map((face) => (face.emotion ? `${face.name} is ${face.emotion}` : ''))
-            .filter(Boolean)
-            .join(', ') || ''
-
-        const text =
-          `Scene with ${faces}, objects: ${objects}. Emotions: ${emotions}. ${scene.transcription || ''}`.trim()
+        scene.thumbnailUrl = path.basename(thumbnailFile)
 
         return {
-          id: `${videoName}_scene_${i + index}`,
-          text,
-          metadata: {
-            source: videoFullPath,
-            duration,
-            aspect_ratio: aspectRatio,
-            camera,
-            category: category || 'Uncategorized',
-            thumbnailUrl: scene.thumbnailUrl || '',
-            startTime: scene.startTime,
-            endTime: scene.endTime,
-            type: 'scene',
-            faces: Array.isArray(scene.faces) ? scene.faces.join(', ') : JSON.stringify(scene.faces || []),
-            objects: Array.isArray(scene.objects) ? scene.objects.join(', ') : JSON.stringify(scene.objects || []),
-            transcription: scene.transcription || '',
-            emotions: Array.isArray(scene.emotions)
-              ? scene.emotions.map((e) => JSON.stringify(e)).join(', ')
-              : JSON.stringify(scene.emotions || []),
-            description: scene.description || '',
-            shot_type: scene.shot_type || 'long-shot',
-            createdAt,
-          },
+          scene,
+          thumbnailPath,
+          exists: existsSync(thumbnailPath),
         }
+      })
+
+      const missing = scenesData.filter((s) => !s.exists)
+      if (missing.length > 0) {
+        await generateAllThumbnails(
+          videoFullPath,
+          missing.map((s) => s.scene.startTime),
+          missing.map((s) => s.thumbnailPath)
+        )
+      }
+
+      const embeddingInputs = batch.map((scene, index) => {
+        scene.camera = camera
+        scene.createdAt = createdAt
+        scene.location = location
+        scene.aspect_ratio = aspectRatio
+        scene.category = category
+        scene.duration = duration
+        return sceneToVectorFormat(scene, i + index)
       })
 
       await embedDocuments(embeddingInputs)
@@ -117,6 +92,11 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
       createdAt: '',
       source: '',
       camera: '',
+      dominantColorName: '',
+      dominantColorHex: '',
+      detectedText: [],
+      location: '',
+      duration: 0,
     }
   }
 
@@ -157,5 +137,51 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
     createdAt: metadata.createdAt?.toString() || 'N/A',
     source: metadata.source?.toString() || '',
     camera: metadata.camera?.toString() || 'N/A',
+    dominantColorHex: metadata.dominantColor?.toString() || metadata.dominantColorHex?.toString() || 'N/A',
+    dominantColorName: metadata.dominantColorName?.toString() || 'N/A',
+    detectedText: metadata.detectedText?.toString() || 'N/A',
+    location: metadata.location?.toString() || 'N/A',
+    duration: metadata.duration,
+  }
+}
+
+export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
+  const faces = scene.faces?.join(', ') || ''
+  const objects = scene.objects?.join(', ') || ''
+  const emotionsText =
+    scene.emotions
+      ?.map((face) => (face.emotion ? `${face.name} is ${face.emotion}` : ''))
+      .filter(Boolean)
+      .join(', ') || ''
+  const detectedText = scene.detectedText?.join(', ') || ''
+
+  const text =
+    `Scene with ${faces}, objects: ${objects}. Emotions: ${emotionsText}. ${scene.transcription || ''}`.trim()
+
+  const metadata: Record<string, any> = {
+    source: scene.source,
+    thumbnailUrl: scene.thumbnailUrl || '',
+    startTime: scene.startTime,
+    endTime: scene.endTime,
+    type: 'scene',
+    faces: Array.isArray(scene.faces) ? scene.faces.join(', ') : JSON.stringify(scene.faces || []),
+    objects: Array.isArray(scene.objects) ? scene.objects.join(', ') : JSON.stringify(scene.objects || []),
+    transcription: scene.transcription || '',
+    emotions: Array.isArray(scene.emotions)
+      ? scene.emotions.map((e) => JSON.stringify(e)).join(', ')
+      : JSON.stringify(scene.emotions || []),
+    description: scene.description || '',
+    shot_type: scene.shot_type || 'long-shot',
+    detectedText: detectedText,
+    createdAt: scene.createdAt,
+    location: scene.location,
+    dominantColorHex: scene.dominantColorHex,
+    dominantColorName: scene.dominantColorName,
+  }
+
+  return {
+    id: `${path.basename(scene.source)}_scene_${sceneIndex}`,
+    text,
+    metadata,
   }
 }

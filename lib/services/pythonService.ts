@@ -8,11 +8,7 @@ import WebSocket from 'ws'
 import { Analysis, AnalysisProgress } from '../types/analysis'
 
 
-const IS_WIN = process.platform === 'win32'
-const SERVICE_STARTUP_TIMEOUT = 30000 // 30 seconds
-const HEALTH_CHECK_INTERVAL = 1000 // 1 second
-const MAX_RESTARTS = 5
-const RESTART_BACKOFF_MS = 1000
+import { IS_WIN, SERVICE_STARTUP_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_RESTARTS, RESTART_BACKOFF_MS } from '@/lib/constants';
 
 
 class PythonService {

@@ -8,8 +8,7 @@ interface LocationCache {
   }
 }
 
-const CACHE_FILE = '.locations.json'
-const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000 // 30 days in milliseconds
+import { CACHE_FILE, CACHE_DURATION } from '@/lib/constants';
 
 export const formatLocation = (lat: number | undefined, lon: number | undefined, alt: number | undefined): string => {
   if (lat === undefined || lon === undefined) return ''

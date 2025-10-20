@@ -11,7 +11,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
 const responseCache = new Map<string, { result: VideoSearchParams; timestamp: number }>()
-const CACHE_TTL = 30 * 60 * 1000 // 30 minutes
+import { CACHE_TTL } from '@/lib/constants';
 
 export async function generateActionFromPrompt(query: string, useCache = true): Promise<VideoSearchParams> {
   const cacheKey = query.toLowerCase().trim()

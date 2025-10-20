@@ -1,3 +1,4 @@
+import path from 'path'
 import { Analysis, DetectedObject, Face } from '../types/analysis'
 import { Scene } from '../types/scene'
 import { Transcription } from '../types/transcription'
@@ -44,48 +45,54 @@ export const generateSceneDescription = (objects: DetectedObject[], faces: Face[
 
   return `A scene with ${description}.`
 }
-
-export const createScenes = (analysis: Analysis, transcription: Transcription | null): Scene[] => {
+export const createScenes = async (
+  analysis: Analysis,
+  transcription: Transcription | null,
+  videoPath: string
+): Promise<Scene[]> => {
   const scenes: Scene[] = []
 
-  const transcriptionMap = new Map<number, string[]>()
-  if (transcription?.segments) {
+  const getTranscriptionForTimeRange = (startTime: number, endTime: number): string => {
+    if (!transcription?.segments) return ''
+
+    const words: string[] = []
     for (const segment of transcription.segments) {
       for (const word of segment.words) {
-        const timeKey = Math.floor(word.start)
-        if (!transcriptionMap.has(timeKey)) {
-          transcriptionMap.set(timeKey, [])
+        if (
+          (word.start >= startTime && word.start <= endTime) ||
+          (word.end >= startTime && word.end <= endTime) ||
+          (word.start <= startTime && word.end >= endTime)
+        ) {
+          words.push(word.word.trim())
         }
-        transcriptionMap.get(timeKey)!.push(word.word)
       }
     }
+
+    return words.join(' ')
   }
 
   for (const frame of analysis.frame_analysis) {
     const startTime = frame.start_time_ms / 1000
     const endTime = frame.end_time_ms / 1000
 
-    const sceneWords: string[] = []
-    if (transcriptionMap.size > 0) {
-      for (let t = Math.floor(startTime); t <= Math.ceil(endTime); t++) {
-        const words = transcriptionMap.get(t)
-        if (words) sceneWords.push(...words)
-      }
-    }
-
     const currentScene: Scene = {
-      id: 'scene',
+      id: 'scene_' + (scenes.length + 1) + '_' + path.basename(videoPath),
       startTime,
       endTime,
       objects: frame.objects.map((obj: DetectedObject) => obj.label),
       faces: frame.faces.map((face: Face) => face.name),
-      transcription: sceneWords.join(' '),
+      transcription: getTranscriptionForTimeRange(startTime, endTime),
       description: generateSceneDescription(frame.objects, frame.faces),
       shot_type: frame.shot_type,
       emotions: [],
-      source: '',
+      source: videoPath,
       camera: '',
       createdAt: '',
+      dominantColorHex: frame.dominant_color.hex,
+      dominantColorName: frame.dominant_color.name,
+      detectedText: frame.detected_text?.map((item) => item.text) || [],
+      location: '',
+      duration: 0
     }
 
     scenes.push(currentScene)

@@ -1,9 +1,8 @@
 import { protocol, net } from 'electron'
-import { join, resolve } from 'path'
+import { join } from 'path';
 import { pathToFileURL } from 'url'
 import fs from 'fs'
-import { THUMBNAILS_DIR } from './shared'
-const UNKNOWN_FACES_DIR = resolve('analysis_results/unknown_faces')
+import { UNKNOWN_FACES_DIR, THUMBNAILS_DIR } from '@/lib/constants';
 export function registerThumbnailProtocol() {
   protocol.handle('thumbnail', (request) => {
     const url = request.url.split('thumbnail://')[1]
