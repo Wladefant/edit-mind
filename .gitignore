@@ -15,3 +15,6 @@ analysis_results
 *.pt
 output-videos
 __pycache__
+.chroma_db
+.faces.json
+.locations.json
