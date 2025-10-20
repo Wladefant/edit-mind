@@ -9,6 +9,7 @@ export interface Video {
   createdAt: string
   scenes?: Scene[]
   sceneCount?: number
+  thumbnailUrl?: string
 }
 export interface VideoWithScenes extends Video {
   scenes: Scene[]
