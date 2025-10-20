@@ -2,6 +2,8 @@ import path from 'path'
 
 export const THUMBNAILS_DIR = path.resolve('.thumbnails')
 
+export const FACES_DIR = path.resolve('.faces')
+
 import { ipcMain, type WebContents } from 'electron'
 import { ipcSchemas, validateArgs, validateReturn, type ChannelArgs, type ChannelReturn } from '@/lib/conveyor/schemas'
 

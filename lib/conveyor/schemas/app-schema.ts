@@ -21,6 +21,9 @@ const sceneSchema = z.object({
   aspect_ratio: z.string().optional(),
   camera: z.string(),
   createdAt: z.string(),
+  dominantColorHex: z.string(),
+  dominantColorName: z.string(),
+  location: z.string(),
 })
 
 const videoSchema = z.object({
@@ -32,6 +35,9 @@ const videoSchema = z.object({
   createdAt: z.string(),
   scenes: z.array(sceneSchema).optional(),
   sceneCount: z.number().optional(),
+  thumbnailUrl: z.string().optional(),
+  dominantColorHex: z.string().optional(),
+  dominantColorName: z.string().optional(),
 })
 
 const searchSuggestionSchema = z.object({
@@ -44,6 +50,40 @@ const exportedSceneSchema = z.object({
   startTime: z.number(),
   endTime: z.number(),
   source: z.string(),
+})
+
+const settingsSchema = z.object({
+  sample_interval_seconds: z.number(),
+  max_workers: z.number(),
+  batch_size: z.number(),
+  yolo_confidence: z.number(),
+  yolo_iou: z.number(),
+  resize_to_720p: z.boolean(),
+  yolo_model: z.string(),
+  output_dir: z.string(),
+})
+
+const faceDataSchema = z.object({
+  name: z.string(),
+  thumbnail: z.string().optional(),
+  count: z.number(),
+})
+
+const NameCountSchema = z.object({
+  name: z.string(),
+  count: z.number(),
+})
+
+export const VideoMetadataSummarySchema = z.object({
+  totalScenes: z.number(),
+  topFaces: z.array(NameCountSchema),
+  topObjects: z.array(NameCountSchema),
+  topEmotions: z.array(NameCountSchema),
+  shotTypes: z.array(NameCountSchema),
+  aspectRatios: z.array(NameCountSchema),
+  cameras: z.array(NameCountSchema),
+  sampleDescriptions: z.array(z.string()),
+  topColors: z.array(NameCountSchema),
 })
 
 export const appIpcSchema = {
@@ -69,7 +109,7 @@ export const appIpcSchema = {
     return: z.array(videoSchema),
   },
   generateSearchSuggestions: {
-    args: z.tuple([z.any()]), // TODO: Define a proper schema for metadataSummary
+    args: VideoMetadataSummarySchema,
     return: z.array(searchSuggestionSchema),
   },
   searchDocuments: {
@@ -82,7 +122,7 @@ export const appIpcSchema = {
     }),
   },
   stitchVideos: {
-    args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string(), z.number(), z.number()]),
+    args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string(), z.number()]),
     return: z.void(),
   },
   exportToFcpXml: {
@@ -96,5 +136,115 @@ export const appIpcSchema = {
   showInFolder: {
     args: z.tuple([z.string()]),
     return: z.object({ success: z.boolean() }),
+  },
+  getSettings: {
+    args: z.tuple([]),
+    return: settingsSchema,
+  },
+  saveSettings: {
+    args: z.tuple([settingsSchema]),
+    return: z.object({ success: z.boolean() }),
+  },
+  getKnownFaces: {
+    args: z.tuple([]),
+    return: z.record(z.string(), z.array(z.string())),
+  },
+  getUnknownFaces: {
+    args: z.tuple([]),
+    return: z.array(
+      z.object({
+        image_file: z.string(),
+        json_file: z.string(),
+        image_hash: z.string(),
+        created_at: z.string(),
+        video_path: z.string(),
+        video_name: z.string(),
+        frame_index: z.number(),
+        timestamp_ms: z.number(),
+        timestamp_seconds: z.number(),
+        formatted_timestamp: z.string(),
+        frame_dimensions: z.object({
+          width: z.number(),
+          height: z.number(),
+        }),
+        face_id: z.string(),
+        bounding_box: z.object({
+          top: z.number(),
+          right: z.number(),
+          bottom: z.number(),
+          left: z.number(),
+          width: z.number(),
+          height: z.number(),
+        }),
+        padded_bounding_box: z.object({
+          top: z.number(),
+          right: z.number(),
+          bottom: z.number(),
+          left: z.number(),
+          width: z.number(),
+          height: z.number(),
+        }),
+        face_center: z.object({
+          x: z.number(),
+          y: z.number(),
+        }),
+        face_encoding: z.array(z.number()),
+        frame_duration_ms: z.number(),
+        frame_start_time_ms: z.number(),
+        frame_end_time_ms: z.number(),
+        context: z.object({
+          detected_objects: z.array(
+            z.object({
+              label: z.string(),
+              confidence: z.number(),
+              box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+            })
+          ),
+          scene_type: z.string().nullable(),
+          environment: z.string().nullable(),
+          other_faces_in_frame: z.array(z.string()),
+        }),
+        label: z.object({
+          name: z.string().nullable(),
+          labeled_by: z.string().nullable(),
+          labeled_at: z.string().nullable(),
+          confidence: z.number().nullable(),
+          notes: z.string().nullable(),
+        }),
+        quality: z.object({
+          face_size_pixels: z.number(),
+          face_coverage_percent: z.number(),
+          aspect_ratio: z.number(),
+        }),
+      })
+    ),
+  },
+  deleteUnknownFace: {
+    args: z.tuple([z.string(), z.string()]),
+    return: z.object({ success: z.boolean() }),
+  },
+  labelUnknownFace: {
+    args: z.tuple([z.string(), z.string()]),
+    return: z.object({ success: z.boolean() }),
+  },
+  reindexAllFaces: {
+    args: z.tuple([z.string(), z.string(), z.string()]),
+    return: z.object({ success: z.boolean() }),
+  },
+  getAllFaces: {
+    args: z.tuple([]),
+    return: z.array(faceDataSchema),
+  },
+  getLocationName: {
+    args: z.tuple([z.string()]),
+    return: z.string(),
+  },
+  labelFace: {
+    args: z.tuple([z.string(), z.string()]),
+    return: z.void(),
+  },
+  mergeFaces: {
+    args: z.tuple([z.array(z.string())]),
+    return: z.promise(z.string()),
   },
 }

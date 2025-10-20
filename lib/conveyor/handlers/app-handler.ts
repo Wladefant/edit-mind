@@ -1,5 +1,5 @@
 import { type App, dialog, shell, type WebContents } from 'electron'
-import { handle, sender } from '@/lib/main/shared'
+import { FACES_DIR, handle, sender } from '@/lib/main/shared'
 import { findVideoFiles, generateThumbnail, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/utils/videos'
 import path from 'path'
 import fs from 'fs/promises'
@@ -7,13 +7,17 @@ import { transcribeAudio } from '@/lib/utils/transcribe'
 import { analyzeVideo } from '@/lib/utils/frameAnalyze'
 import { createScenes } from '@/lib/utils/scenes'
 import { existsSync, mkdirSync } from 'fs'
-import { embedScenes } from '@/lib/utils/embed'
+import { embedScenes, sceneToVectorFormat } from '@/lib/utils/embed'
 import { Scene } from '@/lib/types/scene'
 import { generateSearchSuggestions } from '@/lib/utils/search'
-import { getAllVideosWithScenes, queryCollection } from '@/lib/services/vectorDb'
+import { filterExistingVideos, getAllVideosWithScenes, queryCollection, updateMetadata } from '@/lib/services/vectorDb'
 import { generateActionFromPrompt } from '@/lib/services/gemini'
 import { stitchVideos } from '@/lib/utils/sticher'
 import { exportToFcpXml } from '@/lib/utils/fcpxml'
+import { convertTimeToWords } from '@/lib/utils/time'
+import { VideoMetadataSummary } from '@/lib/types/search'
+import { pythonService } from '@/lib/services/pythonService'
+import { getLocationName } from '@/lib/utils/location'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)
@@ -27,13 +31,13 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     }
     const folderPath = result.filePaths[0]
     const videos = await findVideoFiles(folderPath)
-    return { folderPath, videos }
+    return { folderPath, videos: videos.map((item) => item.path) }
   })
   handle('searchDocuments', async (prompt) => {
     try {
       const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
 
-      const { shot_type, emotions, description, aspect_ratio, objects, duration, camera } =
+      const { shot_type, emotions, description, aspect_ratio, objects, duration, camera, transcriptionQuery } =
         await generateActionFromPrompt(prompt)
 
       const results = await queryCollection({
@@ -44,6 +48,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
         aspect_ratio,
         objects,
         camera,
+        transcriptionQuery,
       })
       return { results, duration, aspect_ratio, faces }
     } catch (e) {
@@ -55,6 +60,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
   handle('getAllVideos', async () => {
     try {
       const videos = await getAllVideosWithScenes()
+
       return videos
     } catch (e) {
       console.error('Failed to get all scenes:', e)
@@ -62,8 +68,8 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     }
   })
 
-  handle('stitchVideos', async (scenes, outputPath, aspectRatio, _duration, fps) => {
-    await stitchVideos(scenes, outputPath, '1920x1080', aspectRatio, fps)
+  handle('stitchVideos', async (scenes, outputPath, aspectRatio, fps) => {
+    await stitchVideos(scenes, outputPath, aspectRatio, fps)
   })
 
   handle('exportToFcpXml', async (scenes, prompt, outputFilename) => {
@@ -76,9 +82,9 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
     await exportToFcpXml(finalJsonPath, finalXmlPath)
   })
-  handle('generateSearchSuggestions', async (metadata) => {
+  handle('generateSearchSuggestions', (metadata: VideoMetadataSummary) => {
     try {
-      const suggestions = await generateSearchSuggestions(metadata)
+      const suggestions = generateSearchSuggestions(metadata)
       return suggestions
     } catch (error) {
       console.error('Error in generate-search-suggestions handler:', error)
@@ -118,11 +124,176 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     }
   })
 
+  handle('getSettings', async () => {
+    const settingsPath = path.join(process.cwd(), 'settings.json')
+    if (existsSync(settingsPath)) {
+      const settings = await fs.readFile(settingsPath, 'utf-8')
+      return JSON.parse(settings)
+    }
+    return {}
+  })
+
+  handle('getLocationName', async (location) => {
+    const displayName = await getLocationName(location)
+    return displayName
+  })
+
+  handle('saveSettings', async (settings) => {
+    const settingsPath = path.join(process.cwd(), 'settings.json')
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
+    return { success: true }
+  })
+
+  handle('getKnownFaces', async () => {
+    const facesPath = path.join(process.cwd(), '.faces.json')
+    if (existsSync(facesPath)) {
+      const faces = await fs.readFile(facesPath, 'utf-8')
+      return JSON.parse(faces)
+    }
+    return {}
+  })
+
+  handle('getUnknownFaces', async () => {
+    const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
+    if (!existsSync(unknownFacesDir)) {
+      return []
+    }
+
+    const files = await fs.readdir(unknownFacesDir)
+    const jsonFiles = files.filter((file) => file.endsWith('.json'))
+
+    const faces = await Promise.all(
+      jsonFiles.map(async (file) => {
+        const filePath = path.join(unknownFacesDir, file)
+        const content = await fs.readFile(filePath, 'utf-8')
+        return JSON.parse(content)
+      })
+    )
+
+    return faces
+  })
+
+  handle('deleteUnknownFace', async (imageFile, jsonFile) => {
+    const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
+    const imagePath = path.join(unknownFacesDir, imageFile)
+    const jsonPath = path.join(unknownFacesDir, jsonFile)
+
+    try {
+      if (existsSync(imagePath)) {
+        await fs.unlink(imagePath)
+      }
+      if (existsSync(jsonPath)) {
+        await fs.unlink(jsonPath)
+      }
+      return { success: true }
+    } catch (error) {
+      console.error('Error deleting unknown face:', error)
+      return { success: false }
+    }
+  })
+
+  handle('labelUnknownFace', async (jsonFile, name) => {
+    const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
+    const jsonPath = path.join(unknownFacesDir, jsonFile)
+
+    try {
+      const faceData = JSON.parse(await fs.readFile(jsonPath, 'utf-8'))
+      const imageFile = faceData.image_file
+      const imagePath = path.join(unknownFacesDir, imageFile)
+
+      const facesDir = path.join(process.cwd(), '.faces')
+      const personDir = path.join(facesDir, name)
+      if (!existsSync(personDir)) {
+        await fs.mkdir(personDir, { recursive: true })
+      }
+
+      const newImagePath = path.join(personDir, imageFile)
+      await fs.rename(imagePath, newImagePath)
+
+      const facesJsonPath = path.join(process.cwd(), '.faces.json')
+      let faces = {}
+      if (existsSync(facesJsonPath)) {
+        faces = JSON.parse(await fs.readFile(facesJsonPath, 'utf-8'))
+      }
+
+      if (!faces[name]) {
+        faces[name] = []
+      }
+      faces[name].push(path.join(FACES_DIR, path.basename(newImagePath)))
+
+      await fs.writeFile(facesJsonPath, JSON.stringify(faces, null, 2))
+
+      return { success: true }
+    } catch {
+      return { success: false }
+    }
+  })
+
+  handle('reindexAllFaces', async (jsonFile, faceId, name) => {
+    const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
+
+    try {
+      const jsonPath = path.join(unknownFacesDir, jsonFile)
+      const faceData = JSON.parse(await fs.readFile(jsonPath, 'utf-8'))
+      const imageFile = faceData.image_file
+      const imagePath = path.join(unknownFacesDir, imageFile)
+
+      const videoName = path.basename(faceData.video_path)
+      const videoDir = path.join(PROCESSED_VIDEOS_DIR, videoName)
+      const scenesPath = path.join(videoDir, 'scenes.json')
+
+      const timestampSeconds = faceData.timestamp_seconds
+
+      const scenes: Scene[] = JSON.parse(await fs.readFile(scenesPath, 'utf-8'))
+
+      const modifiedScenes = scenes.map((scene) => {
+        if (scene.startTime >= timestampSeconds && scene.endTime <= timestampSeconds) {
+          if (scene.faces.includes(faceId)) {
+            scene.faces = scene.faces.map((face) => (face === faceId ? name : face))
+          }
+        }
+
+        return scene
+      })
+
+      for (const scene of modifiedScenes) {
+        await updateMetadata(scene)
+      }
+
+      await fs.writeFile(scenesPath, JSON.stringify(modifiedScenes, null, 2))
+      try {
+        await fs.unlink(jsonPath)
+        await fs.unlink(imagePath)
+      } catch (error) {
+        console.error(error)
+      }
+
+      pythonService.reindexFaces(
+        (_progress) => {
+          // TODO: add logic here
+        },
+        (_result) => {
+          // TODO: add logic here
+        },
+        (_error) => {
+          // TODO: add logic here
+        }
+      )
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error reindexing all faces:', error)
+      return { success: false }
+    }
+  })
+
   handle('startIndexing', async (videos) => {
-    for (const video of videos) {
+    const videoToEmbed = await filterExistingVideos(videos)
+    for (const video of videoToEmbed) {
       const thumbnailName = `${path.basename(video)}.jpg`
       const thumbnailPath = path.join(THUMBNAILS_DIR, thumbnailName)
       const thumbnailUrl = `thumbnail://${thumbnailName}`
+
       if (!existsSync(path.resolve(PROCESSED_VIDEOS_DIR))) {
         mkdirSync(path.resolve(PROCESSED_VIDEOS_DIR))
       }
@@ -132,11 +303,11 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
       if (!existsSync(videoDir)) {
         mkdirSync(path.resolve(videoDir))
       }
+
       const transcriptionPath = path.join(videoDir, 'transcription.json')
       const analysisPath = path.join(videoDir, 'analysis.json')
       const scenesPath = path.join(videoDir, 'scenes.json')
 
-      // Check which files already exist
       const transcriptionExists = existsSync(transcriptionPath)
       const analysisExists = existsSync(analysisPath)
       const scenesExists = existsSync(scenesPath)
@@ -144,7 +315,36 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
       try {
         await generateThumbnail(video, thumbnailPath, 1)
 
-        if (scenesExists && transcriptionExists && analysisExists) {
+        if (transcriptionExists && analysisExists && scenesExists) {
+          send('indexing-progress', {
+            video,
+            progress: 100,
+            step: 'transcription',
+            success: true,
+            stepIndex: 0,
+            thumbnailUrl,
+          })
+          send('indexing-progress', {
+            video,
+            progress: 100,
+            step: 'frame-analysis',
+            success: true,
+            stepIndex: 1,
+            thumbnailUrl,
+          })
+          send('indexing-progress', {
+            video,
+            progress: 100,
+            step: 'embedding',
+            success: true,
+            stepIndex: 2,
+            thumbnailUrl,
+          })
+          continue
+        }
+
+        // Case 2: All files exist but need embedding
+        if (transcriptionExists && analysisExists && scenesExists) {
           send('indexing-progress', {
             video,
             progress: 100,
@@ -171,12 +371,14 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               stepIndex: 2,
               thumbnailUrl,
             })
+
             const [scenes, { category }] = await Promise.all([
               fs.readFile(scenesPath, 'utf-8').then(JSON.parse),
               fs.readFile(analysisPath, 'utf-8').then(JSON.parse),
             ])
 
-            await embedScenes(scenes, video, videoName, category)
+            await embedScenes(scenes, video, category)
+
             send('indexing-progress', {
               video,
               progress: 100,
@@ -186,7 +388,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
           } catch (error) {
-            console.error(error)
+            console.error('Error during embedding:', error)
             send('indexing-progress', {
               video,
               progress: 100,
@@ -196,9 +398,10 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
           }
-          continue
+          continue // Important: skip to next video after embedding
         }
 
+        // Step 1: Transcription
         if (!transcriptionExists) {
           try {
             send('indexing-progress', {
@@ -210,11 +413,18 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
 
-            const transcriptionResult = await transcribeAudio(video)
-            if (transcriptionResult?.path) {
-              await fs.copyFile(transcriptionResult.path, transcriptionPath)
-              await fs.unlink(transcriptionResult.path)
-            }
+            await transcribeAudio(video, transcriptionPath, ({ percentage, elapsed_time }) => {
+              send('indexing-progress', {
+                video,
+                progress: percentage,
+                step: 'transcription',
+                success: true,
+                stepIndex: 0,
+                thumbnailUrl,
+                elapsed: convertTimeToWords(elapsed_time),
+              })
+            })
+
             send('indexing-progress', {
               video,
               progress: 100,
@@ -224,7 +434,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
           } catch (error) {
-            console.error(error)
+            console.error('Error during transcription:', error)
             send('indexing-progress', {
               video,
               progress: 100,
@@ -246,6 +456,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
           })
         }
 
+        // Step 2: Frame Analysis
         if (!analysisExists) {
           try {
             send('indexing-progress', {
@@ -257,8 +468,27 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
 
-            const { analysis, category } = await analyzeVideo(video)
+            const { analysis, category } = await new Promise<{ analysis: any; category: string }>((resolve, reject) => {
+              analyzeVideo(
+                video,
+                ({ progress }) => {
+                  send('indexing-progress', {
+                    video,
+                    progress: progress,
+                    step: 'frame-analysis',
+                    success: true,
+                    stepIndex: 1,
+                    thumbnailUrl,
+                    elapsed: convertTimeToWords('00:02'),
+                  })
+                },
+                (result) => resolve(result),
+                (error) => reject(error)
+              )
+            })
+
             await fs.writeFile(analysisPath, JSON.stringify({ analysis, category }, null, 2))
+
             send('indexing-progress', {
               video,
               progress: 100,
@@ -268,7 +498,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
           } catch (error) {
-            console.error(error)
+            console.error('Error during frame analysis:', error)
             send('indexing-progress', {
               video,
               progress: 100,
@@ -290,6 +520,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
           })
         }
 
+        // Step 3: Embedding
         try {
           send('indexing-progress', {
             video,
@@ -307,13 +538,14 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
           let scenes: Scene[]
           if (!scenesExists) {
-            scenes = createScenes(analysis, transcriptionData)
+            scenes = await createScenes(analysis, transcriptionData, video)
             await fs.writeFile(scenesPath, JSON.stringify(scenes, null, 2))
           } else {
             scenes = await fs.readFile(scenesPath, 'utf-8').then(JSON.parse)
           }
 
-          await embedScenes(scenes, video, videoName, category)
+          await embedScenes(scenes, video, category)
+
           send('indexing-progress', {
             video,
             progress: 100,
@@ -323,7 +555,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
             thumbnailUrl,
           })
         } catch (error) {
-          console.error(error)
+          console.error('Error during embedding:', error)
           send('indexing-progress', {
             video,
             progress: 100,
@@ -335,10 +567,10 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
           continue
         }
       } catch (error) {
-        console.error(error)
+        console.error('Error during thumbnail generation or setup:', error)
         send('indexing-progress', {
           video,
-          progress: 100,
+          progress: 0,
           step: 'transcription',
           success: false,
           stepIndex: 0,

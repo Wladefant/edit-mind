@@ -1,13 +1,25 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createAppWindow } from './app'
+import { pythonService } from '../services/pythonService'
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
+
+  // Start the Python analysis service
+  try {
+    await pythonService.start()
+  } catch (error) {
+    console.error('Failed to start Python service on launch, app will continue without it.', error)
+    // Optionally, show a dialog to the user
+    // dialog.showErrorBox('Critical Error', 'Python analysis service failed to start.');
+  }
+
+
   // Create app window
   createAppWindow()
 
@@ -34,6 +46,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// Stop the python service before quitting
+app.on('quit', async () => {
+  await pythonService.stop()
 })
 
 // In this file, you can include the rest of your app's specific main process
