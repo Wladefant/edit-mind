@@ -26,7 +26,7 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
         self.yolo_model.to(self.config['device'])
         self.yolo_model.fuse()
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
         """
         Analyzes a single frame for objects.
 

@@ -24,7 +24,7 @@ class AnalyzerPlugin(ABC):
         pass
 
     @abstractmethod
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
         """
         Analyzes a single frame and returns a dictionary of results.
 

@@ -30,7 +30,7 @@ class ActivityPlugin(AnalyzerPlugin):
         pass
 
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
             """This plugin does not analyze individual frames."""
             return frame_analysis
 
