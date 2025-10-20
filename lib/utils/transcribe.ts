@@ -1,24 +1,32 @@
-import os from 'os'
-import fs from 'fs'
+import { pythonService } from '../services/pythonService'
+import { TranscriptionProgress } from '../types/transcription'
 
-export async function transcribeAudio(videoFilePath: string): Promise<{ path: string } | undefined> {
-  try {
-    const whisperModule = await import('node-whisper')
-    const whisper = whisperModule.default
 
-    const data = await whisper(videoFilePath, {
-      output_format: 'json',
-      output_dir: os.tmpdir(),
-      word_timestamps: true,
-    })
 
-    if (fs.existsSync(data.json.file)) {
-      return { path: data.json.file }
+type ProgressCallback = (progress: TranscriptionProgress) => void
+
+export async function transcribeAudio(
+  videoFilePath: string,
+  transcriptionPath: string,
+  onProgress?: ProgressCallback
+): Promise<{ path: string } | undefined> {
+  return new Promise((resolve) => {
+    try {
+      pythonService.transcribe(
+        videoFilePath,
+        transcriptionPath,
+        (progress) => {
+          if (onProgress) onProgress(progress)
+        },
+        (_result) => {
+          if (onProgress) resolve({ path: transcriptionPath })
+        },
+        (error) => {
+          console.error('Video transcription failed:', error)
+        }
+      )
+    } catch (error) {
+      console.error('Video transcription failed:', error)
     }
-    fs.writeFileSync(data.json.file, JSON.stringify({}))
-    return { path: data.json.file }
-  } catch (error) {
-    console.error('Error:', error)
-    return undefined
-  }
+  })
 }
