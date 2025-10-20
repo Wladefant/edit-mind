@@ -1,4 +1,4 @@
-import { SearchSuggestion, VideoMetadataSummary } from "../types/search"
+import { SearchSuggestion, VideoMetadataSummary } from '../types/search'
 
 export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary): SearchSuggestion[] => {
   const suggestions: SearchSuggestion[] = []
@@ -8,6 +8,13 @@ export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary)
       text: `scenes with @${metadataSummary.topFaces[0].name}`,
       icon: '👤',
       category: 'people',
+    })
+  }
+  if (metadataSummary.topColors.length > 0) {
+    suggestions.push({
+      text: `scenes with ${metadataSummary.topColors[0].name}'s color`,
+      icon: '🎨',
+      category: 'color',
     })
   }
 
@@ -35,5 +42,5 @@ export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary)
     })
   }
 
-  return suggestions.slice(0, 4)
+  return suggestions.slice(0, 5)
 }
