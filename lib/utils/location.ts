@@ -104,7 +104,7 @@ export async function getLocationName(location: string): Promise<string> {
     }
   }
 
-  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14`
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&accept-language=en`
 
   const response = await fetch(url, {
     headers: {
@@ -124,17 +124,18 @@ export async function getLocationName(location: string): Promise<string> {
 
   if (data.address) {
     const addr = data.address
-    const parts: string[] = []
+    const city = addr.city || addr.town || addr.village || addr.hamlet
+    const country = addr.country
 
-    if (addr.city) parts.push(addr.city)
-    else if (addr.town) parts.push(addr.town)
-    else if (addr.village) parts.push(addr.village)
-
-    if (addr.country) parts.push(addr.country)
-
-    locationName = parts.length > 0 ? parts.join(', ') : data.display_name
+    if (city && country) {
+      locationName = `${city}, ${country}`
+    } else if (country) {
+      locationName = country
+    } else {
+      locationName = data.display_name
+    }
   } else {
-    locationName = data.display_name || formatLocation(lat, lon, undefined)
+    locationName = formatLocation(lat, lon, undefined)
   }
 
   cache[cacheKey] = {
