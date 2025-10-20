@@ -33,14 +33,12 @@ export const Chat: React.FC = () => {
   }, [])
 
   const [videoConfig, setVideoConfig] = useState<VideoConfig>({
-    duration: 120,
     aspectRatio: '16:9',
     fps: 30,
   })
   const [showAdvancedSettings, setShowAdvancedSettings] = useState<boolean>(false)
 
   const [searchMetadata, setSearchMetadata] = useState<{
-    duration?: number
     aspectRatio?: string
     faces?: string[]
   }>({})
@@ -67,7 +65,7 @@ export const Chat: React.FC = () => {
         video.scenes.forEach((scene) => {
           if (scene.faces && scene.faces.length > 0) {
             scene.faces.forEach((face) => {
-              if (face) {
+              if (!face.toLocaleLowerCase().includes('unknown')) {
                 const existing = faceMap.get(face)
                 if (existing) {
                   existing.count++
@@ -99,6 +97,7 @@ export const Chat: React.FC = () => {
       cameras: new Map<string, number>(),
       descriptions: [] as string[],
       totalScenes: 0,
+      colors: new Map<string, number>(),
     }
 
     videos.forEach((video) => {
@@ -108,7 +107,7 @@ export const Chat: React.FC = () => {
         video.scenes.forEach((scene: Scene) => {
           if (scene.faces) {
             scene.faces.forEach((face) => {
-              if (face) {
+              if (!face.toLocaleLowerCase().includes('unknown')) {
                 metadata.faces.set(face, (metadata.faces.get(face) || 0) + 1)
               }
             })
@@ -130,8 +129,11 @@ export const Chat: React.FC = () => {
             })
           }
 
-          if (scene.shot_type && scene.shot_type !== 'unknown') {
+          if (scene.shot_type && scene.shot_type !== 'N/A') {
             metadata.shotTypes.set(scene.shot_type, (metadata.shotTypes.get(scene.shot_type) || 0) + 1)
+          }
+          if (scene.dominantColorName && scene.dominantColorName !== 'N/A') {
+            metadata.colors.set(scene.dominantColorName, (metadata.shotTypes.get(scene.dominantColorName) || 0) + 1)
           }
 
           if (scene.description) {
@@ -229,6 +231,11 @@ export const Chat: React.FC = () => {
           .sort((a, b) => b[1] - a[1])
           .map(([name, count]) => ({ name, count }))
 
+        const topColors = Array.from(videoMetadata.colors.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, count]) => ({ name, count }))
+
         const metadataSummary = {
           totalScenes: videoMetadata.totalScenes,
           topFaces,
@@ -238,11 +245,12 @@ export const Chat: React.FC = () => {
           aspectRatios,
           cameras,
           sampleDescriptions: videoMetadata.descriptions.slice(0, 10),
+          topColors,
         }
 
         const response = await window.conveyor.app.generateSearchSuggestions(metadataSummary)
 
-        setSuggestions(response)
+        setSuggestions(getFallbackSuggestions())
       } catch (error) {
         console.error('Error generating suggestions:', error)
         setSuggestions(getFallbackSuggestions())
@@ -293,7 +301,22 @@ export const Chat: React.FC = () => {
         category: 'people',
       })
     }
-
+    const topColor = Array.from(videoMetadata.colors.entries()).sort((a, b) => b[1] - a[1])[0]
+    if (topColor) {
+      suggestions.push({
+        text: `scenes with ${topColor[0]} tones`,
+        icon: '🎨',
+        category: 'color',
+      })
+    }
+    const topObject = Array.from(videoMetadata.objects.entries()).sort((a, b) => b[1] - a[1])[0]
+    if (topObject) {
+      suggestions.push({
+        text: `scenes with ${topObject[0]}`,
+        icon: '📍',
+        category: 'scene',
+      })
+    }
     const topEmotion = Array.from(videoMetadata.emotions.entries()).sort((a, b) => b[1] - a[1])[0]
     if (topEmotion) {
       suggestions.push({
@@ -312,16 +335,7 @@ export const Chat: React.FC = () => {
       })
     }
 
-    const topObject = Array.from(videoMetadata.objects.entries()).sort((a, b) => b[1] - a[1])[0]
-    if (topObject) {
-      suggestions.push({
-        text: `scenes with ${topObject[0]}`,
-        icon: '📍',
-        category: 'scene',
-      })
-    }
-
-    return suggestions.slice(0, 4)
+    return suggestions
   }
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -421,19 +435,16 @@ export const Chat: React.FC = () => {
     setGenerationResult(null)
 
     try {
-      const { results, duration, aspect_ratio, faces } = await window.conveyor.app.searchDocuments(prompt)
+      const { results, aspect_ratio, faces } = await window.conveyor.app.searchDocuments(prompt)
       setSearchResults(results)
       setSelectedScenes(new Set())
 
-      // Store search metadata
-      if (duration && aspect_ratio && faces)
+      if (aspect_ratio && faces)
         setSearchMetadata({
-          duration,
           aspectRatio: aspect_ratio,
           faces,
         })
 
-      // Update video config with search results if available
       if (aspect_ratio) {
         setVideoConfig((prev) => ({ ...prev, aspectRatio: aspect_ratio }))
       }
@@ -491,7 +502,6 @@ export const Chat: React.FC = () => {
         scenesToStitch,
         videoFilename,
         videoConfig.aspectRatio,
-        videoConfig.duration,
         videoConfig.fps
       )
       await window.conveyor.app.exportToFcpXml(scenesToStitch, prompt, fcpxmlFilename)
@@ -557,6 +567,17 @@ export const Chat: React.FC = () => {
     }
   }
 
+  const [sortOrder, setSortOrder] = useState('desc')
+
+  const sortedSearchResults = useMemo(() => {
+    return [...searchResults].sort((a, b) => {
+      if (sortOrder === 'desc') {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      }
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
+  }, [searchResults, sortOrder])
+
   return (
     <div className="chat-view">
       <div className="chat-input-area">
@@ -567,7 +588,7 @@ export const Chat: React.FC = () => {
             </span>
             <div className="suggestions-grid">
               {loadingSuggestions
-                ? Array.from({ length: 4 }).map((_, i) => (
+                ? Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="suggestion-chip skeleton">
                       <div className="skeleton-icon"></div>
                       <div className="skeleton-text"></div>
@@ -634,7 +655,6 @@ export const Chat: React.FC = () => {
           )}
         </div>
 
-        {/* Video Configuration Panel */}
         <div className="video-config-panel">
           <button className="advanced-settings-toggle" onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}>
             <span className="toggle-icon">{showAdvancedSettings ? '▼' : '▶'}</span>
@@ -644,26 +664,6 @@ export const Chat: React.FC = () => {
           {showAdvancedSettings && (
             <div className="config-options">
               <div className="config-row">
-                <div className="config-item">
-                  <label htmlFor="duration-slider">
-                    Duration: <strong>{videoConfig.duration}s</strong>
-                  </label>
-                  <input
-                    id="duration-slider"
-                    type="range"
-                    min="15"
-                    max="300"
-                    step="15"
-                    value={videoConfig.duration}
-                    onChange={(e) => setVideoConfig((prev) => ({ ...prev, duration: parseInt(e.target.value) }))}
-                    className="config-slider"
-                  />
-                  <div className="slider-labels">
-                    <span>15s</span>
-                    <span>300s</span>
-                  </div>
-                </div>
-
                 <div className="config-item">
                   <label htmlFor="aspect-ratio-select">Aspect Ratio</label>
                   <select
@@ -751,12 +751,17 @@ export const Chat: React.FC = () => {
             <h3>
               Found {searchResults.length} Scene{searchResults.length !== 1 ? 's' : ''}
             </h3>
-            <button className="select-all-button" onClick={toggleSelectAll}>
-              {allScenesSelected ? 'Deselect All' : 'Select All'}
-            </button>
+            <div className="flex items-center space-x-2">
+              <button className="select-all-button" onClick={toggleSelectAll}>
+                {allScenesSelected ? 'Deselect All' : 'Select All'}
+              </button>
+              <button className="select-all-button" onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}>
+                Sort by Date ({sortOrder === 'desc' ? 'Newest' : 'Oldest'})
+              </button>
+            </div>
           </div>
           <div className="scene-grid">
-            {searchResults.map((scene, index) => (
+            {sortedSearchResults.map((scene, index) => (
               <div
                 key={`${scene.source}-${scene.startTime}-${index}`}
                 className={`scene-thumbnail-wrapper ${selectedScenes.has(index) ? 'selected' : ''}`}
@@ -776,6 +781,8 @@ export const Chat: React.FC = () => {
                   <p className="scene-time">
                     {scene.startTime.toFixed(1)}s - {scene.endTime.toFixed(1)}s
                   </p>
+                  <p className="scene-camera">{scene.camera}</p>
+                  <p className="scene-date">{scene.createdAt}</p>
                 </div>
                 {selectedScenes.has(index) && (
                   <div className="selection-overlay">
