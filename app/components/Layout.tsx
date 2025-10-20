@@ -4,6 +4,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { IndexIcon } from '../icons/IndexIcon'
 import { VideoIcon } from '../icons/VideoIcon'
 
+import { GearIcon } from '../icons/GearIcon'
+
 interface LayoutProps {
   children: React.ReactNode
 }
@@ -12,6 +14,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const isIndexingPage = location.pathname === '/'
+
   return (
     <div className="app-layout">
       <header className="app-header">
@@ -30,23 +33,59 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </defs>
               </svg>
               <div className="app-info">
-                <h1 className="app-title">Video Editor</h1>
-                <p className="app-subtitle">AI-Powered Rough Cut Generator</p>
+                <h1 className="app-title">Edit Mind</h1>
+                <p className="app-subtitle">AI-Powered Video Manager</p>
               </div>
             </div>
           </div>
           <div className="header-right">
+            <Link to={'/settings'} className="header-button">
+              <GearIcon />
+              Settings
+            </Link>
+            <Link to={'/training'} className="header-button">
+              <IndexIcon />
+              Training
+            </Link>
+            {!isChatPage && !isIndexingPage && (
+              <>
+                <Link to={'/videos'} className="header-button">
+                  <VideoIcon />
+                  Videos
+                </Link>
+                <Link to={'/chat'} className="header-button secondary">
+                  <VideoIcon />
+                  Chat
+                </Link>
+                <Link to={'/'} className="header-button">
+                  <IndexIcon />
+                  Add Videos
+                </Link>
+              </>
+            )}
             {isChatPage && (
-              <Link to={'/'} className="header-button">
-                <IndexIcon />
-                Add Videos
-              </Link>
+              <>
+                <Link to={'/videos'} className="header-button">
+                  <VideoIcon />
+                  Videos
+                </Link>
+                <Link to={'/'} className="header-button">
+                  <IndexIcon />
+                  Add Videos
+                </Link>
+              </>
             )}
             {isIndexingPage && (
-              <Link to={'/chat'} className="header-button secondary">
-                <VideoIcon />
-                Chat
-              </Link>
+              <>
+                <Link to={'/videos'} className="header-button">
+                  <VideoIcon />
+                  Videos
+                </Link>
+                <Link to={'/chat'} className="header-button secondary">
+                  <VideoIcon />
+                  Chat
+                </Link>
+              </>
             )}
           </div>
         </div>
