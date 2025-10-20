@@ -1,64 +1,40 @@
-import path from 'path'
-import { spawn } from 'child_process'
-import { Analysis } from '../types/analysis'
+import { Analysis, AnalysisProgress } from '../types/analysis'
+import { pythonService } from '../services/pythonService'
 
 /**
- * Analyzes a video file using a Python script.
- * @param videoFullPath The full path to the video file.
- * @returns A promise that resolves with the analysis results, including category and thumbnail URL.
+ * Analyzes a video file using the persistent Python analysis service.
+ * @param videoPath The full path to the video file.
+ * @param onProgress Callback for progress updates.
+ * @param onResult Callback for when the analysis is complete.
+ * @param onError Callback for any errors that occur.
  */
-export async function analyzeVideo(videoPath: string): Promise<{ analysis: Analysis; category: string }> {
-  return new Promise((resolve, reject) => {
-    const ANALYZE_SERVICE_PATH = path.join(process.cwd(), 'python/analyze.py')
-
-    const pythonProcess = spawn('python', [ANALYZE_SERVICE_PATH, videoPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
+export function analyzeVideo(
+  videoPath: string,
+  onProgress: (progress: AnalysisProgress) => void,
+  onResult: (result: { analysis: Analysis; category: string }) => void,
+  onError: (error: Error) => void
+): void {
+  try {
+    pythonService.analyzeVideo(
+      videoPath,
+      (progress) => {
+        onProgress(progress)
       },
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    pythonProcess.stderr.on('data', (data) => {
-      const log = data.toString()
-      stderr += log
-      if (log.includes('Batch') || log.includes('Known:')) {
-        process.stderr.write('.')
-      }
-    })
-
-    pythonProcess.on('close', (code) => {
-
-      if (code !== 0) {
-        reject(new Error(`Python process failed: ${stderr}`))
-        return
-      }
-
-      try {
-        const result = JSON.parse(stdout)
+      (result) => {
         let category = 'Uncategorized'
-        if (result && result.scene_analysis && result.scene_analysis.environment) {
-          const scene = result.scene_analysis.environment
-          category = scene.charAt(0).toUpperCase() + scene.slice(1)
+        if (result?.scene_analysis?.environment) {
+          const env = result.scene_analysis.environment
+          category = env.charAt(0).toUpperCase() + env.slice(1).replace(/_/g, ' ')
         }
-        resolve({
-          analysis: result,
-          category,
-        })
-      } catch (error) {
-        reject(new Error(`Failed to parse output: ${error}`))
+        onResult({ analysis: result, category })
+      },
+      (error) => {
+        console.error('Video analysis failed:', error)
+        onError(error)
       }
-    })
-
-    pythonProcess.on('error', (error) => {
-      reject(error)
-    })
-  })
+    )
+  } catch (error) {
+    console.error('Video analysis failed:', error)
+    onError(error as Error)
+  }
 }
