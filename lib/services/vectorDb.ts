@@ -5,7 +5,7 @@ import { EmbeddingInput, CollectionStatistics } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
 import { SearchQuery } from '../types/search'
-import { metadataToScene } from '../utils/embed'
+import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
 
 const API_KEY = process.env.GEMINI_API_KEY
 
@@ -147,6 +147,7 @@ const getAllVideos = async (): Promise<Video[]> => {
             camera: metadata.camera?.toString() || 'N/A',
             category: metadata.category?.toString() || 'Uncategorized',
             createdAt: metadata.createdAt?.toString() || 'N/A',
+            thumbnailUrl: metadata.thumbnailUrl?.toString(),
           }
         }
       }
@@ -167,7 +168,7 @@ const getAllVideosWithScenes = async (): Promise<VideoWithScenes[]> => {
     }
 
     const allDocs = await collection.get({
-      include: ['metadatas', 'documents'],
+      include: ['metadatas', 'documents', 'embeddings'],
     })
 
     const videosDict: Record<string, VideoWithScenes> = {}
@@ -177,8 +178,10 @@ const getAllVideosWithScenes = async (): Promise<VideoWithScenes[]> => {
         const metadata = allDocs.metadatas[i]
         if (!metadata) continue
 
-        const source = metadata.source as string
-        if (!source) continue
+        const source = metadata.source?.toString()
+        if (!source) {
+          continue
+        }
 
         if (!videosDict[source]) {
           videosDict[source] = {
@@ -190,48 +193,11 @@ const getAllVideosWithScenes = async (): Promise<VideoWithScenes[]> => {
             createdAt: metadata.createdAt?.toString() || 'N/A',
             scenes: [],
             sceneCount: 0,
+            thumbnailUrl: metadata.thumbnailUrl?.toString(),
           }
         }
 
-        let emotions: Array<{ name: string; emotion: string }> = []
-        try {
-          const emotionsStr = metadata.emotions as string
-          if (emotionsStr) {
-            emotions = JSON.parse(emotionsStr)
-          }
-        } catch {
-          emotions = []
-        }
-
-        const faces = metadata.faces
-          ? (metadata.faces as string)
-              .split(',')
-              .map((f) => f.trim())
-              .filter(Boolean)
-          : []
-        const objects = metadata.objects
-          ? (metadata.objects as string)
-              .split(',')
-              .map((o) => o.trim())
-              .filter(Boolean)
-          : []
-
-        const scene: Scene = {
-          id: allDocs.ids[i],
-          thumbnailUrl: metadata.thumbnailUrl?.toString() || '',
-          startTime: parseInt(metadata.startTime?.toString() || '0') || 0,
-          endTime: parseInt(metadata.endTime?.toString() || '0') || 0,
-          faces,
-          objects,
-          transcription: metadata.transcription?.toString() || '',
-          description: metadata.description?.toString() || '',
-          shot_type: metadata.shot_type?.toString() || '',
-          emotions,
-          createdAt: metadata.createdAt?.toString() || 'N/A',
-          source,
-          camera: metadata.camera?.toString() || 'N/A',
-        }
-
+        const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
         videosDict[source].scenes.push(scene)
       }
     }
@@ -300,7 +266,7 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
     if (result.metadatas && result.metadatas.length > 0 && result.ids && result.ids.length > 0) {
       filteredScenes = result.metadatas
         .map((metadata, index) => metadataToScene(metadata, result.ids![index]))
-        .filter((scene) => {
+        .filter((scene: Scene) => {
           let matches = true
 
           // Filter by faces
@@ -321,6 +287,15 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
             matches = matches && query.emotions.some((qEmotion) => sceneEmotions.includes(qEmotion.toLowerCase()))
           }
 
+          // Filter by transcription query
+          if (query.transcriptionQuery) {
+            matches = matches && scene.transcription.toLowerCase().includes(query.transcriptionQuery.toLowerCase())
+          }
+          // Filter by detected text query
+          if (query.detectedText) {
+            matches = matches && scene.detectedText.includes(query.detectedText.toLowerCase())
+          }
+
           return matches
         })
     }
@@ -332,4 +307,91 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
   }
 }
 
-export { embedDocuments, getStatistics, initialize, getAllVideosWithScenes, getAllVideos, queryCollection }
+async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
+  if (videoSources.length === 0) {
+    return []
+  }
+
+  try {
+    await initialize()
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    const results = await collection.get({
+      where: {
+        source: {
+          $in: videoSources,
+        },
+      },
+      include: ['metadatas'],
+    })
+
+    const existingSources = new Set(results.metadatas.map((m) => m!.source))
+    return videoSources.filter((source) => !existingSources.has(source))
+  } catch (error) {
+    console.error('Error filtering existing videos:', error)
+    return videoSources
+  }
+}
+
+async function updateDocuments(scene: Scene): Promise<void> {
+  try {
+    await initialize()
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    const existing = await collection.get({
+      where: {
+        $and: [{ source: scene?.source }, { startTime: scene?.startTime }, { endTime: scene?.endTime }],
+      },
+      include: ['metadatas', 'documents', 'embeddings'],
+    })
+
+    if (!existing.ids || existing.ids.length === 0) {
+      console.warn(`Document ${scene.id} not found, skipping`)
+      return
+    }
+
+    const currentMetadata = metadataToScene(existing.metadatas?.[0], scene.id)
+    const currentDocument = existing.documents?.[0] || ''
+    const currentEmbedding = existing.embeddings?.[0]
+
+    const newMetadata: Scene = scene ? { ...currentMetadata, ...scene } : currentMetadata
+
+    // Delete the old document
+    await collection.delete({ ids: [scene.id] })
+
+    // Add the updated document
+    await collection.add({
+      ids: [scene.id],
+      embeddings: [currentEmbedding],
+      metadatas: [
+        {
+          id: scene.id,
+          ...sceneToVectorFormat(newMetadata, 1).metadata,
+        },
+      ],
+      documents: [currentDocument],
+    })
+  } catch (error) {
+    console.error('Error updating documents:', error)
+    throw error
+  }
+}
+
+async function updateMetadata(metadata: Scene): Promise<void> {
+  await updateDocuments(metadata)
+}
+export {
+  embedDocuments,
+  getStatistics,
+  initialize,
+  getAllVideosWithScenes,
+  getAllVideos,
+  queryCollection,
+  filterExistingVideos,
+  updateDocuments,
+  updateMetadata,
+}
