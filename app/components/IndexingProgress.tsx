@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { CheckCircle, Circle, Loader } from 'lucide-react'
+import { CheckCircle, Circle, Loader, Clock, Film } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Progress } from './ui/progress'
 
 export type IndexingProgressProps = {
   video: string
@@ -8,6 +10,9 @@ export type IndexingProgressProps = {
   success: boolean
   stepIndex: number
   thumbnailUrl?: string
+  elapsed?: string
+  scenesProcessed?: number
+  totalScenes?: number
 }
 
 const steps = [
@@ -20,8 +25,10 @@ export const IndexingProgress = ({
   video,
   step,
   progress,
-  success,
   thumbnailUrl,
+  elapsed,
+  scenesProcessed,
+  totalScenes,
 }: IndexingProgressProps) => {
   const currentStepIndex = steps.findIndex((s) => s.id === step)
 
@@ -29,105 +36,126 @@ export const IndexingProgress = ({
     <AnimatePresence mode="wait">
       <motion.div
         key="indexing-progress"
-        className="indexing-progress-container"
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: -20 }}
-        transition={{
-          duration: 0.4,
-          ease: [0.16, 1, 0.3, 1], 
-        }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div className="indexing-progress-content">
-          {thumbnailUrl && (
-            <motion.div 
-              className="thumbnail-container"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              <img src={thumbnailUrl} alt={video} className="thumbnail-image" />
-              <motion.div 
-                className="thumbnail-overlay" 
-                initial={{ width: '0%' }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-              />
-            </motion.div>
-          )}
-          
-          <div className="indexing-header">
-            <motion.h2 
-              className="indexing-title"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              Indexing in Progress
-            </motion.h2>
-            <motion.p 
-              className="indexing-video-name"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              {video}
-            </motion.p>
-          </div>
-
-          <div className="steps-container">
-            {steps.map((s, index) => {
-              const isCompleted = index < currentStepIndex || success
-              const isCurrent = index === currentStepIndex && !success
-              
-              return (
-                <motion.div 
-                  key={s.id} 
-                  className={`step ${isCurrent ? 'step-current' : ''} ${isCompleted ? 'step-completed' : ''}`}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + index * 0.1 }}
-                >
-                  <div className="step-icon">
-                    {isCompleted ? (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                      >
-                        <CheckCircle size={20} className="text-green-500" />
-                      </motion.div>
-                    ) : isCurrent ? (
-                      <Loader size={20} className="animate-spin text-blue-500" />
-                    ) : (
-                      <Circle size={20} className="text-gray-400" />
-                    )}
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="text-2xl font-semibold leading-none tracking-tight">Indexing in Progress</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">{video}</CardDescription>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {thumbnailUrl && (
+              <div className="relative mb-4 flex items-center justify-center overflow-hidden rounded-lg">
+                <img
+                  src={thumbnailUrl}
+                  alt={video}
+                  className="h-[300px] w-full rounded-lg object-cover object-center"
+                />
+                <motion.div
+                  className="absolute left-0 top-0 h-full rounded-lg bg-black/50"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="rounded-full bg-black/70 px-4 py-2 backdrop-blur-sm">
+                    <span className="text-2xl font-bold text-white">{progress}%</span>
                   </div>
-                  <span className="step-name">{s.name}</span>
-                </motion.div>
-              )
-            })}
-          </div>
+                </div>
+              </div>
+            )}
 
-          <div className="progress-section">
-            <div className="progress-bar-container">
-              <motion.div 
-                className="progress-bar" 
-                initial={{ width: '0%' }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-              />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">{steps[currentStepIndex].name}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {elapsed && (
+                    <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                      <Clock size={14} />
+                      <span>{elapsed}</span>
+                    </div>
+                  )}
+                  <span className="text-sm font-medium text-muted-foreground">{progress}%</span>
+                </div>
+              </div>
+
+              <Progress value={progress} className="h-2" />
+
+              {scenesProcessed !== undefined && totalScenes !== undefined && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-3"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Film size={16} className="text-green-500" />
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">Scenes</span>
+                      <span className="text-sm font-semibold">
+                        {scenesProcessed}/{totalScenes}
+                      </span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              <div className="flex justify-between pt-2">
+                {steps.map((s, index) => {
+                  const isCompleted = index < currentStepIndex || progress === 100
+                  const isCurrent = index === currentStepIndex
+
+                  return (
+                    <motion.div
+                      key={s.id}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="flex items-center space-x-2"
+                    >
+                      {isCompleted ? (
+                        <CheckCircle size={20} className="text-green-500" />
+                      ) : isCurrent ? (
+                        <Loader size={20} className="animate-spin text-blue-500" />
+                      ) : (
+                        <Circle size={20} className="text-gray-400" />
+                      )}
+                      <span
+                        className={`text-sm ${isCurrent ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}
+                      >
+                        {s.name}
+                      </span>
+                    </motion.div>
+                  )
+                })}
+              </div>
+
+              {scenesProcessed !== undefined &&
+                totalScenes !== undefined &&
+                totalScenes > 0 &&
+                step === 'frame-analysis' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3"
+                  >
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Frame Progress</span>
+                      <span>
+                        {scenesProcessed} / {totalScenes} frames
+                      </span>
+                    </div>
+                    <Progress value={(scenesProcessed / totalScenes) * 100} className="h-1.5" />
+                  </motion.div>
+                )}
             </div>
-            <motion.p 
-              className="progress-text"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              {progress}% complete
-            </motion.p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </motion.div>
     </AnimatePresence>
   )
