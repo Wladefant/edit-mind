@@ -32,3 +32,11 @@ export const COLLECTION_NAME = 'video_content';
 // AI Models
 export const EMBEDDING_MODEL = 'text-embedding-004';
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+
+// Files
+export const SUPPORTED_VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv)$/i
+export const DEFAULT_FPS = 30
+export const THUMBNAIL_SCALE = '1200:-1'
+export const THUMBNAIL_QUALITY = '4'
+export const BATCH_THUMBNAIL_QUALITY = '5'
