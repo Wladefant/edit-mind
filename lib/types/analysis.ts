@@ -76,6 +76,9 @@ export interface Analysis {
 
 export interface AnalysisProgress {
   plugin: string
-  progress: number 
+  progress: number
   message: string
+  elapsed: string
+  frames_analyzed: number
+  total_frames: number
 }

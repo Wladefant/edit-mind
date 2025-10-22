@@ -25,6 +25,6 @@ export interface Transcription {
   language: string;
 }
 export type TranscriptionProgress = {
-  percentage: number
-  elapsed_time: string
+  progress: number
+  elapsed: string
 }

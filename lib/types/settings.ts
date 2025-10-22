@@ -1,5 +1,5 @@
 
-export type Settings = {
+export type SettingsConfig = {
   sample_interval_seconds: number;
   max_workers: number;
   batch_size: number;
