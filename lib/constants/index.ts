@@ -16,11 +16,11 @@ export const CACHE_FILE = '.locations.json';
 // Timeouts and Intervals
 export const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 export const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
-export const SERVICE_STARTUP_TIMEOUT = 30000; // 30 seconds
+export const SERVICE_STARTUP_TIMEOUT = 60000; // 60 seconds
 export const HEALTH_CHECK_INTERVAL = 1000; // 1 second
 
 // Service settings
-export const MAX_RESTARTS = 5;
+export const MAX_RESTARTS = 10;
 export const RESTART_BACKOFF_MS = 1000;
 export const EMBEDDING_BATCH_SIZE = 200;
 export const MAX_DEPTH = 5;
