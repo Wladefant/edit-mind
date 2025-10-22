@@ -153,11 +153,13 @@ class TranscriptionService:
             )
         except RuntimeError as e:
             if "does not contain any stream" in str(e) or "Failed to load audio" in str(e):
-                return TranscriptionResult(
+                result = TranscriptionResult(
                 text='',
                 segments=[],
                 language='N/A'
                     )
+                self._save_result(result.to_dict(), output_path)
+                return result          
             raise
         finally:
             sys.stderr = original_stderr
