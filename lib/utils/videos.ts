@@ -98,7 +98,7 @@ export async function generateAllThumbnails(
   const filterComplex = timestamps
     .map(
       (ts, idx) =>
-        `[0:v]trim=start=${ts}:duration=0.1,setpts=PTS-STARTPTS,scale=${THUMBNAIL_SCALE}:flags=fast_bilinear[v${idx}]`
+    `[0:v]select='between(t,${ts},${ts+0.1})',setpts=PTS-STARTPTS,scale=${THUMBNAIL_SCALE}:flags=fast_bilinear[v${idx}]`
     )
     .join(';')
 

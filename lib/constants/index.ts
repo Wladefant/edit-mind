@@ -38,6 +38,6 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Files
 export const SUPPORTED_VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv)$/i
 export const DEFAULT_FPS = 30
-export const THUMBNAIL_SCALE = '1200:-1'
+export const THUMBNAIL_SCALE = '320:-1'
 export const THUMBNAIL_QUALITY = '4'
-export const BATCH_THUMBNAIL_QUALITY = '5'
+export const BATCH_THUMBNAIL_QUALITY = '3'
