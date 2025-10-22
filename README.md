@@ -127,7 +127,17 @@ python -m venv .venv
 source .venv/bin/activate   # (macOS/Linux)
 # .\.venv\Scripts\activate  # (Windows)
 pip install -r python/requirements.txt
+pip install chromadb
+chroma run --host localhost --port 8000 --path .chroma_db
 ```
+
+### Configuration
+
+Create a `.env` file in the project root:
+```bash
+GEMINI_API_KEY=your_api_key_here
+```
+
 
 ### Running the Application
 
