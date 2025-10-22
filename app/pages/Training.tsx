@@ -6,74 +6,15 @@ import { Label } from '@/app/components/ui/label'
 import { Badge } from '@/app/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
-import { Loader2, UserPlus, RefreshCw, Check, X } from 'lucide-react'
-
-interface UnknownFace {
-  image_file: string
-  json_file: string
-  image_hash: string
-  created_at: string
-  video_path: string
-  video_name: string
-  frame_index: number
-  timestamp_ms: number
-  timestamp_seconds: number
-  formatted_timestamp: string
-  frame_dimensions: {
-    width: number
-    height: number
-  }
-  face_id: string
-  bounding_box: {
-    top: number
-    right: number
-    bottom: number
-    left: number
-    width: number
-    height: number
-  }
-  padded_bounding_box: {
-    top: number
-    right: number
-    bottom: number
-    left: number
-    width: number
-    height: number
-  }
-  face_center: {
-    x: number
-    y: number
-  }
-  face_encoding: number[]
-  frame_duration_ms: number
-  frame_start_time_ms: number
-  frame_end_time_ms: number
-  context: {
-    detected_objects: string[]
-    scene_type: string
-    environment: string
-    other_faces_in_frame: string[]
-  }
-  label: {
-    name: string | null
-    labeled_by: string | null
-    labeled_at: string | null
-    confidence: number | null
-    notes: string | null
-  }
-  quality: {
-    face_size_pixels: number
-    face_coverage_percent: number
-    aspect_ratio: number
-  }
-}
+import { Loader2, UserPlus, Check, X } from 'lucide-react'
+import { UnknownFace } from '@/lib/types/face'
 
 interface KnownFace {
   name: string
   images: string[]
 }
 
-export const TrainingPage: React.FC = () => {
+export const Training: React.FC = () => {
   const [unknownFaces, setUnknownFaces] = useState<UnknownFace[]>([])
   const [knownFaces, setKnownFaces] = useState<KnownFace[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -82,7 +23,6 @@ export const TrainingPage: React.FC = () => {
   const [selectedKnownFace, setSelectedKnownFace] = useState<string>('')
   const [newFaceName, setNewFaceName] = useState<string>('')
   const [isLabeling, setIsLabeling] = useState<boolean>(false)
-  const [isReindexing, setIsReindexing] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<string>('unknown')
 
   useEffect(() => {
@@ -92,7 +32,6 @@ export const TrainingPage: React.FC = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // Fetch unknown faces
       const unknownFacesData = await window.conveyor.app.getUnknownFaces()
       setUnknownFaces(unknownFacesData)
 
@@ -154,39 +93,16 @@ export const TrainingPage: React.FC = () => {
 
       alert(`Successfully labeled ${selectedFaces.size} face(s) as "${targetName}"`)
 
-      // Reset state
       setSelectedFaces(new Set())
       setNewFaceName('')
       setSelectedKnownFace('')
 
-      // Refresh data
       await fetchData()
     } catch (error) {
       console.error('Error labeling faces:', error)
       alert('Error labeling faces. Please try again.')
     } finally {
       setIsLabeling(false)
-    }
-  }
-
-  const handleReindexFaces = async () => {
-    const confirmed = confirm('This will reindex all faces in your video library. This may take a while. Continue?')
-
-    if (!confirmed) return
-
-    setIsReindexing(true)
-    try {
-      // Placeholder for reindexing logic
-      // await window.conveyor.app.reindexAllFaces();
-      alert('Face reindexing started successfully!')
-
-      // Refresh data after reindexing
-      await fetchData()
-    } catch (error) {
-      console.error('Error reindexing faces:', error)
-      alert('Error starting face reindexing. Please try again.')
-    } finally {
-      setIsReindexing(false)
     }
   }
 
@@ -244,19 +160,6 @@ export const TrainingPage: React.FC = () => {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Unknown Faces</CardTitle>
-                <Button onClick={handleReindexFaces} disabled={isReindexing} variant="outline">
-                  {isReindexing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Reindexing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Reindex All Faces
-                    </>
-                  )}
-                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -267,7 +170,6 @@ export const TrainingPage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* Labeling Controls */}
                   <div className="mb-6 p-4 border rounded-lg bg-muted/50">
                     <div className="flex items-center justify-between mb-4">
                       <Label className="text-base font-semibold">Label Selected Faces ({selectedFaces.size})</Label>
@@ -345,8 +247,7 @@ export const TrainingPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Unknown Faces Grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                     {unknownFaces.map((face) => (
                       <div
                         key={face.image_hash}
@@ -404,7 +305,7 @@ export const TrainingPage: React.FC = () => {
                   <p>No known faces yet. Start labeling unknown faces!</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                   {knownFaces.map((face) => (
                     <div key={face.name} className="border rounded-lg overflow-hidden">
                       {face.images.length > 0 ? (
@@ -417,7 +318,7 @@ export const TrainingPage: React.FC = () => {
                       <div className="p-3 bg-background">
                         <p className="font-medium truncate">{face.name}</p>
                         <Badge variant="secondary" className="mt-1">
-                          {face.images.length} samples
+                          {face.images.length} samples {face.images[0]}
                         </Badge>
                       </div>
                     </div>
