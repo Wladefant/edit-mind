@@ -7,9 +7,8 @@ import { app } from 'electron'
 import WebSocket from 'ws'
 import { Analysis, AnalysisProgress } from '../types/analysis'
 
-
-import { IS_WIN, SERVICE_STARTUP_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_RESTARTS, RESTART_BACKOFF_MS } from '@/lib/constants';
-
+import { IS_WIN, SERVICE_STARTUP_TIMEOUT, MAX_RESTARTS, RESTART_BACKOFF_MS } from '@/lib/constants'
+import { FaceIndexingProgress } from '../types/face'
 
 class PythonService {
   private static instance: PythonService
@@ -38,7 +37,11 @@ class PythonService {
       const comms = await this.getCommunicationArgs()
       this.serviceUrl = comms.url
 
-      const pythonExecutable = IS_WIN ? 'python' : 'python3'
+      const venvPath = path.join(app.getAppPath(), 'python', '.venv')
+      const pythonExecutable = IS_WIN
+        ? path.join(venvPath, 'Scripts', 'python.exe')
+        : path.join(venvPath, 'bin', 'python')
+
       const servicePath = path.join(app.getAppPath(), 'python', 'analysis_service.py')
 
       this.serviceProcess = spawn(pythonExecutable, [servicePath, ...comms.args], {
@@ -47,9 +50,6 @@ class PythonService {
 
       this.serviceProcess.stderr?.on('data', (data) => {
         console.error(`[PythonService STDERR]: ${data.toString().trim()}`)
-      })
-      this.serviceProcess.stdout?.on('data', (data) => {
-        console.error(`[PythonService STDOUT]: ${data.toString().trim()}`)
       })
 
       this.serviceProcess.on('exit', (code, signal) => {
@@ -62,7 +62,6 @@ class PythonService {
       await this.waitForServiceReady()
       this.isRunning = true
       this.restartCount = 0
-      console.log(`Python service started successfully at ${this.serviceUrl}`)
       return this.serviceUrl
     } catch (error) {
       console.error('Failed to start Python service:', error)
@@ -77,7 +76,6 @@ class PythonService {
       this.client = null
     }
     if (this.serviceProcess) {
-      console.log('Stopping Python service...')
       this.serviceProcess.removeAllListeners()
       this.serviceProcess.kill('SIGTERM')
       this.serviceProcess = null
@@ -111,9 +109,10 @@ class PythonService {
     }
 
     this.messageCallbacks.set('analysis_progress', onProgress)
+    this.messageCallbacks.set('analysis_message', onProgress)
     this.messageCallbacks.set('analysis_result', onResult)
+    this.messageCallbacks.set('analysis_complete', onResult)
     this.messageCallbacks.set('analysis_error', onError)
-
     const message = {
       type: 'analyze',
       payload: { video_path: videoPath },
@@ -135,6 +134,7 @@ class PythonService {
     }
 
     this.messageCallbacks.set('transcription_progress', onProgress)
+    this.messageCallbacks.set('transcription_message', onProgress)
     this.messageCallbacks.set('transcription_complete', onComplete)
     this.messageCallbacks.set('transcription_error', onError)
 
@@ -147,7 +147,7 @@ class PythonService {
   }
 
   public reindexFaces(
-    onProgress: (progress: any) => void,
+    onProgress: (progress: FaceIndexingProgress) => void,
     onComplete: (result: any) => void,
     onError: (error: Error) => void
   ): void {
@@ -210,16 +210,31 @@ class PythonService {
 
   private async waitForServiceReady(): Promise<void> {
     const startTime = Date.now()
+    let delay = 200
+
     while (Date.now() - startTime < SERVICE_STARTUP_TIMEOUT) {
+      await new Promise((resolve) => setTimeout(resolve, delay))
+
       try {
+        if (!IS_WIN && this.serviceUrl?.startsWith('ws+unix://')) {
+          const socketPath = this.serviceUrl.replace('ws+unix://', '')
+          try {
+            await fs.access(socketPath)
+          } catch {
+            delay = Math.min(delay * 1.2, 1000)
+            continue
+          }
+        }
+
         await this.connectToWebSocket()
+        console.log('✓ Successfully connected to Python service')
         return
-      } catch (error) {
-        console.error(`Connection attempt failed: ${error}`)
+      } catch {
+        delay = Math.min(delay * 1.2, 1000)
       }
-      await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_INTERVAL))
     }
-    throw new Error('Python service failed to become ready in time.')
+
+    throw new Error(`Python service failed to become ready within ${SERVICE_STARTUP_TIMEOUT / 1000}s timeout.`)
   }
 
   private connectToWebSocket(): Promise<void> {
@@ -228,9 +243,18 @@ class PythonService {
         return reject(new Error('Service URL not set'))
       }
 
+      const timeout = setTimeout(() => {
+        if (this.client) {
+          this.client.terminate()
+          this.client = null
+        }
+        reject(new Error('WebSocket connection timeout'))
+      }, 5000)
+
       this.client = new WebSocket(this.serviceUrl)
 
       this.client.on('open', () => {
+        clearTimeout(timeout)
         console.log('WebSocket connection established.')
         resolve()
       })
@@ -251,11 +275,13 @@ class PythonService {
       })
 
       this.client.on('error', (error) => {
-        console.error('WebSocket error:', error)
+        clearTimeout(timeout)
+        this.client = null
         reject(error)
       })
 
       this.client.on('close', () => {
+        clearTimeout(timeout)
         this.client = null
         this.isRunning = false
       })
@@ -266,9 +292,6 @@ class PythonService {
     if (this.restartCount < MAX_RESTARTS) {
       this.restartCount++
       const delay = this.restartCount * RESTART_BACKOFF_MS
-      console.log(
-        `Attempting to restart Python service in ${delay / 1000}s (attempt ${this.restartCount}/${MAX_RESTARTS})`
-      )
       setTimeout(() => this.start().catch((err) => console.error('Restart failed:', err)), delay)
     } else {
       console.error('Python service has crashed too many times. Will not restart.')
