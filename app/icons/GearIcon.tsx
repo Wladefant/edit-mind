@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export const GearIcon = () => (
+export const GearIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="24"
@@ -12,6 +12,7 @@ export const GearIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    {...props}
   >
     <path d="M12 20V14" />
     <path d="M12 8V2" />
