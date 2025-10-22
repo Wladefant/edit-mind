@@ -25,7 +25,7 @@ export const sceneSchema = z.object({
   dominantColorName: z.string(),
   location: z.string(),
   duration: z.number().optional(),
-  detectedText: z.string(),
+  detectedText: z.array(z.string()),
 })
 
 export const videoSchema = z.object({
