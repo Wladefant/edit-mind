@@ -4,11 +4,11 @@ import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Switch } from '@/app/components/ui/switch'
 
-import { Settings } from '@/lib/types/settings'
+import { SettingsConfig } from '@/lib/types/settings'
 import { Label } from '@/app/components/ui/label'
 
-export const SettingsPage: React.FC = () => {
-  const [settings, setSettings] = useState<Partial<Settings>>({})
+export const Settings: React.FC = () => {
+  const [settings, setSettings] = useState<Partial<SettingsConfig>>({})
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -110,5 +110,3 @@ export const SettingsPage: React.FC = () => {
     </div>
   )
 }
-
-export default SettingsPage

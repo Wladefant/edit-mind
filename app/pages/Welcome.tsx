@@ -9,7 +9,7 @@ import { ThunderIcon } from '../icons/ThunderIcon'
 import { Button } from '../components/ui/button'
 import { IndexIcon } from '../icons/IndexIcon'
 
-export function Welcome() {
+export const Welcome = () => {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [videos, setVideos] = useState<string[]>([])
   const [isIndexing, setIsIndexing] = useState(false)
