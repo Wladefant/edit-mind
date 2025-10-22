@@ -47,3 +47,15 @@ export interface FFmpegProcessResult {
   code: number
   stderr: string
 }
+
+export interface VideoMetadataMap {
+  faces: Map<string, number>;
+  objects: Map<string, number>;
+  emotions: Map<string, number>;
+  shotTypes: Map<string, number>;
+  aspectRatios: Map<string, number>;
+  cameras: Map<string, number>;
+  descriptions: string[];
+  totalScenes: number;
+  colors: Map<string, number>;
+}

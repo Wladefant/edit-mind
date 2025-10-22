@@ -28,7 +28,6 @@ export type SearchQuery = {
   detectedText?: string
 }
 
-
 export type SearchSuggestion = z.infer<typeof searchSuggestionSchema>
 
 export type VideoMetadataSummary = z.infer<typeof VideoMetadataSummarySchema>
@@ -38,6 +37,7 @@ export interface FaceData {
   count: number
   thumbnail?: string
 }
+export type LoadedFaces = Record<string, string[]>
 
 export interface GenerationResult {
   message: string
@@ -48,4 +48,9 @@ export interface GenerationResult {
 export interface VideoConfig {
   aspectRatio: string
   fps: number
+}
+
+export interface SearchMetadata {
+  aspectRatio?: AspectRatio
+  faces?: string[]
 }
