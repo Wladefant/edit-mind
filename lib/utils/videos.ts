@@ -17,7 +17,7 @@ import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
 import { spawnFFmpeg, validateBinaries } from './ffmpeg'
 import { validateFile } from './file'
-import ffmpeg from "fluent-ffmpeg"
+import ffmpeg from 'fluent-ffmpeg'
 
 const execFileAsync = promisify(execFile)
 
@@ -148,11 +148,11 @@ export async function findVideoFiles(
           if (stats.isFile() && SUPPORTED_VIDEO_EXTENSIONS.test(item)) {
             return [{ path: fullPath, mtime: stats.mtime }]
           }
-        } catch  {
-          // console.warn(
-          //   `Warning: Could not access ${fullPath}:`,
-          //   error instanceof Error ? error.message : 'Unknown error'
-          // )
+        } catch(error) {
+          console.warn(
+            `Warning: Could not access ${fullPath}:`,
+            error instanceof Error ? error.message : 'Unknown error'
+          )
         }
 
         return []
