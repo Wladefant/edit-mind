@@ -1,26 +1,22 @@
 import { createHash } from 'crypto'
 import { Scene } from '../types/scene'
 import { gcd } from '../utils'
-import {
-  generateAllThumbnails,
-  getCameraNameAndDate,
-  getLocationFromVideo,
-  getVideoMetadata,
-} from './videos'
+import { generateAllThumbnails, getCameraNameAndDate, getLocationFromVideo, getVideoMetadata } from './videos'
 import fs from 'fs/promises'
 import path from 'path'
 import { embedDocuments } from '../services/vectorDb'
 import { existsSync } from 'fs'
 import { formatLocation } from './location'
 
-import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from '@/lib/constants';
+import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from '@/lib/constants'
+import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
 
   const duration = metadata.duration
   const { latitude, longitude, altitude } = await getLocationFromVideo(videoFullPath)
-  const location = formatLocation(latitude, longitude, altitude)
+  let location = formatLocation(latitude, longitude, altitude)
 
   const { camera, createdAt } = await getCameraNameAndDate(videoFullPath)
   const aspectRatio =
@@ -29,6 +25,21 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
           metadata.height / gcd(metadata.width, metadata.height)
         }`
       : 'N/A'
+
+  let initialCamera = camera
+  if (initialCamera.toLocaleLowerCase().includes('gopro')) {
+    const goproTelemetry = await getGoProVideoMetadata(videoFullPath)
+    if (goproTelemetry) {
+      initialCamera = getGoProDeviceName(goproTelemetry)
+
+      const gpsCoordinates = extractGPS(goproTelemetry['1'] || {})
+      if (gpsCoordinates.length > 0) {
+        location = formatLocation(gpsCoordinates[0]?.lat, gpsCoordinates[0]?.lon, gpsCoordinates[0]?.alt)
+      } else {
+        console.warn(`No GPS data found in GoPro video: ${videoFullPath}`)
+      }
+    }
+  }
 
   await fs.mkdir(THUMBNAILS_DIR, { recursive: true })
 
@@ -60,7 +71,7 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
       }
 
       const embeddingInputs = batch.map((scene, index) => {
-        scene.camera = camera
+        scene.camera = initialCamera
         scene.createdAt = createdAt
         scene.location = location
         scene.aspect_ratio = aspectRatio
@@ -69,6 +80,7 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
         return sceneToVectorFormat(scene, i + index)
       })
 
+      console.log(embeddingInputs)
       await embedDocuments(embeddingInputs)
     }
   } catch (err) {
@@ -153,7 +165,7 @@ export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
       ?.map((face) => (face.emotion ? `${face.name} is ${face.emotion}` : ''))
       .filter(Boolean)
       .join(', ') || ''
-  const detectedText = scene.detectedText?.join(', ') || ''
+  const detectedText = Array.isArray(scene.detectedText) ? scene.detectedText.join(', ') : scene.detectedText || ''
 
   const text =
     `Scene with ${faces}, objects: ${objects}. Emotions: ${emotionsText}. ${scene.transcription || ''}`.trim()
@@ -177,6 +189,8 @@ export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
     location: scene.location,
     dominantColorHex: scene.dominantColorHex,
     dominantColorName: scene.dominantColorName,
+    camera: scene.camera,
+    duration: scene.duration,
   }
 
   return {
