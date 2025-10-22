@@ -13,7 +13,7 @@ class ColorInfo:
     """Information about a detected color"""
     name: str
     hex: str
-    rgb: Tuple[int, int, int] # Keep rgb internally for calculations
+    rgb: Tuple[int, int, int]
     percentage: float
     is_vibrant: bool
     is_muted: bool
@@ -21,13 +21,13 @@ class ColorInfo:
     def to_json_dict(self) -> Dict[str, Any]:
         """Convert ColorInfo to a dictionary suitable for JSON serialization, excluding RGB."""
         d = asdict(self)
-        del d['rgb'] # Remove the rgb tuple
+        del d['rgb'] 
         return d
 
 @dataclass
 class SceneColorAnalysis:
     """Scene-level color analysis"""
-    dominant_color: Dict[str, Any] # Changed type hint to Dict as we'll serialize to a dict
+    dominant_color: Dict[str, Any]
     color_palette: List[Dict[str, Any]]  # Top 5 colors (also Dicts)
     overall_brightness: float  # 0-100
     overall_saturation: float  # 0-100
@@ -146,9 +146,7 @@ class DominantColorPlugin(AnalyzerPlugin):
         self.frame_colors: List[Dict[str, Any]] = []
         
     def setup(self):
-        """No setup required for color analysis"""
         try:
-            from sklearn.cluster import KMeans
             print("  ✓ Color Analysis: K-Means clustering available", flush=True)
         except ImportError:
             print("  ⚠️  Warning: scikit-learn not installed. Install with: pip install scikit-learn", flush=True)
@@ -164,12 +162,12 @@ class DominantColorPlugin(AnalyzerPlugin):
             # Calculate frame-level color metrics
             brightness = self._calculate_brightness(frame)
             saturation = self._calculate_saturation(frame)
-            warmth = self._calculate_warmth(dominant_color_objects) # Pass ColorInfo objects
+            warmth = self._calculate_warmth(dominant_color_objects)
             
             # Store frame data for scene-level analysis. Store ColorInfo objects directly.
             frame_color_data = {
                 'timestamp_ms': frame_analysis.get('start_time_ms', 0),
-                'dominant_colors': dominant_color_objects, # List of ColorInfo objects
+                'dominant_colors': dominant_color_objects,
                 'brightness': brightness,
                 'saturation': saturation,
                 'warmth': warmth,
@@ -425,7 +423,7 @@ class DominantColorPlugin(AnalyzerPlugin):
         else:
             return "neutral"
 
-    def _determine_color_harmony(self, palette: List[ColorInfo]) -> str: # Takes ColorInfo objects
+    def _determine_color_harmony(self, palette: List[ColorInfo]) -> str: 
         """
         Determine color harmony type based on the color palette.
         """
@@ -472,7 +470,7 @@ class DominantColorPlugin(AnalyzerPlugin):
         """
         results = self.get_results()
         if results is None:
-            return {} # Return an empty dict or sensible defaults
+            return {}
         
         return {
             'dominant_color_name': results.dominant_color['name'] if results.dominant_color else 'Unknown',
