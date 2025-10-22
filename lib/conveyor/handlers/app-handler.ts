@@ -1,16 +1,22 @@
 import { type App, dialog, shell, type WebContents } from 'electron'
-import {  handle, sender } from '@/lib/main/shared'
-import { findVideoFiles, generateThumbnail} from '@/lib/utils/videos'
+import { handle, sender } from '@/lib/main/shared'
+import { findVideoFiles, generateThumbnail } from '@/lib/utils/videos'
 import path from 'path'
 import fs from 'fs/promises'
 import { transcribeAudio } from '@/lib/utils/transcribe'
 import { analyzeVideo } from '@/lib/utils/frameAnalyze'
 import { createScenes } from '@/lib/utils/scenes'
 import { existsSync, mkdirSync } from 'fs'
-import { embedScenes } from '@/lib/utils/embed';
+import { embedScenes } from '@/lib/utils/embed'
 import { Scene } from '@/lib/types/scene'
 import { generateSearchSuggestions } from '@/lib/utils/search'
-import { filterExistingVideos, getAllVideosWithScenes, queryCollection, updateMetadata } from '@/lib/services/vectorDb'
+import {
+  filterExistingVideos,
+  getAllVideosWithScenes,
+  getByVideoSource,
+  queryCollection,
+  updateMetadata,
+} from '@/lib/services/vectorDb'
 import { generateActionFromPrompt } from '@/lib/services/gemini'
 import { stitchVideos } from '@/lib/utils/sticher'
 import { exportToFcpXml } from '@/lib/utils/fcpxml'
@@ -18,6 +24,7 @@ import { convertTimeToWords } from '@/lib/utils/time'
 import { pythonService } from '@/lib/services/pythonService'
 import { getLocationName } from '@/lib/utils/location'
 import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/constants'
+import { UnknownFace } from '@/lib/types/face'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)
@@ -219,7 +226,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
       if (!faces[name]) {
         faces[name] = []
       }
-      faces[name].push(path.join(FACES_DIR, path.basename(newImagePath)))
+      faces[name].push(path.join(path.basename(FACES_DIR), name, path.basename(newImagePath)))
 
       await fs.writeFile(facesJsonPath, JSON.stringify(faces, null, 2))
 
@@ -234,22 +241,21 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
     try {
       const jsonPath = path.join(unknownFacesDir, jsonFile)
-      const faceData = JSON.parse(await fs.readFile(jsonPath, 'utf-8'))
-      const imageFile = faceData.image_file
-      const imagePath = path.join(unknownFacesDir, imageFile)
-
-      const videoName = path.basename(faceData.video_path)
-      const videoDir = path.join(PROCESSED_VIDEOS_DIR, videoName)
-      const scenesPath = path.join(videoDir, 'scenes.json')
+      const faceData: UnknownFace = JSON.parse(await fs.readFile(jsonPath, 'utf-8'))
 
       const timestampSeconds = faceData.timestamp_seconds
 
-      const scenes: Scene[] = JSON.parse(await fs.readFile(scenesPath, 'utf-8'))
+      const scenes: Scene[] = await getByVideoSource(faceData.video_path)
 
+      console.log(faceId, name, timestampSeconds)
       const modifiedScenes = scenes.map((scene) => {
-        if (scene.startTime >= timestampSeconds && scene.endTime <= timestampSeconds) {
+        if (
+          scene.startTime >= faceData.frame_start_time_ms / 1000 &&
+          scene.endTime <= faceData.frame_end_time_ms / 1000
+        ) {
           if (scene.faces.includes(faceId)) {
             scene.faces = scene.faces.map((face) => (face === faceId ? name : face))
+            console.log(scene.faces)
           }
         }
 
@@ -260,25 +266,26 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
         await updateMetadata(scene)
       }
 
-      await fs.writeFile(scenesPath, JSON.stringify(modifiedScenes, null, 2))
       try {
         await fs.unlink(jsonPath)
-        await fs.unlink(imagePath)
       } catch (error) {
         console.error(error)
       }
 
-      pythonService.reindexFaces(
-        (_progress) => {
-          // TODO: add logic here
-        },
-        (_result) => {
-          // TODO: add logic here
-        },
-        (_error) => {
-          // TODO: add logic here
-        }
-      )
+      return new Promise<{ success: boolean }>((resolve, reject) => {
+        pythonService.reindexFaces(
+          (_progress) => {
+            console.log(_progress)
+          },
+          (_result) => {
+            resolve({ success: true })
+          },
+          (error) => {
+            console.error(error)
+            reject({ success: false })
+          }
+        )
+      })
 
       return { success: true }
     } catch (error) {
@@ -413,15 +420,15 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
 
-            await transcribeAudio(video, transcriptionPath, ({ percentage, elapsed_time }) => {
+            await transcribeAudio(video, transcriptionPath, ({ progress, elapsed }) => {
               send('indexing-progress', {
                 video,
-                progress: percentage,
+                progress,
                 step: 'transcription',
                 success: true,
                 stepIndex: 0,
                 thumbnailUrl,
-                elapsed: convertTimeToWords(elapsed_time),
+                elapsed: convertTimeToWords(elapsed),
               })
             })
 
@@ -471,7 +478,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
             const { analysis, category } = await new Promise<{ analysis: any; category: string }>((resolve, reject) => {
               analyzeVideo(
                 video,
-                ({ progress }) => {
+                ({ progress, elapsed, frames_analyzed, total_frames }) => {
                   send('indexing-progress', {
                     video,
                     progress: progress,
@@ -479,7 +486,9 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
                     success: true,
                     stepIndex: 1,
                     thumbnailUrl,
-                    elapsed: convertTimeToWords('00:02'),
+                    elapsed: convertTimeToWords(elapsed),
+                    totalFrames: total_frames,
+                    framesProcessed: frames_analyzed,
                   })
                 },
                 (result) => resolve(result),
