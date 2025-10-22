@@ -10,7 +10,7 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const isIndexingPage = location.pathname === '/'
@@ -95,4 +95,4 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   )
 }
 
-export default Layout
+

@@ -3,10 +3,10 @@ import { HashRouter as Router, Routes, Route } from 'react-router-dom'
 import { Chat } from './pages/Chat'
 import './styles/app.css'
 import { Welcome } from './pages/Welcome'
-import Layout from './components/Layout'
+import { Layout } from './components/Layout'
 
-import { SettingsPage } from './pages/Settings'
-import { TrainingPage } from './pages/Training'
+import { Settings } from './pages/Settings'
+import { Training } from './pages/Training'
 import { Videos } from './pages/Videos'
 
 const App: React.FC = () => {
@@ -17,8 +17,8 @@ const App: React.FC = () => {
           <Route path="/" element={<Welcome />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/videos" element={<Videos />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/training" element={<TrainingPage />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/training" element={<Training />} />
         </Routes>
       </Layout>
     </Router>
