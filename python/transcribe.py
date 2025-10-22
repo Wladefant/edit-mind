@@ -151,6 +151,14 @@ class TranscriptionService:
                 word_timestamps=True,
                 fp16=False
             )
+        except RuntimeError as e:
+            if "does not contain any stream" in str(e) or "Failed to load audio" in str(e):
+                return TranscriptionResult(
+                text='',
+                segments=[],
+                language='N/A'
+                    )
+            raise
         finally:
             sys.stderr = original_stderr
             
