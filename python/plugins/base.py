@@ -1,49 +1,65 @@
-
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
-
+from typing import Dict, Any
 import numpy as np
+
 
 class AnalyzerPlugin(ABC):
     """
-    Abstract base class for an analyzer plugin.
+    Base class for all video analysis plugins.
+    
+    Plugins extend the video analysis pipeline by processing frames
+    and extracting specific types of information (objects, faces, etc).
     """
 
-    @abstractmethod
     def __init__(self, config: Dict[str, Any]):
         """
-        Initializes the plugin with a configuration dictionary.
+        Initialize plugin with configuration.
+        
+        Args:
+            config: Configuration dictionary containing plugin settings
         """
         self.config = config
 
     @abstractmethod
-    def setup(self):
+    def setup(self) -> None:
         """
-        Performs any one-time setup for the plugin, such as loading models.
+        Perform one-time initialization (load models, resources, etc).
+        Called once before frame processing begins.
         """
         pass
 
     @abstractmethod
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
+    def analyze_frame(
+        self, 
+        frame: np.ndarray, 
+        frame_analysis: Dict[str, Any], 
+        video_path: str
+    ) -> Dict[str, Any]:
         """
-        Analyzes a single frame and returns a dictionary of results.
-
-        :param frame: The frame to analyze.
-        :param frame_analysis: A dictionary containing the analysis results so far for the current frame.
-        :return: An updated dictionary with the analysis results from this plugin.
+        Analyze a single video frame.
+        
+        Args:
+            frame: Video frame as NumPy array (BGR format)
+            frame_analysis: Existing analysis data for this frame
+            video_path: Path to the video being analyzed
+            
+        Returns:
+            Updated frame_analysis dictionary with plugin results
         """
         pass
 
     @abstractmethod
     def get_results(self) -> Any:
         """
-        Returns the final analysis results from the plugin.
+        Return accumulated results from all processed frames.
+        Called after all frames have been analyzed.
         """
         pass
 
     @abstractmethod
     def get_summary(self) -> Any:
         """
-        Returns a summary of the analysis results.
+        Return high-level summary of analysis results.
+        Called after processing is complete.
         """
         pass
