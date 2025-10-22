@@ -7,7 +7,7 @@ import { Scene } from '../types/scene'
 import { SearchQuery } from '../types/search'
 import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
 
-import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '@/lib/constants';
+import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '@/lib/constants'
 
 let client: ChromaClient | null = null
 let collection: Collection | null = null
@@ -306,7 +306,6 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
   if (videoSources.length === 0) {
     return []
   }
-
   try {
     await initialize()
     if (!collection) {
@@ -327,6 +326,32 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
   } catch (error) {
     console.error('Error filtering existing videos:', error)
     return videoSources
+  }
+}
+
+async function getByVideoSource(videoSource: string): Promise<Scene[]> {
+
+  try {
+    await initialize()
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    const result = await collection.get({
+      where: {
+        source: {
+          $in: [videoSource],
+        },
+      },
+      include: ['metadatas'],
+    })
+    const filteredScenes: Scene[] = result.metadatas.map((metadata, index) =>
+      metadataToScene(metadata, result.ids![index])
+    )
+    return filteredScenes
+  } catch (error) {
+    console.error('Error filtering existing videos:', error)
+    return []
   }
 }
 
@@ -355,16 +380,13 @@ async function updateDocuments(scene: Scene): Promise<void> {
 
     const newMetadata: Scene = scene ? { ...currentMetadata, ...scene } : currentMetadata
 
-    // Delete the old document
     await collection.delete({ ids: [scene.id] })
 
-    // Add the updated document
     await collection.add({
       ids: [scene.id],
       embeddings: [currentEmbedding],
       metadatas: [
         {
-          id: scene.id,
           ...sceneToVectorFormat(newMetadata, 1).metadata,
         },
       ],
@@ -389,4 +411,5 @@ export {
   filterExistingVideos,
   updateDocuments,
   updateMetadata,
+  getByVideoSource
 }
