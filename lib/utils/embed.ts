@@ -134,7 +134,12 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
         .map((o) => o.trim())
         .filter(Boolean)
     : []
-
+  const detectedText = metadata.detectedText
+    ? (metadata.detectedText as string)
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
+    : []
   return {
     id: id,
     thumbnailUrl: metadata.thumbnailUrl?.toString() || '',
@@ -151,7 +156,7 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
     camera: metadata.camera?.toString() || 'N/A',
     dominantColorHex: metadata.dominantColor?.toString() || metadata.dominantColorHex?.toString() || 'N/A',
     dominantColorName: metadata.dominantColorName?.toString() || 'N/A',
-    detectedText: metadata.detectedText?.toString() || 'N/A',
+    detectedText,
     location: metadata.location?.toString() || 'N/A',
     duration: metadata.duration,
   }
