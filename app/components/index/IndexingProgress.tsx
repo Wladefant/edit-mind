@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle, Circle, Loader, Clock, Film } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { Progress } from './ui/progress'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/Card'
+import { Progress } from '@/app/components/ui/Progress'
 
 export type IndexingProgressProps = {
   video: string

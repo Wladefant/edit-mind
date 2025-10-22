@@ -14,7 +14,7 @@
   justify-content: space-between;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0; /* Prevent header from shrinking */
+  flex-shrink: 0; 
 }
 
 .filter-sidebar-header h3 {
@@ -24,10 +24,9 @@
 }
 
 .filter-sidebar-content {
-  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-y: auto; 
 }
 
-/* Custom scrollbar styling (optional) */
 .filter-sidebar-content::-webkit-scrollbar {
   width: 8px;
 }
@@ -103,11 +102,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 300px; /* Limit height of individual filter groups */
+  max-height: 300px;
   overflow-y: auto;
 }
 
-/* Custom scrollbar for filter options (optional) */
 .filter-options::-webkit-scrollbar {
   width: 6px;
 }

@@ -2,7 +2,7 @@ import React from 'react'
 import { HashRouter as Router, Routes, Route } from 'react-router-dom'
 import { Chat } from './pages/Chat'
 import './styles/app.css'
-import { Welcome } from './pages/Welcome'
+import { Index } from './pages/Index'
 import { Layout } from './components/Layout'
 
 import { Settings } from './pages/Settings'
@@ -14,7 +14,7 @@ const App: React.FC = () => {
     <Router>
       <Layout>
         <Routes>
-          <Route path="/" element={<Welcome />} />
+          <Route path="/" element={<Index />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/videos" element={<Videos />} />
           <Route path="/settings" element={<Settings />} />

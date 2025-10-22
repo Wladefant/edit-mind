@@ -1,14 +1,32 @@
-
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { GenerationResult, VideoConfig } from '@/lib/types/search';
 import { ExportedScene, Scene } from '@/lib/types/scene';
+
+const stitchVideos = async (scenes: ExportedScene[], videoConfig: VideoConfig): Promise<GenerationResult> => {
+  const outputFilename = `rough_cut_${Date.now()}`;
+  const videoFilename = `${outputFilename}.mp4`;
+  const fcpxmlFilename = `${outputFilename}.fcpxml`;
+
+  await window.conveyor.app.stitchVideos(
+    scenes,
+    videoFilename,
+    videoConfig.aspectRatio,
+    videoConfig.fps
+  );
+
+  return {
+    message: `Rough cut "${videoFilename}"`,
+    videoPath: videoFilename,
+    fcpxmlPath: fcpxmlFilename,
+  };
+};
 
 export const useGeneration = (selectedScenes: Set<number>, searchResults: Scene[], videoConfig: VideoConfig) => {
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const handleGenerateRoughCut = async () => {
+  const handleGenerateRoughCut = useCallback(async () => {
     if (selectedScenes.size === 0) {
       setGenerationStatus('Please select at least one scene to generate a rough cut.');
       return;
@@ -34,49 +52,42 @@ export const useGeneration = (selectedScenes: Set<number>, searchResults: Scene[
           return a.startTime - b.startTime;
         });
 
-      const outputFilename = `rough_cut_${Date.now()}`;
-      const videoFilename = `${outputFilename}.mp4`;
-      const fcpxmlFilename = `${outputFilename}.fcpxml`;
-
-      await window.conveyor.app.stitchVideos(scenesToStitch, videoFilename, videoConfig.aspectRatio, videoConfig.fps);
-
-      const result = {
-        message: `Rough cut "${videoFilename}"`,
-        videoPath: videoFilename,
-        fcpxmlPath: fcpxmlFilename,
-      };
+      const result = await stitchVideos(scenesToStitch, videoConfig);
 
       setGenerationStatus(result.message);
       setGenerationResult(result);
     } catch (error) {
       console.error('Error generating rough cut:', error);
-      setGenerationStatus('Error generating rough cut. Please check console for details.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setGenerationStatus(`Error generating rough cut: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedScenes, searchResults, videoConfig]);
 
-  const handleOpenVideo = async () => {
+  const handleOpenVideo = useCallback(async () => {
     if (!generationResult?.videoPath) return;
 
     try {
       await window.conveyor.app.openFile(generationResult.videoPath);
     } catch (error) {
       console.error('Error opening video:', error);
-      setGenerationStatus('Error opening video file.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setGenerationStatus(`Error opening video file: ${errorMessage}`);
     }
-  };
+  }, [generationResult]);
 
-  const handleShowInFinder = async () => {
+  const handleShowInFinder = useCallback(async () => {
     if (!generationResult?.videoPath) return;
 
     try {
       await window.conveyor.app.showInFolder(generationResult.videoPath);
     } catch (error) {
       console.error('Error showing in finder:', error);
-      setGenerationStatus('Error showing file in folder.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setGenerationStatus(`Error showing file in folder: ${errorMessage}`);
     }
-  };
+  }, [generationResult]);
 
   return {
     generationStatus,

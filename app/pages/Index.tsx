@@ -1,15 +1,15 @@
+import '@/app/styles/Welcome.css'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import '../styles/Welcome.css'
 import { FolderCheckIcon, FolderIcon, PlayIcon, VideoIcon } from 'lucide-react'
 import { useConveyor } from '@/app/hooks/use-conveyor'
-import { IndexingProgress, IndexingProgressProps } from '../components/IndexingProgress'
-import { FeatureItem } from '../components/FeatureItem'
-import { ThunderIcon } from '../icons/ThunderIcon'
-import { Button } from '../components/ui/button'
-import { IndexIcon } from '../icons/IndexIcon'
+import { IndexingProgress, IndexingProgressProps } from '@/app/components/index/IndexingProgress'
+import { FeatureItem } from '@/app/components/index/FeatureItem'
+import { ThunderIcon } from '@/app/icons/ThunderIcon'
+import { Button } from '@/app/components/ui/Button'
+import { IndexIcon } from '@/app/icons/IndexIcon'
 
-export const Welcome = () => {
+export const Index = () => {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [videos, setVideos] = useState<string[]>([])
   const [isIndexing, setIsIndexing] = useState(false)

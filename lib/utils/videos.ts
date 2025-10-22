@@ -134,30 +134,25 @@ export async function findVideoFiles(
 
   try {
     const items = await fs.promises.readdir(dirPath)
-    const results = await Promise.all(
-      items.map(async (item): Promise<VideoFile[]> => {
-        const fullPath = path.join(dirPath, item)
+    const results: VideoFile[][] = []
+    for (const item of items) {
+      const fullPath = path.join(dirPath, item)
 
-        try {
-          const stats = await fs.promises.stat(fullPath)
+      try {
+        const stats = await fs.promises.stat(fullPath)
 
-          if (stats.isDirectory()) {
-            return await findVideoFiles(fullPath, currentDepth + 1, maxDepth)
-          }
-
-          if (stats.isFile() && SUPPORTED_VIDEO_EXTENSIONS.test(item)) {
-            return [{ path: fullPath, mtime: stats.mtime }]
-          }
-        } catch(error) {
-          console.warn(
-            `Warning: Could not access ${fullPath}:`,
-            error instanceof Error ? error.message : 'Unknown error'
-          )
+        if (stats.isDirectory()) {
+          results.push(await findVideoFiles(fullPath, currentDepth + 1, maxDepth))
+        } else if (stats.isFile() && SUPPORTED_VIDEO_EXTENSIONS.test(item)) {
+          results.push([{ path: fullPath, mtime: stats.mtime }])
         }
-
-        return []
-      })
-    )
+      } catch (error) {
+        console.warn(
+          `Warning: Could not access ${fullPath}:`,
+          error instanceof Error ? error.message : 'Unknown error'
+        )
+      }
+    }
 
     return results.flat().sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
   } catch (error) {
