@@ -1,7 +1,6 @@
 import face_recognition
 import numpy as np
 import json
-import os
 from collections import defaultdict
 
 class FaceRecognizer:
@@ -19,7 +18,7 @@ class FaceRecognizer:
         self.model = model
         self.known_face_encodings = []
         self.known_face_names = []
-        self.unknown_face_encodings = defaultdict(list) # Stores { 'Unknown_X': [encoding1, encoding2, ...] }
+        self.unknown_face_encodings = defaultdict(list)
         self.unknown_face_counter = 0
         self.load_known_faces()
 
@@ -32,13 +31,28 @@ class FaceRecognizer:
         self.load_known_faces()
             
     def load_known_faces(self):
-        if os.path.exists(self.known_faces_file):
-            with open(self.known_faces_file, 'r') as f:
-                known_faces_data = json.load(f)
+        with open(self.known_faces_file, 'r') as f:
+            known_faces_data = json.load(f)
+            
+            if isinstance(known_faces_data, dict):
                 for name, encodings in known_faces_data.items():
                     for encoding in encodings:
                         self.known_face_encodings.append(np.array(encoding))
                         self.known_face_names.append(name)
+            elif isinstance(known_faces_data, list):
+                for entry in known_faces_data:
+                    name = entry.get("name")
+                    enc = entry.get("encoding") or entry.get("encodings")
+                    if name and enc:
+                        if isinstance(enc[0], list):
+                            for e in enc:
+                                self.known_face_encodings.append(np.array(e))
+                                self.known_face_names.append(name)
+                        else:
+                            self.known_face_encodings.append(np.array(enc))
+                            self.known_face_names.append(name)
+
+
 
     def recognize_faces(self, frame, upsample=1):
         """
