@@ -1,14 +1,14 @@
 import { protocol, net } from 'electron'
-import { join } from 'path';
+import { join } from 'path'
 import { pathToFileURL } from 'url'
 import fs from 'fs'
-import { UNKNOWN_FACES_DIR, THUMBNAILS_DIR } from '@/lib/constants';
+import { UNKNOWN_FACES_DIR, THUMBNAILS_DIR } from '@/lib/constants'
 export function registerThumbnailProtocol() {
   protocol.handle('thumbnail', (request) => {
     const url = request.url.split('thumbnail://')[1]
     const thumbnailPath = join(THUMBNAILS_DIR, url)
 
-    if (fs.existsSync(thumbnailPath)) {
+    if (fs.existsSync(thumbnailPath) && fs.statSync(thumbnailPath).size > 0) {
       return net.fetch(pathToFileURL(thumbnailPath).toString())
     } else {
       const fallbackPath = join(__dirname, '../../app/assets/default-fallback-image.png')
@@ -48,7 +48,6 @@ export function registerResourcesProtocol() {
   protocol.handle('res', async (request) => {
     try {
       const url = new URL(request.url)
-      // Combine hostname and pathname to get the full path
       const fullPath = join(url.hostname, url.pathname.slice(1))
       const filePath = join(__dirname, '../../resources', fullPath)
       return net.fetch(pathToFileURL(filePath).toString())
