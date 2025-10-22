@@ -11,8 +11,8 @@ export type IndexingProgressProps = {
   stepIndex: number
   thumbnailUrl?: string
   elapsed?: string
-  scenesProcessed?: number
-  totalScenes?: number
+  framesProcessed?: number
+  totalFrames?: number
 }
 
 const steps = [
@@ -27,8 +27,8 @@ export const IndexingProgress = ({
   progress,
   thumbnailUrl,
   elapsed,
-  scenesProcessed,
-  totalScenes,
+  framesProcessed,
+  totalFrames,
 }: IndexingProgressProps) => {
   const currentStepIndex = steps.findIndex((s) => s.id === step)
 
@@ -52,7 +52,7 @@ export const IndexingProgress = ({
                 <img
                   src={thumbnailUrl}
                   alt={video}
-                  className="h-[300px] w-full rounded-lg object-cover object-center"
+                  className="h-[300px] w-auto rounded-lg object-cover object-center"
                 />
                 <motion.div
                   className="absolute left-0 top-0 h-full rounded-lg bg-black/50"
@@ -86,7 +86,7 @@ export const IndexingProgress = ({
 
               <Progress value={progress} className="h-2" />
 
-              {scenesProcessed !== undefined && totalScenes !== undefined && (
+              {framesProcessed !== undefined && totalFrames !== undefined && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -95,9 +95,9 @@ export const IndexingProgress = ({
                   <div className="flex items-center space-x-2">
                     <Film size={16} className="text-green-500" />
                     <div className="flex flex-col">
-                      <span className="text-xs text-muted-foreground">Scenes</span>
+                      <span className="text-xs text-muted-foreground">Frames</span>
                       <span className="text-sm font-semibold">
-                        {scenesProcessed}/{totalScenes}
+                        {framesProcessed}/{totalFrames}
                       </span>
                     </div>
                   </div>
@@ -134,9 +134,9 @@ export const IndexingProgress = ({
                 })}
               </div>
 
-              {scenesProcessed !== undefined &&
-                totalScenes !== undefined &&
-                totalScenes > 0 &&
+              {framesProcessed !== undefined &&
+                totalFrames !== undefined &&
+                totalFrames > 0 &&
                 step === 'frame-analysis' && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
@@ -147,10 +147,10 @@ export const IndexingProgress = ({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Frame Progress</span>
                       <span>
-                        {scenesProcessed} / {totalScenes} frames
+                        {framesProcessed} / {totalFrames} frames
                       </span>
                     </div>
-                    <Progress value={(scenesProcessed / totalScenes) * 100} className="h-1.5" />
+                    <Progress value={(framesProcessed / totalFrames) * 100} className="h-1.5" />
                   </motion.div>
                 )}
             </div>
