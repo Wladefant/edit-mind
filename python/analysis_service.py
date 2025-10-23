@@ -5,431 +5,618 @@ import argparse
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
-import re
+from typing import Optional, Callable, Dict, Union, Set
+from dataclasses import dataclass
+from enum import Enum
+from datetime import datetime
 import websockets
+from websockets.server import WebSocketServerProtocol
 
-sys.path.append(str(Path(__file__).parent.absolute()))
+from transcribe import TranscriptionService
+from analyze import AnalysisConfig, OutputManager, VideoAnalysisResult, VideoAnalyzer
+from batch_add_faces  import batch_add_faces_from_folder
 
-from analyze import VideoAnalyzer, AnalysisConfig, OutputManager, VideoAnalysisResult
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("AnalysisService")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stderr)]
+)
+logger = logging.getLogger(__name__)
 
+class ServiceStatus(Enum):
+    """Service operational states."""
+    LOADING = "loading"
+    READY = "ready"
+    PROCESSING = "processing"
+    ERROR = "error"
+
+
+class MessageType(Enum):
+    """WebSocket message types."""
+    # Requests
+    ANALYZE = "analyze"
+    TRANSCRIBE = "transcribe"
+    REINDEX_FACES = "reindex_faces"
+    HEALTH = "health"
+    
+    # Responses
+    STATUS = "status"
+    ERROR = "error"
+    ANALYSIS_PROGRESS = "analysis_progress"
+    ANALYSIS_RESULT = "analysis_result"
+    ANALYSIS_ERROR = "analysis_error"
+    TRANSCRIPTION_PROGRESS = "transcription_progress"
+    TRANSCRIPTION_COMPLETE = "transcription_complete"
+    TRANSCRIPTION_ERROR = "transcription_error"
+    REINDEX_PROGRESS = "reindex_progress"
+    REINDEX_COMPLETE = "reindex_complete"
+    REINDEX_ERROR = "reindex_error"
+
+
+JsonDict = Dict[str, Union[str, int, float, bool, None, Dict, list]]
+
+
+@dataclass
+class ServiceMetrics:
+    """Service performance metrics."""
+    total_analyses: int = 0
+    total_transcriptions: int = 0
+    failed_analyses: int = 0
+    failed_transcriptions: int = 0
+    
+    def record_analysis(self, success: bool) -> None:
+        """Record an analysis completion."""
+        self.total_analyses += 1
+        if not success:
+            self.failed_analyses += 1
+    
+    def record_transcription(self, success: bool) -> None:
+        """Record a transcription completion."""
+        self.total_transcriptions += 1
+        if not success:
+            self.failed_transcriptions += 1
+    
+    def to_dict(self) -> JsonDict:
+        """Convert metrics to dictionary."""
+        return {
+            "total_analyses": self.total_analyses,
+            "total_transcriptions": self.total_transcriptions,
+            "failed_analyses": self.failed_analyses,
+            "failed_transcriptions": self.failed_transcriptions,
+            "success_rate_analyses": (
+                (self.total_analyses - self.failed_analyses) / self.total_analyses * 100
+                if self.total_analyses > 0 else 100.0
+            ),
+            "success_rate_transcriptions": (
+                (self.total_transcriptions - self.failed_transcriptions) / self.total_transcriptions * 100
+                if self.total_transcriptions > 0 else 100.0
+            )
+        }
+
+
+@dataclass
 class ServiceState:
-    def __init__(self):
-        self.models_loaded = False
-        self.status = "loading"
-        self.current_video = None
-        self.analyzer: Optional[VideoAnalyzer] = None
-        self.lock = asyncio.Lock()
+    """Centralized service state management with concurrent request tracking."""
+    status: ServiceStatus = ServiceStatus.READY
+    active_analyses: Set[str] = None
+    active_transcriptions: Set[str] = None
+    metrics: ServiceMetrics = None
+    
+    def __post_init__(self) -> None:
+        """Initialize mutable default values."""
+        if self.active_analyses is None:
+            self.active_analyses = set()
+        if self.active_transcriptions is None:
+            self.active_transcriptions = set()
+        if self.metrics is None:
+            self.metrics = ServiceMetrics()
+    
+    def is_ready(self) -> bool:
+        """Check if service is ready to accept requests."""
+        return self.status == ServiceStatus.READY
+    
+    def is_processing_video(self, video_path: str) -> bool:
+        """Check if a specific video is currently being processed."""
+        return video_path in self.active_analyses
+    
+    def start_analysis(self, video_path: str) -> None:
+        """Mark a video as being analyzed."""
+        self.active_analyses.add(video_path)
+        logger.info(f"Active analyses: {len(self.active_analyses)}")
+    
+    def finish_analysis(self, video_path: str, success: bool = True) -> None:
+        """Mark a video analysis as complete."""
+        self.active_analyses.discard(video_path)
+        self.metrics.record_analysis(success)
+        logger.info(f"Active analyses: {len(self.active_analyses)}")
+    
+    def start_transcription(self, video_path: str) -> None:
+        """Mark a video as being transcribed."""
+        self.active_transcriptions.add(video_path)
+        logger.info(f"Active transcriptions: {len(self.active_transcriptions)}")
+    
+    def finish_transcription(self, video_path: str, success: bool = True) -> None:
+        """Mark a video transcription as complete."""
+        self.active_transcriptions.discard(video_path)
+        self.metrics.record_transcription(success)
+        logger.info(f"Active transcriptions: {len(self.active_transcriptions)}")
 
-    def is_ready(self):
-        return self.models_loaded and self.status == "ready"
 
-    def is_busy(self):
-        return self.status == "processing"
+class WebSocketHandler:
+    """Handles WebSocket connections and message routing."""
+    
+    def __init__(self, service_state: ServiceState, max_concurrent_analyses: int = 3):
+        self.state = service_state
+        self.max_concurrent_analyses = max_concurrent_analyses
+        self.analysis_semaphore = asyncio.Semaphore(max_concurrent_analyses)
+        self.transcription_service = TranscriptionService()
+        self.active_connections = 0
+        self.reindex_lock = asyncio.Lock()
 
-service_state = ServiceState()
+    async def handle_connection(self, websocket: WebSocketServerProtocol) -> None:
+        """Handle incoming WebSocket connection lifecycle."""
+        self.active_connections += 1
+        client_addr = websocket.remote_address
+        connection_id = f"{client_addr}_{datetime.now().strftime('%H%M%S%f')}"
+        logger.info(f"Client connected: {connection_id} (total: {self.active_connections})")
+        
+        try:
+            async for message in websocket:
+                await self._process_message(websocket, message)
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.info(f"Client disconnected: {connection_id} - {e.code}")
+        except Exception as e:
+            logger.exception(f"Unhandled exception in WebSocket handler for {connection_id}")
+        finally:
+            self.active_connections -= 1
+            logger.info(f"Connection closed: {connection_id} (remaining: {self.active_connections})")
+    
+    async def _process_message(self, websocket: WebSocketServerProtocol, message: str) -> None:
+        """Process and route incoming messages."""
+        try:
+            data = json.loads(message)
+            message_type = data.get("type")
+            payload = data.get("payload", {})
+            
+            if not isinstance(payload, dict):
+                await self._send_error(websocket, MessageType.ERROR, "Payload must be an object")
+                return
+            
+            # Route message to appropriate handler
+            handlers: Dict[str, Callable] = {
+                MessageType.ANALYZE.value: self._handle_analyze,
+                MessageType.TRANSCRIBE.value: self._handle_transcribe,
+                MessageType.REINDEX_FACES.value: self._handle_reindex_faces,
+                MessageType.HEALTH.value: self._handle_health,
+            }
+            
+            handler = handlers.get(message_type)
+            if handler:
+                await handler(websocket, payload)
+            else:
+                await self._send_error(
+                    websocket,
+                    MessageType.ERROR,
+                    f"Unknown message type: {message_type}"
+                )
+        
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON received: {e}")
+            await self._send_error(websocket, MessageType.ERROR, "Invalid JSON format")
+        except Exception as e:
+            logger.exception("Error processing message")
+            await self._send_error(
+                websocket,
+                MessageType.ERROR,
+                f"Internal error: {str(e)}"
+            )
+    
+    async def _send_message(
+        self,
+        websocket: WebSocketServerProtocol,
+        msg_type: MessageType,
+        payload: JsonDict
+    ) -> None:
+        """Send a message to the client."""
+        try:
+            message = json.dumps({"type": msg_type.value, "payload": payload})
+            await websocket.send(message)
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning(f"Cannot send {msg_type.value}: connection closed")
+        except Exception as e:
+            logger.error(f"Failed to send message {msg_type.value}: {e}")
+    
+    async def _send_error(
+        self,
+        websocket: WebSocketServerProtocol,
+        msg_type: MessageType,
+        error_msg: str
+    ) -> None:
+        """Send an error message to the client."""
+        await self._send_message(websocket, msg_type, {"message": error_msg})
+    
+    async def _handle_health(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """Handle health check request."""
+        health_data: JsonDict = {
+            "status": self.state.status.value,
+            "active_connections": self.active_connections,
+            "active_analyses": len(self.state.active_analyses),
+            "active_transcriptions": len(self.state.active_transcriptions),
+            "max_concurrent_analyses": self.max_concurrent_analyses,
+            "metrics": self.state.metrics.to_dict()
+        }
+        await self._send_message(websocket, MessageType.STATUS, health_data)
+        
+    async def _handle_analyze(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """Handle video analysis request with concurrency control."""
+        # Validate payload first
+        video_path_str = payload.get("video_path")
+        if not isinstance(video_path_str, str):
+            await self._send_error(
+                websocket,
+                MessageType.ANALYSIS_ERROR,
+                "Missing or invalid 'video_path' in payload"
+            )
+            return
+        
+        video_path = Path(video_path_str)
+        if not video_path.exists():
+            await self._send_error(
+                websocket,
+                MessageType.ANALYSIS_ERROR,
+                f"Video file not found: {video_path}"
+            )
+            return
+        
+        video_path_normalized = str(video_path.resolve())
+        
+        # Check if this specific video is already being processed
+        if self.state.is_processing_video(video_path_normalized):
+            await self._send_error(
+                websocket,
+                MessageType.ANALYSIS_ERROR,
+                f"Video is already being analyzed: {video_path.name}"
+            )
+            return
+        
+        # BUILD CONFIG BEFORE USING IT
+        settings = payload.get("settings")
+        settings_dict = settings if isinstance(settings, dict) else {}
+        config = self._build_analysis_config(settings_dict)
+        
+        success = False
+        # Use semaphore to limit concurrent analyses
+        async with self.analysis_semaphore:
+            self.state.start_analysis(video_path_normalized)
+            logger.info(f"Starting analysis for: {video_path.name}")
+            
+            # Create analyzer for this request
+            analyzer: Optional[VideoAnalyzer] = None
+            
+            try:
+                # Initialize analyzer with config
+                analyzer = VideoAnalyzer(video_path_normalized, config)
+                
+                # Run analysis
+                result = await self._run_analysis(websocket, analyzer, video_path, payload)
+                
+                if result.error:
+                    logger.error(f"Analysis failed: {result.error}")
+                    await self._send_error(
+                        websocket,
+                        MessageType.ANALYSIS_ERROR,
+                        f"Analysis failed: {result.error}"
+                    )
+                else:
+                    output_path = OutputManager.get_output_path(
+                        video_path_normalized,
+                        config.output_dir
+                    )
+                    OutputManager.save_result(result, output_path)
+                    logger.info(f"Analysis complete. Results at: {output_path}")
+                    await self._send_message(
+                        websocket,
+                        MessageType.ANALYSIS_RESULT,
+                        result.to_dict()
+                    )
+                    success = True
+            
+            except Exception as e:
+                logger.exception(f"Unhandled exception during analysis: {e}")
+                await self._send_error(
+                    websocket,
+                    MessageType.ANALYSIS_ERROR,
+                    f"Internal error: {str(e)}"
+                )
+            
+            finally:
+                # Clean up
+                self.state.finish_analysis(video_path_normalized, success)
+                if analyzer:
+                    analyzer.progress_callback = None
+                    # Explicitly delete to free memory
+                    del analyzer
+    async def _run_analysis(
+        self,
+        websocket: WebSocketServerProtocol,
+        analyzer: VideoAnalyzer,
+        video_path: Path,
+        payload: JsonDict
+    ) -> VideoAnalysisResult:
+        """Execute video analysis with progress updates."""
+        settings = payload.get("settings")
+        settings_dict = settings if isinstance(settings, dict) else {}
+        config = self._build_analysis_config(settings_dict)
+        
+        analyzer.config = config
+        analyzer.video_path = str(video_path)
+        analyzer.video_base_name = video_path.stem
+        
+        def progress_callback(progress: float, elapsed: float, frames_analyzed: float, total_frames: float) -> None:
+            """Thread-safe progress callback for analyzer."""
+            async def send():
+                await self._send_message(
+                    websocket,
+                    MessageType.ANALYSIS_PROGRESS,
+                    {
+                        "progress": progress,
+                        "frames_analyzed": frames_analyzed,
+                        "elapsed": elapsed,
+                        "total_frames": total_frames
+                    },
+                )
 
-async def load_models():
-    """
-    Asynchronously loads all ML models at service startup.
-    """
-    logger.info("Service starting up...")
-    try:
-        default_config = AnalysisConfig()
-        logger.info(f"Using device: {default_config.device}")
-        logger.info("Loading ML models and plugins...")
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(send())
+            except RuntimeError:
+                asyncio.run(send())
+        analyzer.progress_callback = progress_callback
+        
+        # Run analysis in executor to avoid blocking
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, analyzer.analyze)
+        
+        return result
+    
+    def _build_analysis_config(self, settings: Dict[str, Union[str, int, float, bool]]) -> AnalysisConfig:
+        """Build analysis configuration from settings."""
+        config = AnalysisConfig()
+        for key, value in settings.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        return config
+    
+    async def _handle_transcribe(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """Handle transcription request with live progress."""
+        video_path = payload.get("video_path")
+        json_file_path = payload.get("json_file_path")
+        
+        if not isinstance(video_path, str) or not isinstance(json_file_path, str):
+            await self._send_error(
+                websocket,
+                MessageType.TRANSCRIPTION_ERROR,
+                "Missing or invalid 'video_path' or 'json_file_path' in payload"
+            )
+            return
+        
+        video_path_normalized = str(Path(video_path).resolve())
+        self.state.start_transcription(video_path_normalized)
         
         loop = asyncio.get_running_loop()
-        service_state.analyzer = await loop.run_in_executor(
-            None, lambda: VideoAnalyzer(video_path="placeholder.mp4", config=default_config)
-        )
         
-        service_state.models_loaded = True
-        service_state.status = "ready"
-        logger.info("✓ Models loaded successfully. Service is ready.")
-    except Exception as e:
-        service_state.status = "error"
-        logger.exception(f"✗ Critical error during model loading: {e}")
-
-
-async def handler(websocket, path=None):
-    """
-    Handles incoming WebSocket connections and messages.
-    """
-    logger.info(f"Client connected from {websocket.remote_address}")
-    try:
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                message_type = data.get("type")
-
-                if message_type == "analyze":
-                    await handle_analyze(websocket, data.get("payload", {}))
-                elif message_type == "transcribe":
-                    await handle_transcribe(websocket, data.get("payload", {}))
-                elif message_type == "reindex_faces":
-                    await handle_reindex_faces(websocket)
-                elif message_type == "health":
-                    await websocket.send(json.dumps({
-                        "type": "status", 
-                        "payload": {"status": "ready" if service_state.is_ready() else "loading"}
-                    }))
-                else:
-                    await websocket.send(json.dumps({
-                        "type": "error", 
-                        "payload": {"message": f"Unknown message type: {message_type}"}
-                    }))
-
-            except json.JSONDecodeError:
-                await websocket.send(json.dumps({
-                    "type": "error", 
-                    "payload": {"message": "Invalid JSON received."}
-                }))
-            except Exception as e:
-                logger.exception("Error processing message:")
-                await websocket.send(json.dumps({
-                    "type": "error", 
-                    "payload": {"message": f"An error occurred: {str(e)}"}
-                }))
-                
-    except websockets.exceptions.ConnectionClosed as e:
-        logger.info(f"Client disconnected: {e}")
-    except Exception as e:
-        logger.exception("Unhandled exception in WebSocket handler:")
-
-
-async def handle_analyze(websocket, payload):
-    """
-    Handles the 'analyze' message.
-    """
-    if not service_state.is_ready():
-        await websocket.send(json.dumps({
-            "type": "analysis_error", 
-            "payload": {"message": "Service is not ready."}
-        }))
-        return
-
-    if service_state.is_busy():
-        await websocket.send(json.dumps({
-            "type": "analysis_error", 
-            "payload": {"message": f"Service is busy processing: {service_state.current_video}"}
-        }))
-        return
-
-    video_path_str = payload.get("video_path")
-    settings = payload.get("settings")
-
-    if not video_path_str:
-        await websocket.send(json.dumps({
-            "type": "analysis_error", 
-            "payload": {"message": "Missing 'video_path' in payload."}
-        }))
-        return
-
-    video_path = Path(video_path_str)
-    if not video_path.exists():
-        await websocket.send(json.dumps({
-            "type": "analysis_error", 
-            "payload": {"message": f"Video file not found: {video_path}"}
-        }))
-        return
-
-    async with service_state.lock:
-        service_state.status = "processing"
-        service_state.current_video = str(video_path)
-        logger.info(f"Starting analysis for: {video_path}")
-
-        try:
-            # Configure the analyzer
-            config = AnalysisConfig()
-            if settings:
-                for key, value in settings.items():
-                    if hasattr(config, key):
-                        setattr(config, key, value)
             
-            service_state.analyzer.config = config
-            service_state.analyzer.video_path = str(video_path)
-            service_state.analyzer.video_base_name = video_path.stem
-
-            # Get the event loop to schedule callbacks from the thread
-            loop = asyncio.get_running_loop()
-            
-            # Define a SYNC progress callback that schedules async sends
-            def progress_callback(plugin_name: str, progress: float, message: str):
-                # Ensure progress is between 0 and 100
-                progress = max(0.0, min(100.0, progress))
-                
-                # Schedule the websocket send in the event loop
-                future = asyncio.run_coroutine_threadsafe(
-                    websocket.send(json.dumps({
-                        "type": "analysis_progress",
-                        "payload": {
-                            "plugin": plugin_name,
-                            "progress": round(progress, 2),
-                            "message": message
-                        }
-                    })),
-                    loop
-                )
-                
-                # Wait briefly to ensure message is sent
-                try:
-                    future.result(timeout=0.1)
-                except Exception as e:
-                    logger.warning(f"Failed to send progress update: {e}")
-
-            service_state.analyzer.progress_callback = progress_callback
-
-            # Run analysis in executor
-            result: VideoAnalysisResult = await loop.run_in_executor(
-                None, service_state.analyzer.analyze
+        def progress_callback(progress: int, elapsed: str) -> None:
+            """Progress callback for transcription."""
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_message(
+                    websocket,
+                    MessageType.TRANSCRIPTION_PROGRESS,
+                    {
+                        "progress": progress,
+                        "elapsed": elapsed,
+                    }
+                ),
+                loop
             )
-
-            # Send final result
-            if result.error:
-                logger.error(f"Analysis for {video_path} completed with an error: {result.error}")
-                await websocket.send(json.dumps({
-                    "type": "analysis_error", 
-                    "payload": {"message": f"Analysis failed: {result.error}"}
-                }))
-            else:
-                output_path = OutputManager.get_output_path(str(video_path), config.output_dir)
-                OutputManager.save_result(result, output_path)
-                logger.info(f"✓ Analysis complete for: {video_path}. Results at: {output_path}")
-                await websocket.send(json.dumps({
-                    "type": "analysis_result", 
-                    "payload": result.to_dict()
-                }))
-
+            try:
+                future.result(timeout=1.0)
+            except Exception as e:
+                logger.warning(f"Failed to send transcription progress: {e}")
+        
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.transcription_service.transcribe(
+                    video_path,
+                    json_file_path,
+                    progress_callback
+                )
+            )
+            
+            await self._send_message(
+                websocket,
+                MessageType.TRANSCRIPTION_COMPLETE,
+                {
+                    "json_file_path": json_file_path,
+                    "language": result.language,
+                }
+            )
+            logger.info(f"Transcription complete for {video_path}")
+        
         except Exception as e:
-            logger.exception(f"Unhandled exception during analysis of {video_path}: {e}")
-            await websocket.send(json.dumps({
-                "type": "analysis_error", 
-                "payload": {"message": f"An internal error occurred: {str(e)}"}
-            }))
+            logger.exception("Transcription failed")
+            await self._send_error(
+                websocket,
+                MessageType.TRANSCRIPTION_ERROR,
+                f"Transcription failed: {str(e)}"
+            )
         
         finally:
-            service_state.status = "ready"
-            service_state.current_video = None
-            if service_state.analyzer:
-                service_state.analyzer.progress_callback = None
-                
-                
-async def handle_transcribe(websocket, payload):
-    """
-    Handles the 'transcribe' message with improved progress reporting.
-    """
-    video_path = payload.get("video_path")
-    json_file_path = payload.get("json_file_path")
-
-    if not video_path or not json_file_path:
-        await websocket.send(json.dumps({
-            "type": "transcription_error", 
-            "payload": {"message": "Missing 'video_path' or 'json_file_path' in payload."}
-        }))
-        return
-
-    script_path = Path(__file__).parent / "transcribe.py"
-    logger.info(f"Starting transcription: {video_path}")
+            self.state.finish_transcription(video_path_normalized)
     
-    process = await asyncio.create_subprocess_exec(
-        sys.executable, str(script_path), video_path, json_file_path,
-        stdout=asyncio.subprocess.PIPE, 
-        stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, "PYTHONUNBUFFERED": "1", "TQDM_DISABLE": "false", "FORCE_TQDM": "1"}
-    )
+    async def _handle_reindex_faces(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """
+        Handle face reindexing request by calling the integrated function directly.
+        Ensures only one reindexing operation runs at a time.
+        """
+        if self.reindex_lock.locked():
+            logger.warning("Reindex request received while another reindex is active.")
+            await self._send_error(
+                websocket,
+                MessageType.REINDEX_ERROR,
+                "Face reindexing is already in progress. Please wait."
+            )
+            return
 
-    async def stream_stderr():
-        """Stream Whisper transcription progress (numeric + elapsed time) from stderr."""
-        last_progress = -1
-        last_sent_time = 0
-
-        # Improved regex patterns for better matching
-        progress_pattern = re.compile(r"(\d+)%")  # captures progress like '42%'
-        elapsed_pattern = re.compile(r"\[(\d+):(\d+)<")  # captures time from tqdm like '[01:23<'
-        # Alternative pattern for different tqdm formats
-        alt_elapsed_pattern = re.compile(r"(\d+):(\d+)<")  # without brackets
-
-        while True:
-            line = await process.stderr.readline()
-            if not line:
-                break
-
-            line_str = line.decode(errors="ignore").strip()
-            if not line_str:
-                continue
-
-            # Extract numeric progress
-            progress_match = progress_pattern.search(line_str)
+        async with self.reindex_lock:
+            logger.info("Starting face reindexing..")
             
-            if progress_match:
-                progress = int(progress_match.group(1))
-                elapsed_time = None
+            faces_dir = payload.get("faces_directory", ".faces")
+            known_faces_f = payload.get("known_faces_file", "known_faces.json")
+            output_json_f = payload.get("output_json_path", "faces.json") 
+            
+            async def reindex_progress_callback(data: dict) -> None:
+                await self._send_message(
+                    websocket,
+                    MessageType.REINDEX_PROGRESS,
+                    {"elapsed": data["elapsed"],"progress": data["progress"]} 
+                )
 
-                # Try to extract elapsed time
-                elapsed_match = elapsed_pattern.search(line_str) or alt_elapsed_pattern.search(line_str)
-                if elapsed_match:
-                    minutes = int(elapsed_match.group(1))
-                    seconds = int(elapsed_match.group(2))
-                    elapsed_time = f"{minutes:02d}:{seconds:02d}:00"
-
-                # Only send if progress changed or 2+ seconds elapsed
-                import time
-                current_time = time.time()
+            try:
+                success = await batch_add_faces_from_folder(
+                    faces_directory=faces_dir,
+                    known_faces_file=known_faces_f,
+                    output_json_path=output_json_f,
+                    progress_callback=reindex_progress_callback
+                )
                 
-                if progress != last_progress or (current_time - last_sent_time >= 2):
-                    last_progress = progress
-                    last_sent_time = current_time
-                    
-                    logger.info(f"Transcribe progress: {progress}% | Elapsed: {elapsed_time or 'N/A'}")
-
-                    await websocket.send(json.dumps({
-                        "type": "transcription_progress",
-                        "payload": {
-                            "progress": progress,
-                            "elapsed_time": elapsed_time or "00:00:00"
-                        }
-                    }))
-            else:
-                # Non-progress lines (like "Detected language: English")
-                if line_str and not line_str.startswith('\r'):
-                    logger.info(f"Transcribe info: {line_str}")
-                    await websocket.send(json.dumps({
-                        "type": "transcription_message",
-                        "payload": {"message": line_str}
-                    }))
-
-    async def stream_stdout():
-        """Stream stdout messages."""
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            line_str = line.decode(errors="ignore").strip()
-            if line_str:
-                logger.info(f"Transcribe output: {line_str}")
-                await websocket.send(json.dumps({
-                    "type": "transcription_message",
-                    "payload": {"message": line_str}
-                }))
-
-    # Stream both stdout and stderr concurrently
-    await asyncio.gather(stream_stdout(), stream_stderr())
+                if success:
+                    logger.info("Face reindexing completed successfully (integrated).")
+                    await self._send_message(
+                        websocket,
+                        MessageType.REINDEX_COMPLETE,
+                        {"status": "done", "message": "Face reindexing completed successfully."}
+                    )
+                else:
+                    logger.error("Face reindexing failed (integrated). Check logs for details.")
+                    await self._send_error(
+                        websocket,
+                        MessageType.REINDEX_ERROR,
+                        "Face reindexing failed. Check service logs."
+                    )
+            
+            except Exception as e:
+                logger.debug(e)
+                logger.exception("Face reindexing exception (integrated)")
+                await self._send_error(
+                    websocket,
+                    MessageType.REINDEX_ERROR,
+                    f"Reindexing failed: {str(e)}"
+                )
     
-    # Wait for process to complete
-    await process.wait()
+
+class AnalysisService:
+    """Main service coordinator."""
     
-    if process.returncode == 0:
-        logger.info(f"✓ Transcription complete: {json_file_path}")
-        await websocket.send(json.dumps({
-            "type": "transcription_complete", 
-            "payload": {"json_file_path": json_file_path}
-        }))
-    else:
-        error_msg = f"Transcription failed with code {process.returncode}"
-        logger.error(error_msg)
-        await websocket.send(json.dumps({
-            "type": "transcription_error", 
-            "payload": {"error": error_msg}
-        }))
-
-
-async def handle_reindex_faces(websocket):
-    """
-    Handles the 'reindex_faces' message.
-    """
-    script_path = Path(__file__).parent / "batch_add_faces.py"
-    logger.info("Starting face reindexing...")
-    
-    process = await asyncio.create_subprocess_exec(
-        sys.executable, str(script_path),
-        stdout=asyncio.subprocess.PIPE, 
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    await stream_subprocess_output(websocket, process, "reindex")
-
-
-async def stream_subprocess_output(websocket, process, process_name):
-    """
-    Streams the stdout and stderr of a subprocess to the client.
-    """
-    async def stream_stdout():
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            line_str = line.decode(errors="ignore").strip()
-            if line_str:
-                logger.info(f"{process_name} output: {line_str}")
-                await websocket.send(json.dumps({
-                    "type": f"{process_name}_progress", 
-                    "payload": {"output": line_str}
-                }))
-
-    async def stream_stderr():
-        while True:
-            line = await process.stderr.readline()
-            if not line:
-                break
-            line_str = line.decode(errors="ignore").strip()
-            if line_str:
-                logger.warning(f"{process_name} error: {line_str}")
-                await websocket.send(json.dumps({
-                    "type": f"{process_name}_error", 
-                    "payload": {"error": line_str}
-                }))
-
-    await asyncio.gather(stream_stdout(), stream_stderr())
-
-    await process.wait()
-    
-    if process.returncode == 0:
-        logger.info(f"✓ {process_name} completed successfully")
-        await websocket.send(json.dumps({
-            "type": f"{process_name}_complete", 
-            "payload": {"status": "done"}
-        }))
-    else:
-        logger.error(f"✗ {process_name} failed with code {process.returncode}")
-        await websocket.send(json.dumps({
-            "type": f"{process_name}_error", 
-            "payload": {"error": f"Process failed with code {process.returncode}"}
-        }))
-
-
- 
-async def main():
-    """
-    Parses command-line arguments and starts the WebSocket server.
-    """
-    parser = argparse.ArgumentParser(description="Edit Mind Analysis Service")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--port", type=int, help="TCP port to listen on.")
-    group.add_argument("--socket", type=str, help="Path to the Unix Domain Socket.")
-    
-    args = parser.parse_args()
-
-    # Load models before starting the server
-    await load_models()
-
-    if args.socket:
-        socket_path = Path(args.socket)
-        if socket_path.exists():
-            logger.warning(f"Stale socket file found at {socket_path}. Removing it.")
-            socket_path.unlink()
+    def __init__(self, max_concurrent_analyses: int = 3):
+        self.state = ServiceState()
+        self.handler = WebSocketHandler(self.state, max_concurrent_analyses)
+        logger.info(f"Service initialized (max concurrent analyses: {max_concurrent_analyses})")
+            
+    async def start(
+        self,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        socket_path: Optional[str] = None
+    ) -> None:
+        """Start the WebSocket server."""
+        if socket_path:
+            path = Path(socket_path)
+            if path.exists():
+                logger.warning(f"Removing stale socket file: {path}")
+                path.unlink()
+            
+            logger.info(f"Starting service on Unix Domain Socket: {socket_path}")
+            async with websockets.unix_serve(self.handler.handle_connection, socket_path):
+                logger.info(f"Server listening on {socket_path}")
+                await asyncio.Future()  # Run forever
         
-        logger.info(f"Starting service on Unix Domain Socket: {args.socket}")
-        start_server = websockets.unix_serve(handler, args.socket)
-    else:  # port
-        logger.info(f"Starting service on 127.0.0.1:{args.port}")
-        start_server = websockets.serve(handler, "127.0.0.1", args.port)
+        elif host and port:
+            logger.info(f"Starting service on {host}:{port}")
+            async with websockets.serve(self.handler.handle_connection, host, port):
+                logger.info(f"Server listening on {host}:{port}")
+                await asyncio.Future()  # Run forever
+        
+        else:
+            raise ValueError("Either socket_path or (host and port) must be provided")
 
-    async with start_server:
-        await asyncio.Future()  # run forever
+
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Edit Mind Analysis Service - WebSocket-based video analysis"
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--port",
+        type=int,
+        help="TCP port to listen on (binds to 127.0.0.1)"
+    )
+    group.add_argument(
+        "--socket",
+        type=str,
+        help="Path to the Unix Domain Socket"
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=3,
+        help="Maximum number of concurrent video analyses (default: 3)"
+    )
+    
+    return parser.parse_args()
+
+
+async def main() -> None:
+    """Application entry point."""
+    args = parse_arguments()
+    
+    service = AnalysisService(max_concurrent_analyses=args.max_concurrent)
+    
+    try:
+        if args.socket:
+            await service.start(socket_path=args.socket)
+        else:
+            await service.start(host="127.0.0.1", port=args.port)
+    except Exception as e:
+        logger.exception(f"Service failed to start: {e}")
+        raise
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Service stopped by user")
+    except Exception as e:
+        logger.exception(f"Fatal error: {e}")
+        sys.exit(1)
