@@ -83,7 +83,6 @@ When you add a video, Edit Mind runs a complete **AI-powered local analysis pipe
 
 ---
 
-
 ## 🛠️ Tech Stack
 
 | Area | Technology |
@@ -187,6 +186,24 @@ Please read `CONTRIBUTING.md` for details on our code of conduct and the process
 ## 🙏 Acknowledgements
 
 This project was bootstrapped from the excellent [guasam/electron-react-app](https://github.com/guasam/electron-react-app) template. It provided a solid foundation with a modern Electron, React, and Vite setup, which allowed us to focus on building the core features of Edit Mind.
+
+## ⚠️ Known Challenges & Areas for Contribution
+
+While the core architecture is robust, the project is still in early development. Contributions are welcome in solving these key challenges to make the app production-ready.
+
+1.  **Application Packaging & Distribution:**
+    The current setup is developer-focused. A major goal is to create a seamless, one-click installer for non-technical users. This involves bundling the Python environment, ML models, and all dependencies into the final Electron application for macOS, Windows, and Linux. Contributions in this area (e.g., using PyInstaller, managing model downloads) are highly welcome.
+
+2.  **Performance on Consumer Hardware:**
+    The analysis pipeline is resource-intensive. While the code includes memory monitoring and optimizations, further work is needed to ensure smooth operation on a variety of consumer-grade machines. Key areas for improvement include:
+    *   Implementing a robust background queuing system for video processing.
+    *   Adding user-configurable "analysis levels" (e.g., "transcription only" vs. "full analysis").
+    *   Further optimization of the frame processing and ML inference steps.
+
+3.  **Data Schema Evolution:**
+    As new plugins and features are added, the metadata schema for scenes will evolve. A long-term challenge is to implement a strategy for handling data migrations, allowing users to "upgrade" their existing indexed data to a new schema without having to re-index their entire library from scratch.
+
+---
 
 ## 📄 License
 
