@@ -27,7 +27,7 @@ class ShotTypePlugin(AnalyzerPlugin):
 
     def classify(self, frame_width: int, frame_height: int, faces: List[Dict]) -> str:
         if not faces:
-            return "long-shot", 0.0
+            return "long-shot"
 
         frame_area = frame_width * frame_height
 

@@ -131,9 +131,6 @@ export const unknownFace = z.object({
     y: z.number(),
   }),
   face_encoding: z.array(z.number()),
-  frame_duration_ms: z.number(),
-  frame_start_time_ms: z.number(),
-  frame_end_time_ms: z.number(),
   context: z.object({
     detected_objects: z.array(
       z.object({
@@ -231,7 +228,7 @@ export const appIpcSchema = {
     return: z.object({ success: z.boolean() }),
   },
   labelUnknownFace: {
-    args: z.tuple([z.string(), z.string()]),
+    args: z.tuple([z.string(), z.string(), z.string()]),
     return: z.object({ success: z.boolean() }),
   },
   reindexAllFaces: {
@@ -253,5 +250,5 @@ export const appIpcSchema = {
   mergeFaces: {
     args: z.tuple([z.array(z.string())]),
     return: z.promise(z.string()),
-  },
+  }
 }

@@ -5,6 +5,9 @@ import { Transcription } from '../types/transcription'
 
 export const generateSceneDescription = (objects: DetectedObject[], faces: Face[]): string => {
   const objectCounts: Record<string, number> = {}
+  if (!Array.isArray(objects)) {
+    return ''
+  }
   for (const obj of objects) {
     objectCounts[obj.label] = (objectCounts[obj.label] || 0) + 1
   }
@@ -24,7 +27,7 @@ export const generateSceneDescription = (objects: DetectedObject[], faces: Face[
     }
   }
 
-  if (faces.length > 0) {
+  if (faces && faces.length > 0) {
     if (faces.length === 1) {
       descriptionParts.push('a person')
     } else {
@@ -92,7 +95,7 @@ export const createScenes = async (
       dominantColorName: frame.dominant_color.name,
       detectedText: frame.detected_text?.map((item) => item.text) || [],
       location: '',
-      duration: 0
+      duration: 0,
     }
 
     scenes.push(currentScene)

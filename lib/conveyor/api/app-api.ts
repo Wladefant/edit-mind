@@ -1,7 +1,7 @@
 import { ConveyorApi } from '@/lib/preload/shared'
 import { ExportedScene } from '@/lib/types/scene'
 import { VideoMetadataSummary } from '@/lib/types/search'
-import { Settings } from '@/lib/types/settings'
+import { SettingsConfig } from '@/lib/types/settings'
 
 export class AppApi extends ConveyorApi {
   version = () => this.invoke('version')
@@ -18,11 +18,12 @@ export class AppApi extends ConveyorApi {
   openFile = (filePath: string) => this.invoke('openFile', filePath)
   showInFolder = (filePath: string) => this.invoke('showInFolder', filePath)
   getSettings = () => this.invoke('getSettings')
-  saveSettings = (settings: Settings) => this.invoke('saveSettings', settings)
+  saveSettings = (settings: SettingsConfig) => this.invoke('saveSettings', settings)
   getKnownFaces = () => this.invoke('getKnownFaces')
   getUnknownFaces = () => this.invoke('getUnknownFaces')
   deleteUnknownFace = (imageFile: string, jsonFile: string) => this.invoke('deleteUnknownFace', imageFile, jsonFile)
-  labelUnknownFace = (jsonFile: string, name: string) => this.invoke('labelUnknownFace', jsonFile, name)
+  labelUnknownFace = (jsonFile: string, faceId: string, name: string) =>
+    this.invoke('labelUnknownFace', jsonFile, faceId, name)
   reindexAllFaces = (jsonFile: string, faceId: string, name: string) =>
     this.invoke('reindexAllFaces', jsonFile, faceId, name)
   getAllFaces = () => this.invoke('getAllFaces')

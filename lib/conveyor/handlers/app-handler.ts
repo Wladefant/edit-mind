@@ -24,7 +24,6 @@ import { convertTimeToWords } from '@/lib/utils/time'
 import { pythonService } from '@/lib/services/pythonService'
 import { getLocationName } from '@/lib/utils/location'
 import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/constants'
-import { UnknownFace } from '@/lib/types/face'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)
@@ -199,7 +198,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     }
   })
 
-  handle('labelUnknownFace', async (jsonFile, name) => {
+  handle('labelUnknownFace', async (jsonFile, faceId, name) => {
     const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
     const jsonPath = path.join(unknownFacesDir, jsonFile)
 
@@ -214,6 +213,26 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
         await fs.mkdir(personDir, { recursive: true })
       }
 
+      const scenes: Scene[] = await getByVideoSource(faceData.video_path)
+
+      const modifiedScenes = scenes
+        .map((scene) => {
+          if (
+            scene.startTime >= faceData.frame_start_time_ms / 1000 &&
+            scene.endTime <= faceData.frame_end_time_ms / 1000
+          ) {
+            if (scene.faces.includes(name)) {
+              scene.faces = scene.faces.map((face) => (face === faceId ? name : face))
+              return scene
+            }
+          }
+          return undefined
+        })
+        .filter((scene) => scene != undefined)
+
+      for (const scene of modifiedScenes) {
+        await updateMetadata(scene)
+      }
       const newImagePath = path.join(personDir, imageFile)
       await fs.rename(imagePath, newImagePath)
 
@@ -241,30 +260,6 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
     try {
       const jsonPath = path.join(unknownFacesDir, jsonFile)
-      const faceData: UnknownFace = JSON.parse(await fs.readFile(jsonPath, 'utf-8'))
-
-      const timestampSeconds = faceData.timestamp_seconds
-
-      const scenes: Scene[] = await getByVideoSource(faceData.video_path)
-
-      console.log(faceId, name, timestampSeconds)
-      const modifiedScenes = scenes.map((scene) => {
-        if (
-          scene.startTime >= faceData.frame_start_time_ms / 1000 &&
-          scene.endTime <= faceData.frame_end_time_ms / 1000
-        ) {
-          if (scene.faces.includes(faceId)) {
-            scene.faces = scene.faces.map((face) => (face === faceId ? name : face))
-            console.log(scene.faces)
-          }
-        }
-
-        return scene
-      })
-
-      for (const scene of modifiedScenes) {
-        await updateMetadata(scene)
-      }
 
       try {
         await fs.unlink(jsonPath)
