@@ -53,7 +53,7 @@ export const useTraining = () => {
     } else {
       setSelectedFaces(new Set(unknownFaces.map((face) => face.image_hash)));
     }
-  }, [selectedFaces.size, unknownFaces.length]);
+  }, [selectedFaces.size, unknownFaces]);
 
   const handleLabelFaces = useCallback(async () => {
     if (selectedFaces.size === 0) {
@@ -73,7 +73,7 @@ export const useTraining = () => {
       for (const image_hash of selectedFaces) {
         const face = unknownFaces.find((f) => f.image_hash === image_hash);
         if (face) {
-          await window.conveyor.app.labelUnknownFace(face.json_file, targetName);
+          await window.conveyor.app.labelUnknownFace(face.json_file, face.face_id, targetName);
           await window.conveyor.app.reindexAllFaces(face.json_file, face.face_id, targetName);
         }
       }
