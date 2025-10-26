@@ -18,3 +18,4 @@ __pycache__
 .chroma_db
 .faces.json
 .locations.json
+.venv
