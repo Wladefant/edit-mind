@@ -8,14 +8,11 @@ temp
 python/.venv
 .results
 .env
-known_faces.json
-faces.json
 .faces
 analysis_results
 *.pt
 output-videos
 __pycache__
 .chroma_db
-.faces.json
 .locations.json
 .venv
