@@ -183,6 +183,49 @@ The project is organized to maintain a clear separation of concerns:
 - `python/`: Home to all Python scripts for AI/ML analysis, transcription, and more.
 - `resources/`: Static assets that are not part of the web build, like the application icon.
 
+
+## 📊 Performance Benchmarks
+
+To help you understand Edit Mind's resource requirements, here are real-world performance metrics from analyzing large video files.
+
+### Test Environment
+
+- **Hardware:** M1 MacBook Max with 64 GB RAM
+- **Enabled Plugins:**
+  - ObjectDetectionPlugin
+  - FaceRecognitionPlugin
+  - ShotTypePlugin
+  - EnvironmentPlugin
+  - DominantColorPlugin
+
+> **Note:** The metrics below reflect frame analysis time and peak memory usage. Transcription and embedding score processing stages are not included in these measurements.
+
+| File Size (MB) | Video Codec | Frame Analysis Time (s) | Video Duration (s) | Peak Memory (MB) |
+|---------------:|:------------|------------------------:|-------------------:|-----------------:|
+| 20150.38 | h264 | 7707.29 | 3372.75 | 4995.45 |
+| 11012.64 | hevc | 3719.77 | 1537.54 | 10356.77 |
+| 11012.24 | hevc | 3326.29 | 1537.54 | 11363.27 |
+| 11001.07 | hevc | 1576.47 | 768.77 | 10711.09 |
+| 11000.95 | hevc | 1592.94 | 768.77 | 11250.42 |
+| 11000.55 | hevc | 1598.97 | 768.77 | 10797.03 |
+| 11000.15 | hevc | 2712.68 | 768.77 | 5127.25 |
+| 10999.96 | hevc | 1592.72 | 768.77 | 11328.47 |
+| 10755.45 | hevc | 3762.24 | 751.65 | 5196.98 |
+| 9989.49 | hevc | 9500.03 | 698.20 | 5510.94 |
+
+### Key Takeaways
+
+- **Processing Speed:** Approximately **2-3 hours** of analysis time per hour of video content with all plugins enabled
+- **Memory Usage:** Peak memory consumption ranges from **5-11 GB** depending on video complexity and codec
+- **Codec Impact:** HEVC videos show varied performance, likely due to differences in encoding parameters and scene complexity
+
+> 💡 **Performance Tips:**  
+> - Disable unused plugins to reduce processing time and memory usage
+> - Consider processing large files during off-hours
+> - Ensure sufficient RAM (16GB+ recommended for optimal performance)
+> - SSD storage significantly improves I/O performance during analysis
+
+
 ## 🧑‍💻 How to Contribute
 
 We welcome contributions of all kinds! Here are a few ways you can help:
