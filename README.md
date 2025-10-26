@@ -129,7 +129,7 @@ npm install
 
 ### Set up the Python environment
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate   # (macOS/Linux)
 # .\.venv\Scripts\activate  # (Windows)
 pip install -r python/requirements.txt
