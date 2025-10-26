@@ -147,10 +147,10 @@ GEMINI_API_KEY=your_api_key_here
 
 ### Running the Application
 
-With the setup complete, you can start the application in development mode.
+With the setup complete, you can start the application.
 
 ```bash
-npm run dev
+npm run start
 ```
 
 ## 🏗️ Building for Production
