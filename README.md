@@ -9,9 +9,16 @@
 > Expect incomplete features and occasional bugs. We welcome contributors to help us reach **v1.0**!
 
 
+
+
+
+
 ### 🧠 Your Video Library, Reimagined
 
 **Edit Mind** is a cross-platform desktop app that acts as an **editor’s second brain**.  
+
+<img width="1197" height="1000" alt="Screenshot 2025-10-26 at 21 51 30" src="https://github.com/user-attachments/assets/25a6710c-e414-45f0-a258-21bdbd1dd352" />
+
 It locally indexes your entire video library, generating deep metadata using **AI analysis** — including:
 
 - 🎙 Full transcriptions  
