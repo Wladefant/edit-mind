@@ -8,7 +8,6 @@
 > ⚠️ **Development Status:** Edit Mind is currently in **active development** and **not yet production-ready**.  
 > Expect incomplete features and occasional bugs. We welcome contributors to help us reach **v1.0**!
 
----
 
 ### 🧠 Your Video Library, Reimagined
 
@@ -22,6 +21,14 @@ It locally indexes your entire video library, generating deep metadata using **A
 - 🔤 On-screen text (OCR)  
 
 This creates a **fully searchable, offline-first video database**, letting you find the exact shot you need in seconds.
+
+---
+
+## 📺 See It In Action
+
+[![Edit Mind Demo](https://img.youtube.com/vi/Ky9v85Mk6aY/maxresdefault.jpg)](https://www.youtube.com/watch?v=Ky9v85Mk6aY)
+
+*Click to watch a walkthrough of Edit Mind's core features*
 
 ---
 
