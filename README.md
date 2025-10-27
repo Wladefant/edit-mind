@@ -201,19 +201,19 @@ To help you understand Edit Mind's resource requirements, here are real-world pe
 
 > **Note:** The metrics below reflect frame analysis time and peak memory usage. Transcription and embedding score processing stages are not included in these measurements.
 
-| File Size (MB) | Video Codec | Frame Analysis Time (s) | Video Duration (s) | Peak Memory (MB) |
-|---------------:|:------------|------------------------:|-------------------:|-----------------:|
-| 20150.38 | h264 | 7707.29 | 3372.75 | 4995.45 |
-| 11012.64 | hevc | 3719.77 | 1537.54 | 10356.77 |
-| 11012.24 | hevc | 3326.29 | 1537.54 | 11363.27 |
-| 11001.07 | hevc | 1576.47 | 768.77 | 10711.09 |
-| 11000.95 | hevc | 1592.94 | 768.77 | 11250.42 |
-| 11000.55 | hevc | 1598.97 | 768.77 | 10797.03 |
-| 11000.15 | hevc | 2712.68 | 768.77 | 5127.25 |
-| 10999.96 | hevc | 1592.72 | 768.77 | 11328.47 |
-| 10755.45 | hevc | 3762.24 | 751.65 | 5196.98 |
-| 9989.49 | hevc | 9500.03 | 698.20 | 5510.94 |
+*(Lower is better - 1.0× means processing takes the same time as video duration)*
 
+| File Size (MB) | Video Codec | Frame Analysis Time (s) | Video Duration (s) | Processing Rate | Peak Memory (MB) |
+|---------------:|:------------|------------------------:|-------------------:|----------------:|-----------------:|
+| 20150.38 | h264 | 7707.29 | 3372.75 | 2.29× | 4995.45 |
+| 11012.64 | hevc | 3719.77 | 1537.54 | 2.42× | 10356.77 |
+| 11012.24 | hevc | 3326.29 | 1537.54 | 2.16× | 11363.27 |
+| 11001.07 | hevc | 1576.47 | 768.77 | 2.05× | 10711.09 |
+| 11000.95 | hevc | 1592.94 | 768.77 | 2.07× | 11250.42 |
+| 11000.55 | hevc | 1598.97 | 768.77 | 2.08× | 10797.03 |
+| 11000.15 | hevc | 2712.68 | 768.77 | 3.53× | 5127.25 |
+| 10999.96 | hevc | 1592.72 | 768.77 | 2.07× | 11328.47 |
+| 10755.45 | hevc | 3762.24 | 751.65 | 5.01× | 5196.98 |
 ### Key Takeaways
 
 - **Processing Speed:** Approximately **2-3 hours** of analysis time per hour of video content with all plugins enabled
