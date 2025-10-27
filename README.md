@@ -136,6 +136,7 @@ npm install
 
 ### Set up the Python environment
 ```bash
+cd python
 python3.12 -m venv .venv                                                  
 source .venv/bin/activate   # (macOS/Linux)
 # .\.venv\Scripts\activate  # (Windows)
