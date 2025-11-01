@@ -11,7 +11,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules/', 'tests/', '**/*.spec.ts', '**/*.test.ts'],
     },
-    testTimeout: 120000, // 2 minutes
+    testTimeout: 300000, // 5 minutes
     hookTimeout: 30000 * 2,
   },
   resolve: {

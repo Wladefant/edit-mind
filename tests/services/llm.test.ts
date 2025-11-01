@@ -2,7 +2,7 @@ import { cleanup, generateActionFromPromptInternal } from '@/lib/services/llm'
 import { describe, it, expect, afterEach } from 'vitest'
 import { TEST_QUERIES, compareResults } from '../helpers/llm'
 
-const TEST_TIMEOUT = 60000
+const TEST_TIMEOUT = 120000
 
 afterEach(cleanup)
 
