@@ -44,7 +44,12 @@ jobs:
           
           echo "Disk space after cleanup:"
           df -h
-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+          
       - name: Setup Python 3.12.8
         uses: actions/setup-python@v4
         with:
@@ -57,6 +62,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('python/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
+
 
       - name: Create virtual environment and install dependencies
         run: |
