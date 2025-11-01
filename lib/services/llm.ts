@@ -1,6 +1,6 @@
 import { VideoSearchParams } from '../types/search'
 import { CACHE_TTL, SEARCH_AI_MODEL } from '@/lib/constants'
-import { getLlama, LlamaModel, LlamaContext, LlamaChatSession } from 'node-llama-cpp'
+import { LlamaModel, LlamaContext } from 'node-llama-cpp'
 import path from 'path'
 import { z } from 'zod'
 
@@ -116,6 +116,7 @@ class LlamaModelManager {
     if (this.model && this.context) return { model: this.model, context: this.context }
 
     if (!this.llama) {
+      const { getLlama } = await import('node-llama-cpp')
       this.llama = await getLlama()
     }
 
@@ -134,6 +135,7 @@ class LlamaModelManager {
 
   async generateParams(query: string): Promise<VideoSearchParams> {
     const { context } = await this.initialize()
+    const { LlamaChatSession } = await import('node-llama-cpp')
     const sequence = await context.getSequence()
     const session = new LlamaChatSession({ contextSequence: sequence })
 
