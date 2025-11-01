@@ -30,12 +30,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          
+          # Remove unnecessary software
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Setup Python 3.12.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12.8'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('python/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Create virtual environment and install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r python/requirements.txt
+
+      - name: Run Python unit tests
+        run: |
+          .venv/bin/python -m unittest discover python/tests
+        timeout-minutes: 15
+
       - name: Setup Node.js 22+
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           check-latest: true
           cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
 
       - name: Create models directory
         run: mkdir -p models
@@ -62,6 +104,9 @@ jobs:
       - name: Download model
         if: steps.cache-model-restore.outputs.cache-hit != 'true' || github.event.inputs.clear_cache == 'true'
         run: |
+          echo "Disk space before download:"
+          df -h
+          
           # Remove existing file if forcing re-download
           [ -f "${{ env.MODEL_PATH }}" ] && rm "${{ env.MODEL_PATH }}"
           
@@ -81,6 +126,9 @@ jobs:
               -o "${{ env.MODEL_PATH }}" \
               -# \
               "${{ env.MODEL_URL }}"; then
+              echo "✅ Download successful"
+              echo "Disk space after download:"
+              df -h
               break
             else
               RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -101,9 +149,6 @@ jobs:
           path: ${{ env.MODEL_PATH }}
           key: llama-model-${{ runner.os }}-${{ env.CACHE_VERSION }}
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Install Chroma
         run: pip install chromadb
 
@@ -119,7 +164,7 @@ jobs:
             sleep 2
           done
 
-      - name: Run tests
+      - name: Run Node tests
         run: npm test
         env:
           NODE_ENV: test
@@ -135,19 +180,3 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Setup Python 3.12.8
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12.8'
-
-      - name: Create virtual environment and install dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r python/requirements.txt
-
-      - name: Run Python unit tests
-        run: |
-          .venv/bin/python -m unittest discover python/tests
-        timeout-minutes: 15
