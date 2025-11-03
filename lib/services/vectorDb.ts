@@ -1,4 +1,4 @@
-import { ChromaClient, Collection } from 'chromadb'
+import { ChromaClient, Collection, Where, WhereDocument } from 'chromadb'
 import { EmbeddingInput, CollectionStatistics } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
@@ -212,67 +212,39 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
     if (query.shot_type) {
       conditions.push({ shot_type: query.shot_type })
     }
+    if (query.faces && query.faces.length > 0) {
+      conditions.push({ faces: { $in: query.faces.map((f) => f.toLowerCase()) } })
+    }
+    if (query.objects && query.objects.length > 0) {
+      conditions.push({ objects: { $in: query.objects.map((o) => o.toLowerCase()) } })
+    }
+    if (query.emotions && query.emotions.length > 0) {
+      conditions.push({ emotions: { $in: query.emotions.map((e) => e.toLowerCase()) } })
+    }
+    if (query.transcriptionQuery) {
+      conditions.push({ transcription: { $in: [query.transcriptionQuery] } })
+    }
+    if (query.detectedText) {
+      conditions.push({ detectedText: { $in: [query.detectedText] } })
+    }
 
-    let whereClause: Record<string, any> = {}
+    let whereClause: Where | WhereDocument = {}
 
     if (conditions.length === 1) {
       whereClause = conditions[0]
     } else if (conditions.length > 1) {
       whereClause = { $and: conditions }
     }
-    let result
-    if (conditions.length === 0) {
-      result = await collection.get({
-        include: ['metadatas', 'documents'],
-      })
-    } else {
-      result = await collection.get({
-        where: whereClause,
-        limit: nResults,
-        include: ['metadatas', 'documents', 'embeddings'],
-      })
-    }
 
-    let filteredScenes: Scene[] = result.metadatas.map((metadata, index) =>
+    const result = await collection.get({
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+      limit: nResults,
+      include: ['metadatas', 'documents', 'embeddings'],
+    })
+
+    const filteredScenes: Scene[] = result.metadatas.map((metadata, index) =>
       metadataToScene(metadata, result.ids![index])
     )
-
-    if (result.metadatas && result.metadatas.length > 0 && result.ids && result.ids.length > 0) {
-      filteredScenes = result.metadatas
-        .map((metadata, index) => metadataToScene(metadata, result.ids![index]))
-        .filter((scene: Scene) => {
-          let matches = true
-
-          // Filter by faces
-          if (query.faces && query.faces.length > 0) {
-            const sceneFaces = scene.faces.map((f) => f.toLowerCase())
-            matches = matches && query.faces.some((qFace) => sceneFaces.includes(qFace.toLowerCase()))
-          }
-
-          // Filter by objects
-          if (query.objects && query.objects.length > 0) {
-            const sceneObjects = scene.objects.map((o) => o.toLowerCase())
-            matches = matches && query.objects.some((qObject) => sceneObjects.includes(qObject.toLowerCase()))
-          }
-
-          // Filter by emotions
-          if (query.emotions && query.emotions.length > 0) {
-            const sceneEmotions = scene.emotions.map((e) => e.emotion.toLowerCase())
-            matches = matches && query.emotions.some((qEmotion) => sceneEmotions.includes(qEmotion.toLowerCase()))
-          }
-
-          // Filter by transcription query
-          if (query.transcriptionQuery) {
-            matches = matches && scene.transcription.toLowerCase().includes(query.transcriptionQuery.toLowerCase())
-          }
-          // Filter by detected text query
-          if (query.detectedText) {
-            matches = matches && scene.detectedText.includes(query.detectedText.toLowerCase())
-          }
-
-          return matches
-        })
-    }
 
     return filteredScenes.slice(0, nResults)
   } catch (error) {
