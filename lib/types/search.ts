@@ -1,6 +1,5 @@
 import z from 'zod'
 import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../conveyor/schemas/app-schema'
-import { AspectRatio } from '.';
 
 export interface VideoSearchParams {
   action: string | null
@@ -16,7 +15,16 @@ export interface VideoSearchParams {
   detectedText?: string
 }
 
-export type SearchQuery = VideoSearchParams & {
+export type SearchQuery = {
+  action: string | null
+  emotions: string[]
+  shot_type?: string | null
+  aspect_ratio: string | null
+  description: string
+  objects: string[]
+  camera?: string
+  transcriptionQuery: string | null
+  detectedText?: string
   faces?: string[]
 }
 
@@ -43,6 +51,6 @@ export interface VideoConfig {
 }
 
 export interface SearchMetadata {
-  aspectRatio?: AspectRatio
+  aspectRatio?: string
   faces?: string[]
 }
