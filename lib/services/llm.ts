@@ -22,6 +22,7 @@ RULES:
 2. All fields are required (use null or [] when not applicable)
 3. Extract ALL mentioned emotions, objects, and parameters
 4. Be precise with emotion detection - "looking happy" means emotions: ["happy"]
+5. Extract objects even when preceded by words like "all", "my", "the", "some"
 
 SCHEMA:
 {
@@ -41,6 +42,8 @@ FIELD EXTRACTION:
 action: Main verb/activity
 - "running" → "running"
 - "cooking with" → "cooking"
+- "getting pizza" → "getting"
+- "eating" → "eating"
 - "looking happy" → null (looking is not an action, it's describing emotion)
 - "talking about" → "talking"
 - null if no clear action
@@ -73,6 +76,11 @@ objects: Physical items (ALWAYS array, singular form)
 - "laptop" → ["laptop"]
 - "pans and knives" → ["pan", "knife"]
 - "my dog" → ["dog"]
+- "all pizza" → ["pizza"]
+- "getting pizza" → ["pizza"]
+- "the camera" → ["camera"]
+- "some books" → ["book"]
+- "riding bike" → ["bike"]
 - none → []
 
 transcriptionQuery: Quoted speech
@@ -104,6 +112,12 @@ Query: "Compile happy and excited moments from last summer"
 Query: "Make a square Instagram post of my dog"
 {"action":null,"emotions":[],"shot_type":null,"aspect_ratio":"1:1","duration":null,"description":"square format Instagram video of dog","outputFilename":"dog-instagram-square","objects":["dog"],"transcriptionQuery":null}
 
+Query: "getting all pizza"
+{"action":"getting","emotions":[],"shot_type":null,"aspect_ratio":"16:9","duration":null,"description":"getting pizza clips","outputFilename":"getting-pizza","objects":["pizza"],"transcriptionQuery":null}
+
+Query: "Show me the camera"
+{"action":null,"emotions":[],"shot_type":null,"aspect_ratio":"16:9","duration":null,"description":"clips showing camera","outputFilename":"camera-clips","objects":["camera"],"transcriptionQuery":null}
+
 Now extract parameters from this query:`
 
 class LlamaModelManager {
@@ -126,7 +140,7 @@ class LlamaModelManager {
     if (!this.model) throw new Error('Failed to load model')
 
     this.context = await this.model.createContext({
-      sequences: 1,
+      sequences: 4,
       contextSize: 4096,
     })
 
@@ -136,19 +150,20 @@ class LlamaModelManager {
   async generateParams(query: string): Promise<VideoSearchParams> {
     const { context } = await this.initialize()
     const { LlamaChatSession } = await import('node-llama-cpp')
-    const sequence = await context.getSequence()
+    const sequence = context.getSequence()
     const session = new LlamaChatSession({ contextSequence: sequence })
 
     try {
       const response = await session.prompt(`${SYSTEM_PROMPT}${query}\n\nJSON OUTPUT:`, {
         maxTokens: 512,
-        temperature: 0.1,
+        temperature: 0.05,
         topP: 0.9,
         topK: 40,
       })
       return this.parseAndValidate(response, query)
     } finally {
       session.dispose()
+      sequence.dispose()
     }
   }
 

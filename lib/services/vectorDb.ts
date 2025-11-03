@@ -199,7 +199,7 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
       throw new Error('Collection not initialized')
     }
 
-    const conditions: Record<string, any>[] = []
+    const conditions: Where[] = []
 
     if (query.aspect_ratio) {
       const aspectRatioValues = Array.isArray(query.aspect_ratio) ? query.aspect_ratio : [query.aspect_ratio]
@@ -242,11 +242,11 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
       include: ['metadatas', 'documents', 'embeddings'],
     })
 
-    const filteredScenes: Scene[] = result.metadatas.map((metadata, index) =>
+    const mappedScenes: Scene[] = result.metadatas.map((metadata, index) =>
       metadataToScene(metadata, result.ids![index])
     )
 
-    return filteredScenes.slice(0, nResults)
+    return mappedScenes
   } catch (error) {
     console.error('Error querying collection:', error)
     throw error
