@@ -1,0 +1,47 @@
+# =========================
+# 1️⃣ Base image for pnpm
+# =========================
+FROM node:22.20.0 AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+WORKDIR /app
+
+# =========================
+# 2️⃣ Install dependencies
+# =========================
+FROM base AS deps
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
+COPY package.json ./
+COPY apps/web/package.json ./apps/web/
+COPY apps/background-jobs/package.json ./apps/background-jobs/
+COPY apps/background-jobs/tsconfig.json ./apps/background-jobs/
+RUN pnpm install --ignore-scripts
+RUN pnpm rebuild @tailwindcss/oxide
+COPY packages/prisma ./
+RUN pnpm prisma migrate deploy
+RUN pnpm prisma generate 
+
+# =========================
+# 3️⃣ Build app
+# =========================
+FROM base AS build
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm --filter background-jobs... build
+
+# =========================
+# 4️⃣ Production runtime
+# =========================
+FROM base AS final
+COPY --from=build /app/apps/background-jobs/dist ./apps/background-jobs/dist
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/apps/background-jobs/package.json ./apps/background-jobs/
+COPY --from=build /app/package.json ./
+COPY --from=build /app/pnpm-lock.yaml ./
+COPY --from=build /app/pnpm-workspace.yaml ./
+RUN pnpm install --ignore-scripts
+
+CMD ["pnpm", "--filter", "background-jobs", "start"]

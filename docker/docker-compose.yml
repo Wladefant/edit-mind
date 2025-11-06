@@ -1,0 +1,74 @@
+services:
+  background-jobs:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.background-jobs
+    ports:
+      - "4000:4000" 
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://user:password@postgres:5432/app
+      - PYTHON_SERVICE_URL=http://python-worker:5000
+      - HOST_MEDIA_PATH=/media/videos
+    networks:
+      - app-network
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "3745:3745" 
+    environment:
+      - PORT=3745
+      - CHROMA_URL=http://chroma:8000
+      - SESSION_SECRET="testing"
+    depends_on:
+      - chroma
+    networks:
+      - app-network
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8747:8000"  
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=${CHROMA_TELEMETRY:-FALSE}
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=app
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+volumes:
+  chroma_data:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
