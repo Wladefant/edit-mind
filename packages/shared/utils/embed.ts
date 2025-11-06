@@ -8,7 +8,7 @@ import { embedDocuments } from '../services/vectorDb'
 import { existsSync } from 'fs'
 import { formatLocation } from './location'
 
-import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from '@/lib/constants'
+import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from 'lib/constants'
 import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {

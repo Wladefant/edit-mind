@@ -1,29 +1,29 @@
 import { type App, dialog, shell, type WebContents } from 'electron'
-import { handle, sender } from '@/lib/main/shared'
-import { findVideoFiles, generateThumbnail } from '@/lib/utils/videos'
+import { handle, sender } from '@shared/main/shared'
+import { findVideoFiles, generateThumbnail } from '@shared/utils/videos'
 import path from 'path'
 import fs from 'fs/promises'
-import { transcribeAudio } from '@/lib/utils/transcribe'
-import { analyzeVideo } from '@/lib/utils/frameAnalyze'
-import { createScenes } from '@/lib/utils/scenes'
+import { transcribeAudio } from '@shared/utils/transcribe'
+import { analyzeVideo } from '@shared/utils/frameAnalyze'
+import { createScenes } from '@shared/utils/scenes'
 import { existsSync, mkdirSync } from 'fs'
-import { embedScenes } from '@/lib/utils/embed'
-import { Scene } from '@/lib/types/scene'
-import { generateSearchSuggestions } from '@/lib/utils/search'
+import { embedScenes } from '@shared/utils/embed'
+import { Scene } from '@shared/types/scene'
+import { generateSearchSuggestions } from '@shared/utils/search'
 import {
   filterExistingVideos,
   getAllVideosWithScenes,
   getByVideoSource,
   queryCollection,
   updateMetadata,
-} from '@/lib/services/vectorDb'
-import { generateActionFromPrompt } from '@/lib/services/gemini'
-import { stitchVideos } from '@/lib/utils/sticher'
-import { exportToFcpXml } from '@/lib/utils/fcpxml'
-import { convertTimeToWords } from '@/lib/utils/time'
-import { pythonService } from '@/lib/services/pythonService'
-import { getLocationName } from '@/lib/utils/location'
-import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@/lib/constants'
+} from '@shared/services/vectorDb'
+import { generateActionFromPrompt } from '@shared/services/gemini'
+import { stitchVideos } from '@shared/utils/sticher'
+import { exportToFcpXml } from '@shared/utils/fcpxml'
+import { convertTimeToWords } from '@shared/utils/time'
+import { pythonService } from '@shared/services/pythonService'
+import { getLocationName } from '@shared/utils/location'
+import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)

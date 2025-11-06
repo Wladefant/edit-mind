@@ -7,7 +7,7 @@ import { Scene } from '../types/scene'
 import { SearchQuery } from '../types/search'
 import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
 
-import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '@/lib/constants'
+import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '../constants'
 
 let client: ChromaClient | null = null
 let collection: Collection | null = null
@@ -212,6 +212,66 @@ const getAllVideosWithScenes = async (): Promise<VideoWithScenes[]> => {
     throw error
   }
 }
+const getVideoWithScenes = async (): Promise<VideoWithScenes[]> => {
+  try {
+    await initialize()
+
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+    const allDocs = await collection.get({
+      include: ['metadatas', 'documents', 'embeddings'],
+      where: {
+        source: { $eq: '/Users/ilias/Downloads/episodes/the_junior_dev_struggle_is_real.mp4' },
+      },
+    })
+
+    const videosDict: Record<string, VideoWithScenes> = {}
+
+    if (allDocs && allDocs.metadatas && allDocs.ids) {
+      for (let i = 0; i < allDocs.metadatas.length; i++) {
+        const metadata = allDocs.metadatas[i]
+        if (!metadata) continue
+
+        const source = metadata.source?.toString()
+        if (!source) {
+          continue
+        }
+
+        if (!videosDict[source]) {
+          videosDict[source] = {
+            source,
+            duration: parseFloat(metadata.duration?.toString() || '0.00'),
+            aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+            camera: metadata.camera?.toString() || 'N/A',
+            category: metadata.category?.toString() || 'Uncategorized',
+            createdAt: metadata.createdAt?.toString() || 'N/A',
+            scenes: [],
+            sceneCount: 0,
+            thumbnailUrl: metadata.thumbnailUrl?.toString(),
+          }
+        }
+
+        const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
+        videosDict[source].scenes.push(scene)
+      }
+    }
+
+    const videosList: VideoWithScenes[] = []
+    for (const video of Object.values(videosDict)) {
+      video.scenes.sort((a, b) => a.startTime - b.startTime)
+      video.sceneCount = video.scenes.length
+      videosList.push(video)
+    }
+
+    videosList.sort((a, b) => a.source.localeCompare(b.source))
+
+    return videosList
+  } catch (error) {
+    console.error('Error getting all videos with scenes:', error)
+    throw error
+  }
+}
 const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Scene[]> => {
   try {
     await initialize()
@@ -330,7 +390,6 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
 }
 
 async function getByVideoSource(videoSource: string): Promise<Scene[]> {
-
   try {
     await initialize()
     if (!collection) {
@@ -411,5 +470,6 @@ export {
   filterExistingVideos,
   updateDocuments,
   updateMetadata,
-  getByVideoSource
+  getByVideoSource,
+  getVideoWithScenes,
 }
