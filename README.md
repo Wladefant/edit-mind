@@ -4,6 +4,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Made with Electron](https://img.shields.io/badge/Built%20with-Electron-blue.svg)](https://www.electronjs.org/)
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg)](https://www.trychroma.com/)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-☕-ffdd00?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/iliashaddad_dev)
 
 > ⚠️ **Development Status:** Edit Mind is currently in **active development** and **not yet production-ready**.  
 > Expect incomplete features and occasional bugs. We welcome contributors to help us reach **v1.0**!
