@@ -1,6 +1,5 @@
 import type { Scene } from '@shared/types/scene'
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
 
 interface CustomVideoPlayerProps {
   source: string
@@ -128,29 +127,11 @@ export function CustomVideoPlayer({
                 className="relative flex-1 rounded-sm overflow-hidden"
                 style={{ width: `${width}%` }}
               >
-                <div className="absolute inset-0 bg-white/20 dark:bg-white/10" />
-
-                <motion.div
-                  className="absolute left-0 top-0 h-full bg-white"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${sceneProgress}%`, opacity: active ? 1 : 0.7 }}
-                  transition={{
-                    type: 'spring',
-                    stiffness: 120,
-                    damping: 20,
-                    mass: 0.4,
-                  }}
+                <div className="absolute inset-0 bg-white/25" />
+                <div
+                  className="absolute left-0 top-0 h-full bg-white transition-all duration-100"
+                  style={{ width: `${sceneProgress}%`, opacity: active ? 0.9 : 0.7 }}
                 />
-
-                {active && (
-                  <motion.div
-                    className="absolute inset-0 bg-white/20 blur-sm"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.3 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                  />
-                )}
               </div>
             )
           })}
