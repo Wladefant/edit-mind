@@ -63,11 +63,11 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
       </div>
 
       <nav className="shrink-0 p-4 space-y-1">
-        <Link isCollapsed={isCollapsed} icon={<Home className="w-5 h-5" />} to="/app/index" label="Home" />
+        <Link isCollapsed={isCollapsed} icon={<Home className="w-5 h-5" />} to="/app/home" label="Home" />
         <Link
           isCollapsed={isCollapsed}
           icon={<MessageSquare className="w-5 h-5" />}
-          to="/app/prompt/index"
+          to="/app/prompt"
           label="New Chat"
         />
       </nav>
@@ -84,7 +84,7 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
                       key={chat.id}
                       isCollapsed={isCollapsed}
                       icon={<MessageSquare className="w-5 h-5" />}
-                      to={`/app/chat/${chat.id}`}
+                      to={`/app/prompt/${chat.id}`}
                       label={chat.title || 'Untitled Chat'}
                     />
                   ))}

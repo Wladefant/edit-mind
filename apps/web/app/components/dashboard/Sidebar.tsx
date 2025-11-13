@@ -52,7 +52,7 @@ export function Sidebar({ isCollapsed = false, setIsCollapsed }: SidebarProps) {
         <Link
           isCollapsed={isCollapsed}
           icon={<MessageSquare className="w-5 h-5" />}
-          to="/app/prompt/index"
+          to="/app/prompt"
           label="New Chat"
         />
       </nav>

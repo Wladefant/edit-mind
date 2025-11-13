@@ -11,8 +11,8 @@ export function JobsGrid({ jobs }: { jobs: Job[] }) {
     setMounted(true)
   }, [])
 
-  const featuredJob = jobs.find(j => j.status === 'processing') || jobs[0]
-  const otherJobs = jobs.filter(j => j.id !== featuredJob?.id).slice(0, 5)
+  const featuredJob = jobs.find((j) => j.status === 'processing') || jobs[0]
+  const otherJobs = jobs.filter((j) => j.id !== featuredJob?.id)
 
   if (!featuredJob) return null
 
@@ -40,7 +40,7 @@ export function JobsGrid({ jobs }: { jobs: Job[] }) {
           </motion.div>
         ))}
 
-        {otherJobs.slice(2, 5).map((job, index) => (
+        {otherJobs.slice(2, otherJobs.length).map((job, index) => (
           <motion.div
             key={job.id}
             initial={{ opacity: 0, y: 20 }}
