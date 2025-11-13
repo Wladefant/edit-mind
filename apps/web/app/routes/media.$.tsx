@@ -35,10 +35,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
       const buffer = Buffer.alloc(chunkSize)
       const fd = fs.openSync(decodedPath, 'r')
-      fs.readSync(fd, buffer, 0, chunkSize, start)
+      const uint8Array = new Uint8Array(buffer)
+
+      fs.readSync(fd, uint8Array, 0, chunkSize, start)
       fs.closeSync(fd)
 
-      return new Response(buffer, {
+      return new Response(uint8Array, {
         status: 206,
         headers: {
           'Content-Range': `bytes ${start}-${end}/${stats.size}`,
@@ -51,8 +53,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     }
 
     const fileBuffer = fs.readFileSync(decodedPath)
+    const uint8Array = new Uint8Array(fileBuffer)
 
-    return new Response(fileBuffer, {
+    return new Response(uint8Array, {
       status: 200,
       headers: {
         'Content-Type': contentType,
