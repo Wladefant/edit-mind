@@ -55,14 +55,17 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
         """
         Run YOLO object detection on a batch of frames.
         """
+        device = self.config['device']
+        use_half = torch.cuda.is_available() and "cuda" in device.lower()
+
         with torch.no_grad():
             return self.yolo_model.predict(
                 frames,
                 verbose=False,
-                device=self.config['device'],
+                device=device,
                 conf=self.config['yolo_confidence'],
                 iou=self.config['yolo_iou'],
-                half=True
+                half=use_half
             )
 
     def get_results(self) -> Any:
