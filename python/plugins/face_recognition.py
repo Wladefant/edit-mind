@@ -36,8 +36,8 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         logger.info(f"Loading known faces from: {self.known_faces_file}")
         
         if not os.path.exists(self.known_faces_file):
-            logger.warning(f"Known faces file not found: {self.known_faces_file}")
-            logger.warning("Face recognition will only detect unknown faces")
+            with open(self.known_faces_file, 'w', encoding='utf-8') as f:
+                json.dump([], f)
         else:
             self._log_file_metadata()
         
