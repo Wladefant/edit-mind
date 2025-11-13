@@ -1,44 +1,51 @@
-import 'dotenv/config'
-import { ChromaClient, Collection } from 'chromadb'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { ChromaClient, Collection, Where, WhereDocument } from 'chromadb'
 import { EmbeddingInput, CollectionStatistics } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
-import { SearchQuery } from '../types/search'
+import { SearchQuery, VideoMetadataSummary } from '../types/search'
 import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
-
-import { GEMINI_API_KEY, CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, EMBEDDING_MODEL } from '../constants'
+import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME } from '../constants'
 
 let client: ChromaClient | null = null
 let collection: Collection | null = null
 
+const initialize = async (name: string = COLLECTION_NAME): Promise<void> => {
+  if (client && collection) return
+
+  try {
+    client = new ChromaClient({
+      path: `http://${CHROMA_HOST}:${CHROMA_PORT}`,
+    })
+
+    await client.heartbeat()
+
+    collection = await client.getOrCreateCollection({
+      name,
+      embeddingFunction: undefined,
+    })
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        status: 'error',
+        message: `Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+        hint: 'Make sure ChromaDB server is running. Start it with: docker run -p 8000:8000 chromadb/chroma',
+      })
+    )
+    throw error
+  }
+}
+
 async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
   try {
     await initialize()
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY environment variable not set.')
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL })
+    if (!collection) throw new Error('Collection not initialized')
 
-    const ids: string[] = []
-    const embeddings: number[][] = []
-    const metadatas: Record<string, any>[] = []
-    const documentTexts: string[] = []
+    const ids = documents.map((d) => d.id)
+    const metadatas = documents.map((d) => d.metadata || {})
+    const documentTexts = documents.map((d) => d.text)
 
-    for (const doc of documents) {
-      const result = await model.embedContent(doc.text)
-      const embedding = result.embedding
-
-      ids.push(doc.id)
-      embeddings.push(embedding.values)
-      metadatas.push(doc.metadata || {})
-      documentTexts.push(doc.text)
-    }
-
-    await collection?.add({
+    await collection.add({
       ids,
-      embeddings,
       metadatas,
       documents: documentTexts,
     })
@@ -87,34 +94,6 @@ async function getStatistics(): Promise<CollectionStatistics> {
   }
 }
 
-const initialize = async (): Promise<void> => {
-  if (client && collection) {
-    return
-  }
-
-  try {
-    client = new ChromaClient({
-      path: `http://${CHROMA_HOST}:${CHROMA_PORT}`,
-    })
-
-    await client.heartbeat()
-
-    collection = await client.getOrCreateCollection({
-      name: COLLECTION_NAME,
-      embeddingFunction: undefined,
-    })
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        status: 'error',
-        message: `Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
-        hint: 'Make sure ChromaDB server is running. Start it with: docker run -p 8000:8000 chromadb/chroma',
-      })
-    )
-    throw error
-  }
-}
-
 const getAllVideos = async (): Promise<Video[]> => {
   try {
     await initialize()
@@ -154,125 +133,75 @@ const getAllVideos = async (): Promise<Video[]> => {
     throw error
   }
 }
-const getAllVideosWithScenes = async (): Promise<VideoWithScenes[]> => {
-  try {
-    await initialize()
+const getAllVideosWithScenes = async (
+  limit = 20,
+  offset = 0
+): Promise<{ videos: VideoWithScenes[]; allSources: string[] }> => {
+  await initialize()
+  if (!collection) throw new Error('Collection not initialized')
 
-    if (!collection) {
-      throw new Error('Collection not initialized')
-    }
+  const allSources = await getUniqueVideoSources()
+  const paginatedSources = allSources.slice(offset, offset + limit)
 
-    const allDocs = await collection.get({
-      include: ['metadatas', 'documents', 'embeddings'],
-    })
+  const allDocs = await collection.get({
+    where: { source: { $in: paginatedSources } },
+    include: ['metadatas', 'documents', 'embeddings'],
+  })
 
-    const videosDict: Record<string, VideoWithScenes> = {}
+  const videosDict: Record<string, VideoWithScenes> = {}
 
-    if (allDocs && allDocs.metadatas && allDocs.ids) {
-      for (let i = 0; i < allDocs.metadatas.length; i++) {
-        const metadata = allDocs.metadatas[i]
-        if (!metadata) continue
+  for (let i = 0; i < allDocs.metadatas.length; i++) {
+    const metadata = allDocs.metadatas[i]
+    if (!metadata) continue
 
-        const source = metadata.source?.toString()
-        if (!source) {
-          continue
-        }
+    // Normalize source (avoid ./, whitespace, case issues)
+    const source = metadata.source
+      ?.toString()
+      .trim()
+      .replace(/^\.?\//, '')
+    if (!source) continue
 
-        if (!videosDict[source]) {
-          videosDict[source] = {
-            source,
-            duration: parseFloat(metadata.duration?.toString() || '0.00'),
-            aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
-            camera: metadata.camera?.toString() || 'N/A',
-            category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || 'N/A',
-            scenes: [],
-            sceneCount: 0,
-            thumbnailUrl: metadata.thumbnailUrl?.toString(),
-          }
-        }
-
-        const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
-        videosDict[source].scenes.push(scene)
+    if (!videosDict[source]) {
+      videosDict[source] = {
+        source,
+        duration: parseFloat(metadata.duration?.toString() || '0.00'),
+        aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+        camera: metadata.camera?.toString() || 'N/A',
+        category: metadata.category?.toString() || 'Uncategorized',
+        createdAt: metadata.createdAt?.toString() || new Date().toISOString(),
+        scenes: [],
+        sceneCount: 0,
+        thumbnailUrl: metadata.thumbnailUrl?.toString(),
       }
     }
 
-    const videosList: VideoWithScenes[] = []
-    for (const video of Object.values(videosDict)) {
-      video.scenes.sort((a, b) => a.startTime - b.startTime)
-      video.sceneCount = video.scenes.length
-      videosList.push(video)
-    }
-
-    videosList.sort((a, b) => a.source.localeCompare(b.source))
-
-    return videosList
-  } catch (error) {
-    console.error('Error getting all videos with scenes:', error)
-    throw error
+    const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
+    videosDict[source].scenes.push(scene)
   }
-}
-const getVideoWithScenes = async (): Promise<VideoWithScenes[]> => {
-  try {
-    await initialize()
 
-    if (!collection) {
-      throw new Error('Collection not initialized')
-    }
-    const allDocs = await collection.get({
-      include: ['metadatas', 'documents', 'embeddings'],
-      where: {
-        source: { $eq: '/Users/ilias/Downloads/episodes/the_junior_dev_struggle_is_real.mp4' },
+  const videosList = Object.values(videosDict).map((video) => {
+    video.scenes.sort((a, b) => a.startTime - b.startTime)
+    video.sceneCount = video.scenes.length
+    return video
+  })
+
+  // Deduplicate (safety measure) & sort by creation date
+  const uniqueVideos = Object.values(
+    videosList.reduce(
+      (acc, video) => {
+        acc[video.source] = video
+        return acc
       },
-    })
+      {} as Record<string, VideoWithScenes>
+    )
+  )
 
-    const videosDict: Record<string, VideoWithScenes> = {}
+  uniqueVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-    if (allDocs && allDocs.metadatas && allDocs.ids) {
-      for (let i = 0; i < allDocs.metadatas.length; i++) {
-        const metadata = allDocs.metadatas[i]
-        if (!metadata) continue
-
-        const source = metadata.source?.toString()
-        if (!source) {
-          continue
-        }
-
-        if (!videosDict[source]) {
-          videosDict[source] = {
-            source,
-            duration: parseFloat(metadata.duration?.toString() || '0.00'),
-            aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
-            camera: metadata.camera?.toString() || 'N/A',
-            category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || 'N/A',
-            scenes: [],
-            sceneCount: 0,
-            thumbnailUrl: metadata.thumbnailUrl?.toString(),
-          }
-        }
-
-        const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
-        videosDict[source].scenes.push(scene)
-      }
-    }
-
-    const videosList: VideoWithScenes[] = []
-    for (const video of Object.values(videosDict)) {
-      video.scenes.sort((a, b) => a.startTime - b.startTime)
-      video.sceneCount = video.scenes.length
-      videosList.push(video)
-    }
-
-    videosList.sort((a, b) => a.source.localeCompare(b.source))
-
-    return videosList
-  } catch (error) {
-    console.error('Error getting all videos with scenes:', error)
-    throw error
-  }
+  return { videos: uniqueVideos, allSources }
 }
-const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Scene[]> => {
+
+const queryCollection = async (query: SearchQuery, nResults = 100): Promise<VideoWithScenes[]> => {
   try {
     await initialize()
 
@@ -280,7 +209,7 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
       throw new Error('Collection not initialized')
     }
 
-    const conditions: Record<string, any>[] = []
+    const conditions: Where[] = []
 
     if (query.aspect_ratio) {
       const aspectRatioValues = Array.isArray(query.aspect_ratio) ? query.aspect_ratio : [query.aspect_ratio]
@@ -293,69 +222,77 @@ const queryCollection = async (query: SearchQuery, nResults = 1000): Promise<Sce
     if (query.shot_type) {
       conditions.push({ shot_type: query.shot_type })
     }
+    if (query.faces && query.faces.length > 0) {
+      conditions.push({ faces: { $in: query.faces.map((f) => f.toLowerCase()) } })
+    }
+    if (query.objects && query.objects.length > 0) {
+      conditions.push({ objects: { $in: query.objects.map((o) => o.toLowerCase()) } })
+    }
+    if (query.emotions && query.emotions.length > 0) {
+      conditions.push({ emotions: { $in: query.emotions.map((e) => e.toLowerCase()) } })
+    }
+    if (query.transcriptionQuery) {
+      conditions.push({ transcription: { $in: [query.transcriptionQuery] } })
+    }
+    if (query.detectedText) {
+      conditions.push({ detectedText: { $in: [query.detectedText] } })
+    }
 
-    let whereClause: Record<string, any> = {}
+    let whereClause: Where | WhereDocument = {}
 
     if (conditions.length === 1) {
       whereClause = conditions[0]
     } else if (conditions.length > 1) {
       whereClause = { $and: conditions }
     }
-    let result
-    if (conditions.length === 0) {
-      result = await collection.get({
-        include: ['metadatas', 'documents'],
-      })
-    } else {
-      result = await collection.get({
-        where: whereClause,
-        limit: nResults,
-        include: ['metadatas', 'documents', 'embeddings'],
-      })
+
+    const result = await collection.get({
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+      limit: nResults,
+      include: ['metadatas', 'documents', 'embeddings'],
+    })
+
+    const videosDict: Record<string, VideoWithScenes> = {}
+
+    if (result && result.metadatas && result.ids) {
+      for (let i = 0; i < result.metadatas.length; i++) {
+        const metadata = result.metadatas[i]
+        if (!metadata) continue
+
+        const source = metadata.source?.toString()
+        if (!source) {
+          continue
+        }
+
+        if (!videosDict[source]) {
+          videosDict[source] = {
+            source,
+            duration: parseFloat(metadata.duration?.toString() || '0.00'),
+            aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+            camera: metadata.camera?.toString() || 'N/A',
+            category: metadata.category?.toString() || 'Uncategorized',
+            createdAt: metadata.createdAt?.toString() || 'N/A',
+            scenes: [],
+            sceneCount: 0,
+            thumbnailUrl: metadata.thumbnailUrl?.toString(),
+          }
+        }
+
+        const scene: Scene = metadataToScene(metadata, result.ids[i])
+        videosDict[source].scenes.push(scene)
+      }
     }
 
-    let filteredScenes: Scene[] = result.metadatas.map((metadata, index) =>
-      metadataToScene(metadata, result.ids![index])
-    )
-
-    if (result.metadatas && result.metadatas.length > 0 && result.ids && result.ids.length > 0) {
-      filteredScenes = result.metadatas
-        .map((metadata, index) => metadataToScene(metadata, result.ids![index]))
-        .filter((scene: Scene) => {
-          let matches = true
-
-          // Filter by faces
-          if (query.faces && query.faces.length > 0) {
-            const sceneFaces = scene.faces.map((f) => f.toLowerCase())
-            matches = matches && query.faces.some((qFace) => sceneFaces.includes(qFace.toLowerCase()))
-          }
-
-          // Filter by objects
-          if (query.objects && query.objects.length > 0) {
-            const sceneObjects = scene.objects.map((o) => o.toLowerCase())
-            matches = matches && query.objects.some((qObject) => sceneObjects.includes(qObject.toLowerCase()))
-          }
-
-          // Filter by emotions
-          if (query.emotions && query.emotions.length > 0) {
-            const sceneEmotions = scene.emotions.map((e) => e.emotion.toLowerCase())
-            matches = matches && query.emotions.some((qEmotion) => sceneEmotions.includes(qEmotion.toLowerCase()))
-          }
-
-          // Filter by transcription query
-          if (query.transcriptionQuery) {
-            matches = matches && scene.transcription.toLowerCase().includes(query.transcriptionQuery.toLowerCase())
-          }
-          // Filter by detected text query
-          if (query.detectedText) {
-            matches = matches && scene.detectedText.includes(query.detectedText.toLowerCase())
-          }
-
-          return matches
-        })
+    const videosList: VideoWithScenes[] = []
+    for (const video of Object.values(videosDict)) {
+      video.scenes.sort((a, b) => a.startTime - b.startTime)
+      video.sceneCount = video.scenes.length
+      videosList.push(video)
     }
 
-    return filteredScenes.slice(0, nResults)
+    videosList.sort((a, b) => a.source.localeCompare(b.source))
+
+    return videosList
   } catch (error) {
     console.error('Error querying collection:', error)
     throw error
@@ -433,23 +370,13 @@ async function updateDocuments(scene: Scene): Promise<void> {
       return
     }
 
-    const currentMetadata = metadataToScene(existing.metadatas?.[0], scene.id)
-    const currentDocument = existing.documents?.[0] || ''
-    const currentEmbedding = existing.embeddings?.[0]
-
-    const newMetadata: Scene = scene ? { ...currentMetadata, ...scene } : currentMetadata
-
-    await collection.delete({ ids: [scene.id] })
-
-    await collection.add({
+    await collection.update({
       ids: [scene.id],
-      embeddings: [currentEmbedding],
       metadatas: [
         {
-          ...sceneToVectorFormat(newMetadata, 1).metadata,
+          ...sceneToVectorFormat(scene, scene.id).metadata,
         },
       ],
-      documents: [currentDocument],
     })
   } catch (error) {
     console.error('Error updating documents:', error)
@@ -457,9 +384,169 @@ async function updateDocuments(scene: Scene): Promise<void> {
   }
 }
 
+async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
+  await initialize()
+  if (!collection) throw new Error('Collection not initialized')
+
+  try {
+    const allDocs = await collection.get({
+      include: ['metadatas'],
+    })
+
+    const facesCount: Record<string, number> = {}
+    const colorsCount: Record<string, number> = {}
+    const emotionsCount: Record<string, number> = {}
+    const shotTypesCount: Record<string, number> = {}
+    const objectsCount: Record<string, number> = {}
+    const cameraCount: Record<string, number> = {}
+
+    allDocs.metadatas?.forEach((metadata) => {
+      if (!metadata) return
+      const scene = metadataToScene(metadata, '')
+
+      // Faces
+      scene.faces?.forEach((f: string) => {
+        const name = f.toLowerCase()
+        facesCount[name] = (facesCount[name] || 0) + 1
+      })
+
+      // Colors
+      scene.colors?.forEach((c: string) => {
+        const name = c.toLowerCase()
+        colorsCount[name] = (colorsCount[name] || 0) + 1
+      })
+
+      // Emotions
+      scene.emotions?.forEach((e: string) => {
+        const name = e.toLowerCase()
+        emotionsCount[name] = (emotionsCount[name] || 0) + 1
+      })
+
+      // Shot types
+      if (scene.shot_type) {
+        const name = scene.shot_type.toLowerCase()
+        shotTypesCount[name] = (shotTypesCount[name] || 0) + 1
+      }
+      if (scene.camera) {
+        const name = scene.camera.toLowerCase()
+        cameraCount[name] = (cameraCount[name] || 0) + 1
+      }
+
+      // Objects
+      scene.objects?.forEach((o: string) => {
+        const name = o.toLowerCase()
+        objectsCount[name] = (objectsCount[name] || 0) + 1
+      })
+    })
+
+    const getTop = (obj: Record<string, number>) =>
+      Object.entries(obj)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name]) => ({ name, count: 1 }))
+
+    return {
+      topFaces: getTop(facesCount),
+      topColors: getTop(colorsCount),
+      topEmotions: getTop(emotionsCount),
+      shotTypes: getTop(shotTypesCount),
+      topObjects: getTop(objectsCount),
+      cameras: getTop(cameraCount),
+    }
+  } catch (error) {
+    console.error('Error aggregating metadata from DB:', error)
+    throw error
+  }
+}
 async function updateMetadata(metadata: Scene): Promise<void> {
   await updateDocuments(metadata)
 }
+async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<VideoWithScenes[]> {
+  try {
+    await initialize()
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    if (sceneIds.length === 0) {
+      return []
+    }
+
+    // Get documents by scene IDs
+    const result = await collection.get({
+      ids: sceneIds,
+      include: ['metadatas', 'documents', 'embeddings'],
+    })
+
+    const videosDict: Record<string, VideoWithScenes> = {}
+
+    if (result && result.metadatas && result.ids) {
+      for (let i = 0; i < result.metadatas.length; i++) {
+        const metadata = result.metadatas[i]
+        if (!metadata) continue
+
+        const source = metadata.source?.toString()
+        if (!source) {
+          continue
+        }
+
+        if (!videosDict[source]) {
+          videosDict[source] = {
+            source,
+            duration: parseFloat(metadata.duration?.toString() || '0.00'),
+            aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+            camera: metadata.camera?.toString() || 'N/A',
+            category: metadata.category?.toString() || 'Uncategorized',
+            createdAt: metadata.createdAt?.toString() || 'N/A',
+            scenes: [],
+            sceneCount: 0,
+            thumbnailUrl: metadata.thumbnailUrl?.toString(),
+          }
+        }
+
+        const scene: Scene = metadataToScene(metadata, result.ids[i])
+        videosDict[source].scenes.push(scene)
+      }
+    }
+
+    const videosList: VideoWithScenes[] = []
+    for (const video of Object.values(videosDict)) {
+      video.scenes.sort((a, b) => a.startTime - b.startTime)
+      video.sceneCount = video.scenes.length
+      videosList.push(video)
+    }
+
+    videosList.sort((a, b) => a.source.localeCompare(b.source))
+
+    return videosList
+  } catch (error) {
+    console.error('Error getting videos with scenes by scene IDs:', error)
+    throw error
+  }
+}
+
+async function getCollectionCount(): Promise<number> {
+  await initialize()
+  return await collection!.count()
+}
+
+async function getUniqueVideoSources(): Promise<string[]> {
+  await initialize()
+  if (!collection) throw new Error('Collection not initialized')
+
+  const allDocs = await collection.get({ include: ['metadatas'] })
+
+  const uniqueSources = new Set<string>()
+  allDocs.metadatas?.forEach((metadata) => {
+    const source = metadata?.source
+      ?.toString()
+      .trim()
+      .replace(/^\.?\//, '')
+    if (source) uniqueSources.add(source)
+  })
+
+  return Array.from(uniqueSources)
+}
+
 export {
   embedDocuments,
   getStatistics,
@@ -471,5 +558,8 @@ export {
   updateDocuments,
   updateMetadata,
   getByVideoSource,
-  getVideoWithScenes,
+  getVideosMetadataSummary,
+  getVideoWithScenesBySceneIds,
+  getCollectionCount,
+  getUniqueVideoSources,
 }
