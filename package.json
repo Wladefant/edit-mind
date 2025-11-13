@@ -1,6 +1,6 @@
 {
   "name": "edit-mind",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-Powered Video Indexing and Search",
   "main": "./out/main/main.js",
   "license": "MIT",
@@ -12,15 +12,23 @@
     "type": "git",
     "url": "https://github.com/iliashad/edit-mind"
   },
+  "scripts": {
+    "postinstall": "pnpm prisma generate"
+  },
   "dependencies": {
-    "@prisma/client": "latest"
+    "@prisma/client": "6.19.0",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
-    "prisma": "latest"
+    "@types/node": "^22.0.0",
+    "prisma": "6.19.0",
+    "ts-node": "^10.9.2",
+    "typescript": "5.9.2"
   },
   "pnpm": {
     "overrides": {
-      "esbuild": "^0.21.5"
+      "esbuild": "^0.21.5",
+      "typescript": "5.9.2"
     }
   }
 }
