@@ -1,9 +1,9 @@
+import type { Scene } from '@shared/types/scene'
 import { useRef, useState, useEffect, useCallback } from 'react'
 
 interface CustomVideoPlayerProps {
   source: string
-  scenes?: any[]
-  poster?: string
+  scenes?: Scene[]
   title?: string
   defaultStartTime?: number
   onTimeUpdate: (time: number) => void
@@ -12,7 +12,6 @@ interface CustomVideoPlayerProps {
 export function CustomVideoPlayer({
   source,
   scenes = [],
-  poster,
   title,
   defaultStartTime,
   onTimeUpdate,
@@ -72,12 +71,12 @@ export function CustomVideoPlayer({
     v.currentTime = time
   }
   return (
-    <div className="relative w-full max-w-4xl rounded-xl overflow-hidden bg-black group">
+    <div className="relative w-full h-full max-w-4xl rounded-xl overflow-hidden bg-black group">
       <video
         ref={videoRef}
         src={source}
-        poster={poster}
-        className="w-full h-auto object-contain bg-black"
+        poster={'/thumbnails/' + scenes[0]?.thumbnailUrl}
+        className="w-full h-full object-cover bg-black object-center min-h-72"
         onClick={togglePlay}
       />
 
@@ -140,7 +139,7 @@ export function CustomVideoPlayer({
             >
               <div className="w-[180px] h-[100px] rounded-lg overflow-hidden border border-white/20 shadow-lg">
                 <img
-                  src={hoverScene.thumbnailUrl}
+                  src={'/thumbnails/' + hoverScene.thumbnailUrl}
                   alt={hoverScene.description}
                   className="w-full h-full object-cover"
                 />
