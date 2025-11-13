@@ -1,12 +1,15 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
+    "rootDir": "./",
+    "baseUrl": "./",
     "paths": {
       "@/*": ["./*"],
+      "@/app/*": ["./app/*"],
       "@/lib/*": ["./lib/*"],
       "@/resources/*": ["./resources/*"],
+      "@shared/*": ["../../packages/shared/*"]
     }
   },
   "files": [],
-  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
 }

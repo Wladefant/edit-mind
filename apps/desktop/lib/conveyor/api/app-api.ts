@@ -1,7 +1,7 @@
 import { ConveyorApi } from '@/lib/preload/shared'
-import { ExportedScene } from '@/lib/types/scene'
-import { VideoMetadataSummary } from '@/lib/types/search'
-import { SettingsConfig } from '@/lib/types/settings'
+import { ExportedScene } from '@shared/types/scene'
+import { VideoMetadataSummary } from '@shared/types/search'
+import { SettingsConfig } from '@shared/types/settings'
 
 export class AppApi extends ConveyorApi {
   version = () => this.invoke('version')

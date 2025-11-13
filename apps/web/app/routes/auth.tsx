@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { Outlet } from 'react-router'
+import { Outlet } from 'react-router';
 import { Sidebar } from '~/components/auth/Sidebar'
 
-export default function AuthLayout() { 
+export default function AuthLayout() {
   return (
     <div className="flex min-h-screen bg-white dark:bg-black font-['SF_Pro_Display','-apple-system','BlinkMacSystemFont','system-ui',sans-serif]">
       <Sidebar />
