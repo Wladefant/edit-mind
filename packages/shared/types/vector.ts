@@ -15,6 +15,15 @@ export interface FilterData {
     emotions?: string[]
   }
 }
+export interface Filters {
+  faces: string[]
+  objects: string[]
+  emotions: string[]
+  cameras: string[]
+  colors: string[]
+  locations: string[]
+  shotTypes: string[]
+}
 
 export interface EmbeddingInput {
   id: string
