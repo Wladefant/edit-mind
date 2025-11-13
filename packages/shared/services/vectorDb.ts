@@ -145,7 +145,7 @@ const getAllVideosWithScenes = async (
 
   const allDocs = await collection.get({
     where: { source: { $in: paginatedSources } },
-    include: ['metadatas', 'documents', 'embeddings'],
+    include: ['metadatas'],
   })
 
   const videosDict: Record<string, VideoWithScenes> = {}
@@ -154,7 +154,6 @@ const getAllVideosWithScenes = async (
     const metadata = allDocs.metadatas[i]
     if (!metadata) continue
 
-    // Normalize source (avoid ./, whitespace, case issues)
     const source = metadata.source
       ?.toString()
       .trim()
@@ -336,7 +335,7 @@ async function getByVideoSource(videoSource: string): Promise<Scene[]> {
     const result = await collection.get({
       where: {
         source: {
-          $in: [videoSource],
+          $eq: videoSource,
         },
       },
       include: ['metadatas'],
@@ -537,10 +536,7 @@ async function getUniqueVideoSources(): Promise<string[]> {
 
   const uniqueSources = new Set<string>()
   allDocs.metadatas?.forEach((metadata) => {
-    const source = metadata?.source
-      ?.toString()
-      .trim()
-      .replace(/^\.?\//, '')
+    const source = metadata?.source.toString()
     if (source) uniqueSources.add(source)
   })
 
