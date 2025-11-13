@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useLoaderData } from 'react-router'
+import { useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
 import { CustomVideoPlayer } from '~/components/video/CustomVideoPlayer'
 import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
-import { getByVideoSource } from '@shared/services/vectorDb'
+import { getByVideoSource, updateScenesSource } from '@shared/services/vectorDb'
 import { Sidebar } from '~/components/dashboard/Sidebar'
+import { existsSync } from 'fs'
+import { RelinkVideo } from '~/components/RelinkVideo'
+import { getUser } from '~/services/user.sever'
+import { prisma } from '~/services/database'
+import fs from 'fs/promises'
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url)
@@ -14,20 +19,82 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const scenes = await getByVideoSource(source)
+  const videoExist = existsSync(source)
 
   if (!scenes || scenes.length === 0) {
     throw new Response('Scenes not found', { status: 404 })
   }
 
-  return { scenes, source }
+  return { scenes, source, videoExist }
 }
 
+export async function action({ request }: { request: Request }) {
+  try {
+    const user = await getUser(request)
+    const data = await request.formData()
+    const oldSource = data.get('oldSource')?.toString()
+    const newSource = data.get('newSource')?.toString()
+
+    if (!user) return { success: false, error: 'No user authenticated' }
+    if (!newSource || !oldSource) return { success: false, error: 'No path provided' }
+
+    try {
+      await fs.access(newSource)
+
+      await prisma.job.updateMany({
+        where: { videoPath: oldSource },
+        data: { videoPath: newSource },
+      })
+
+      await updateScenesSource(oldSource, newSource)
+      return { success: true, redirectLink: `/app/videos?source=${newSource}` }
+    } catch {
+      return { success: false, error: 'Failed to access or create folder/video' }
+    }
+  } catch (error) {
+    console.error(error)
+    return { success: false, error: 'Failed to relink video' }
+  }
+}
+export const meta: MetaFunction<typeof loader> = ({ data }) => {
+  if (!data?.source) {
+    return [{ title: 'Video not found | Edit Mind' }]
+  }
+
+  const fileName = data.source.split('/').pop() || 'File'
+
+  return [
+    {
+      title: `${fileName} | Edit Mind`,
+    },
+  ]
+}
 export default function Video() {
   const data = useLoaderData<typeof loader>()
+  const relinkFetcher = useFetcher()
+  const navigate = useNavigate()
+
   const [defaultStartTime, setDefaultStartTime] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [activeScene, setActiveScene] = useState(data.scenes[0])
+  const [relinkModalOpen, setRelinkModalOpen] = useState(false)
+  const [relinkSuccess, setRelinkSuccess] = useState(false)
 
+  const onRelink = (oldSource: string, newSource: string) => {
+    relinkFetcher.submit({ oldSource, newSource }, { method: 'post', action: '/app/videos' })
+  }
+  useEffect(() => {
+    if (relinkFetcher.data) {
+      if ('redirectLink' in relinkFetcher.data) {
+        setRelinkModalOpen(false)
+        setRelinkSuccess(true)
+        navigate(relinkFetcher.data.redirectLink)
+      } else if ('error' in relinkFetcher.data) {
+        setRelinkSuccess(false)
+        alert(relinkFetcher.data.error)
+      }
+    }
+  }, [navigate, relinkFetcher])
   useEffect(() => {
     const time = Math.round(currentTime * 100) / 100
     const scene = data.scenes.find((scene) => time >= scene.startTime && time < scene.endTime)
@@ -90,13 +157,37 @@ export default function Video() {
         </section>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-2 flex max-h-full flex-col gap-4">
-            <CustomVideoPlayer
-              source={'/media/' + data.source}
-              scenes={data.scenes}
-              title={data.source}
-              defaultStartTime={defaultStartTime}
-              onTimeUpdate={setCurrentTime}
+            <RelinkVideo
+              isOpen={relinkModalOpen}
+              oldSource={data.source}
+              onClose={() => setRelinkModalOpen(false)}
+              onRelink={onRelink}
             />
+            {relinkSuccess && (
+              <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-lg text-green-800 dark:text-green-200">
+                Video has been successfully relinked!
+              </div>
+            )}
+
+            {!data.videoExist ? (
+              <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <span className="text-yellow-800 dark:text-yellow-200">Video file is missing. Please relink.</span>
+                <button
+                  onClick={() => setRelinkModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-full font-medium text-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Relink
+                </button>
+              </div>
+            ) : (
+              <CustomVideoPlayer
+                source={'/media/' + data.source}
+                scenes={data.scenes}
+                title={data.source}
+                defaultStartTime={defaultStartTime}
+                onTimeUpdate={setCurrentTime}
+              />
+            )}
 
             {activeScene && (
               <div className="rounded-xl border border-gray-300 dark:border-gray-800 bg-white/80 dark:bg-gray-900/60 backdrop-blur-md p-6 shadow-sm transition">
