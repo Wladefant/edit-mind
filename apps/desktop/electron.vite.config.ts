@@ -3,11 +3,11 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
-// Shared alias configuration
 const aliases = {
   '@/app': resolve(__dirname, 'app'),
   '@/lib': resolve(__dirname, 'lib'),
   '@/resources': resolve(__dirname, 'resources'),
+  '@shared': resolve(__dirname, '../../packages/shared'),
 }
 
 export default defineConfig({
@@ -17,11 +17,11 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
         },
-        external: ['node-whisper'],
       },
     },
     resolve: {
       alias: aliases,
+      extensions: ['.js', '.ts', '.jsx', '.tsx', '.json'],
     },
     plugins: [externalizeDepsPlugin()],
   },
@@ -31,7 +31,6 @@ export default defineConfig({
         input: {
           preload: resolve(__dirname, 'lib/preload/preload.ts'),
         },
-        external: ['node-whisper'],
       },
     },
     resolve: {

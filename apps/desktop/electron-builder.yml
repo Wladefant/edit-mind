@@ -1,4 +1,4 @@
-appId: com.guasam.era
+appId: com.iliahad.editmind
 productName: ElectronReactApp
 directories:
   buildResources: resources/build
