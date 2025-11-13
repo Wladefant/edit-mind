@@ -1,30 +1,54 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { onboardingSteps } from '../constants/onboarding'
 
 export function useOnboarding() {
-  const [currentStep, setCurrentStep] = useState(0)
   const navigate = useNavigate()
-
   const totalSteps = onboardingSteps.length
 
-  const handleNext = () => {
+  const [currentStep, setCurrentStep] = useState(0)
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState(false)
+
+  useEffect(() => {
+    const storedStatus = localStorage.getItem('onboarding_complete')
+    if (storedStatus === 'true') {
+      setIsOnboardingComplete(true)
+    }
+  }, [])
+
+  const completeOnboarding = useCallback(() => {
+    localStorage.setItem('onboarding_complete', 'true')
+    setIsOnboardingComplete(true)
+    navigate('/auth/login')
+  }, [navigate])
+
+  const handleNext = useCallback(() => {
     if (currentStep < totalSteps - 1) {
-      setCurrentStep(currentStep + 1)
+      setCurrentStep((prev) => prev + 1)
     } else {
-      navigate('/register')
+      completeOnboarding()
     }
-  }
+  }, [completeOnboarding, currentStep, totalSteps])
 
-  const handleSkip = () => {
-    navigate('/register')
-  }
 
-  const goToStep = (index: number) => {
-    if (index >= 0 && index < totalSteps) {
-      setCurrentStep(index)
-    }
-  }
+  const handleSkip = useCallback(() => {
+    completeOnboarding()
+  }, [completeOnboarding])
+
+  const goToStep = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < totalSteps) {
+        setCurrentStep(index)
+      }
+    },
+    [totalSteps]
+  )
+
+  const resetOnboarding = useCallback(() => {
+    localStorage.removeItem('onboarding_complete')
+    setIsOnboardingComplete(false)
+    setCurrentStep(0)
+  }, [])
 
   const isLastStep = currentStep === totalSteps - 1
 
@@ -36,5 +60,8 @@ export function useOnboarding() {
     onboardingSteps,
     isLastStep,
     totalSteps,
+    isOnboardingComplete,
+    completeOnboarding,
+    resetOnboarding,
   }
 }

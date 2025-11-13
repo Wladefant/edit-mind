@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react'
 import { SessionContext, type Session } from '~/hooks/useSession'
 
 interface SessionProviderProps {
@@ -14,10 +14,5 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     }
   )
 
-
-  return (
-    <SessionContext.Provider value={{ session, setSession }}>
-      {children}
-    </SessionContext.Provider>
-  )
+  return <SessionContext.Provider value={{ session, setSession }}>{children}</SessionContext.Provider>
 }
