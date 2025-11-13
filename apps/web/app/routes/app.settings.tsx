@@ -16,10 +16,10 @@ export async function loader() {
       include: {
         jobs: {
           select: {
-            fileSize: true
-          }
-        }
-      }
+            fileSize: true,
+          },
+        },
+      },
     })
     return { folders }
   } catch (error) {
@@ -32,7 +32,7 @@ export const meta: MetaFunction = () => [{ title: 'Settings | Edit Mind' }]
 
 export default function SettingsPage() {
   const data = useLoaderData<typeof loader>()
-  const [folders, setFolders] = useState<Folder[]>(data?.folders)
+  const [folders, setFolders] = useState(data?.folders || [])
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null)
@@ -88,15 +88,7 @@ export default function SettingsPage() {
     setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'scanning' as FolderStatus } : f)))
 
     try {
-      // Call backend API to rescan folder
       await fetch(`/api/folders/${id}/rescan`, { method: 'POST' })
-
-      // Simulate scanning completion
-      setTimeout(() => {
-        setFolders((prev) =>
-          prev.map((f) => (f.id === id ? { ...f, status: 'indexed' as FolderStatus, lastScanned: 'Just now' } : f))
-        )
-      }, 3000)
     } catch (error) {
       console.error('Failed to rescan folder:', error)
       setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'error' as FolderStatus } : f)))
@@ -128,6 +120,12 @@ export default function SettingsPage() {
         return 'Idle'
     }
   }
+  const totalSize = folders?.reduce((acc, folder) => {
+    const folderSize = folder.jobs?.reduce((sum, job) => sum + (job.fileSize || 0), 0)
+    return acc + folderSize
+  }, 0)
+
+  const totalSizeStr = (totalSize / 1024 ** 3).toFixed(1)
 
   return (
     <DashboardLayout sidebar={<Sidebar />}>
@@ -154,7 +152,7 @@ export default function SettingsPage() {
             {
               icon: <HardDrive className="w-6 h-6 text-purple-600 dark:text-purple-400" />,
               label: 'Total Size',
-              value: folders.reduce((acc, f) => acc + (f.size || 0), 0).toFixed(1) + ' GB',
+              value: totalSizeStr + ' GB',
               bg: 'bg-transparent',
             },
           ].map((stat, i) => (
