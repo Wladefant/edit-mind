@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Job" ADD COLUMN     "fileSize" INTEGER NOT NULL DEFAULT 0;

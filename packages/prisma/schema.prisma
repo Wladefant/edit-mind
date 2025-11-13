@@ -1,10 +1,15 @@
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
+}
+
+enum UserRole {
+  admin
+  user
 }
 
 model User {
@@ -12,22 +17,93 @@ model User {
   email     String   @unique
   name      String
   password  String
+  role      UserRole @default(user)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model Folder {
-  id        String   @id @default(cuid())
-  path      String   @unique
-  createdAt DateTime @default(now())
+  chats     Chat[]
+  folders   Folder[]
   jobs      Job[]
 }
 
+
+enum FolderStatus {
+  idle
+  scanning
+  indexed
+  error
+}
+
+model Folder {
+  id          String       @id @default(cuid())
+  path        String       @unique
+  status      FolderStatus @default(idle)
+  videoCount  Int?       
+  lastScanned DateTime?
+  size        Int?  
+  createdAt   DateTime     @default(now())
+  jobs        Job[]
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum JobStatus {
+  pending
+  processing
+  done
+  error
+}
+enum JobStage {
+  starting
+  transcribing
+  frame_analysis
+  creating_scenes
+  embedding
+}
+
+
 model Job {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   videoPath  String
-  status     String   @default("pending")
-  createdAt  DateTime @default(now())
+  thumbnailPath String?
+  fileSize Int @default(0)
+  overallProgress  Int @default(0)
+  progress   Int @default(0)
+  stage      JobStage  @default(starting)
+  status     JobStatus @default(pending)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now())
   folderId   String?
-  folder     Folder?  @relation(fields: [folderId], references: [id])
+  folder     Folder?   @relation(fields: [folderId], references: [id])
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+enum Sender {
+  user
+  assistant
+}
+
+
+model Chat {
+  id        String        @id @default(cuid())
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id                String          @id @default(cuid())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  sender            Sender
+  text              String
+  chatId            String
+  chat              Chat            @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  outputSceneIds    String[]        @default([])
+
+  @@index([chatId, createdAt])
 }

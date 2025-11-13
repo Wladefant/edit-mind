@@ -1,0 +1,37 @@
+{
+  "name": "prisma",
+  "version": "0.1.1",
+  "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "ilias",
+    "url": "https://github.com/iliashad"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iliashad/edit-mind"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "prisma db seed",
+    "studio": "prisma studio",
+    "format": "prisma format",
+    "validate": "prisma validate"
+  },
+  "prisma": {
+    "seed": "ts-node seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "prisma": "6.19.0",
+    "ts-node": "^10.9.2",
+    "typescript": "5.9.2"
+  }
+}

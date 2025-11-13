@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Folder" ALTER COLUMN "lastScanned" DROP NOT NULL,
+ALTER COLUMN "size" DROP NOT NULL,
+ALTER COLUMN "videoCount" DROP NOT NULL;
