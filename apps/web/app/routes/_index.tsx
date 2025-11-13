@@ -1,0 +1,32 @@
+import { useEffect } from 'react'
+import { redirect, useLoaderData, useNavigate, type LoaderFunctionArgs } from 'react-router'
+import { useOnboarding } from '~/hooks/useOnboarding'
+import { getUser } from '~/services/user.sever'
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const user = await getUser(request)
+
+  if (!user) {
+    return { user: null }
+  }
+
+  return redirect('/app/home')
+}
+
+export default function IndexPage() {
+  const { user } = useLoaderData<typeof loader>()
+  const navigate = useNavigate()
+  const { isOnboardingComplete } = useOnboarding()
+
+  useEffect(() => {
+    if (!user) {
+      if (isOnboardingComplete) {
+        navigate('/auth/login')
+      } else {
+        navigate('/onboarding')
+      }
+    }
+  }, [user, navigate, isOnboardingComplete])
+
+  return null
+}
