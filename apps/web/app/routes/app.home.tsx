@@ -2,7 +2,8 @@ import { Link, useLoaderData, useNavigate } from 'react-router'
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
 import { getAllVideosWithScenes } from '@shared/services/vectorDb'
-import { Sidebar } from '~/components/dashboard/Sidebar'
+import { FilterSidebar } from '~/components/videos/FilterSidebar'
+import { useState } from 'react'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Dashboard | Edit Mind' }]
@@ -14,19 +15,32 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const limit = 20
   const offset = (page - 1) * limit
 
-  const { videos, allSources } = await getAllVideosWithScenes(limit, offset)
+  const { videos, allSources, filters } = await getAllVideosWithScenes(limit, offset)
   const total = allSources.length
-  return { videos, page, limit, total }
+  return { videos, page, limit, total, filters }
 }
 
 export default function Dashboard() {
-  const { videos, total, page, limit } = useLoaderData<typeof loader>()
+  const { videos, total, page, limit, filters } = useLoaderData<typeof loader>()
   const navigate = useNavigate()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({})
 
   const totalPages = Math.ceil(total / limit)
 
   return (
-    <DashboardLayout sidebar={<Sidebar />}>
+    <DashboardLayout
+      sidebar={
+        <FilterSidebar
+          filters={filters}
+          selectedFilters={selectedFilters}
+          onFilterChange={setSelectedFilters}
+          onClose={() => setIsSidebarOpen(false)}
+          isCollapsed={isSidebarOpen}
+          setIsCollapsed={setIsSidebarOpen}
+        />
+      }
+    >
       <main className="max-w-7xl mx-auto px-8 py-20">
         <div className="text-center">
           <h1 className="text-6xl font-semibold text-black dark:text-white tracking-tight mb-5 leading-tight">
@@ -72,7 +86,9 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              <h3 className="text-2xl font-semibold text-black dark:text-white mb-8">My Videos</h3>
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-semibold text-black dark:text-white">My Videos</h3>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                 {videos.map((video) => (
                   <Link
