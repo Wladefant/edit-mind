@@ -9,11 +9,6 @@ export function Sidebar() {
         transition={{ duration: 0.8, ease: 'easeOut' }}
         className="absolute inset-0"
       >
-        <img
-          src="https://images.unsplash.com/photo-1688110395685-ce24e1949bca?w=1200&q=80"
-          alt="AI-powered search"
-          className="w-full h-full object-cover"
-        />
         <div className="absolute inset-0 bg-linear-to-tr from-black/90 via-black/40 to-transparent" />
       </motion.div>
 
@@ -49,7 +44,7 @@ export function Sidebar() {
               <span>100% local AI processing</span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"
