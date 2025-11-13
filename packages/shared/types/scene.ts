@@ -1,5 +1,5 @@
 import z from 'zod'
-import { exportedSceneSchema, sceneSchema } from '../conveyor/schemas/app-schema'
+import { exportedSceneSchema, sceneSchema } from '../schemas'
 
 export type Scene = z.infer<typeof sceneSchema>
 
