@@ -388,6 +388,10 @@ class VideoAnalyzer:
         """Execute complete video analysis pipeline."""
         start_time = time.time()
         self.start_time = start_time
+        
+        # Call progress callback at the start (0% progress)
+        if self.progress_callback:
+            self.progress_callback(0, 0.0, 0, 0)
 
         try:
             if not Path(self.video_path).exists():
@@ -433,7 +437,6 @@ class VideoAnalyzer:
             traceback.print_exc(file=sys.stderr)
             
             return self._create_error_result(str(e))
-
     def _setup_plugins(self) -> None:
         """Initialize all plugins sequentially."""
         if self.config.lazy_plugin_init and self.plugin_definitions:
@@ -441,11 +444,9 @@ class VideoAnalyzer:
                 logger.info("Initializing plugins sequentially...")
                 for name, cls, config_dict in self.plugin_definitions:
                     try:
-                        logger.info(f"  Initializing {name}...")
                         plugin = cls(config_dict)
                         plugin.setup()
                         self.plugins.append(plugin)
-                        logger.info(f"  ✓ {name} ready")
                     except Exception as e:
                         logger.error(f"  ✗ Failed to setup {name}: {e}")
             else:
@@ -481,7 +482,36 @@ class VideoAnalyzer:
         cap.release()
         
         with self._track_stage("streaming_analysis") as stage:
-            with tqdm(total=total_sampled, desc="  Processing", unit="frame", file=sys.stderr) as pbar:
+            # Custom progress bar class that calls our callback
+            class CallbackTqdm(tqdm):
+                def __init__(self, *args, callback=None, **kwargs):
+                    self.callback = callback
+                    self.start_time = time.time()
+                    super().__init__(*args, **kwargs)
+                
+                def update(self, n=1):
+                    result = super().update(n)
+                    if self.callback and self.total:
+                        try:
+                            elapsed = time.time() - self.start_time
+                            progress_percent = min(100.0, (self.n / self.total) * 100.0)
+                            self.callback(
+                                progress_percent,
+                                elapsed,
+                                float(self.n),
+                                float(self.total)
+                            )
+                        except Exception as e:
+                            logger.debug(f"Progress callback error: {e}")
+                    return result
+            
+            with CallbackTqdm(
+                total=total_sampled, 
+                desc="  Processing", 
+                unit="frame", 
+                file=sys.stderr,
+                callback=self.progress_callback
+            ) as pbar:
                 try:
                     frame_generator = self.frame_processor.extract_frames_streaming_generator(
                         self.video_path
@@ -542,14 +572,8 @@ class VideoAnalyzer:
             batch_results = self._process_micro_batch(batch)
             pbar.update(len(batch_results))
             self.frames_analyzed += len(batch_results)
-            
-            if self.progress_callback:
-                elapsed = time.time() - self.start_time
-                progress_percent = min(100.0, math.ceil((self.frames_analyzed / pbar.total) * 100.0))
-                self.progress_callback(
-                    progress_percent, elapsed, self.frames_analyzed, int(pbar.total)
-                )
-
+            # Progress callback is handled by pbar.update() now
+                
         except Exception as e:
             logger.error(f"Error processing batch at frame {frame_idx}: {e}")
         finally:
@@ -560,7 +584,7 @@ class VideoAnalyzer:
                 logger.debug("Final batch processed and cleaned up")
         
         return batch_results
-
+    
     def _cleanup_batch_frames(self, batch: List[Dict]) -> None:
         """Delete all frame arrays from memory."""
         for frame_data in batch:
@@ -819,11 +843,6 @@ def main():
         config.output_dir
     )
     
-    logger.info(f"Video: {args.video_file}")
-    logger.info(f"Output: {output_path}")
-    logger.info(f"Workers: {config.max_workers}")
-    logger.info(f"Buffer limit: {config.frame_buffer_limit} frames")
-    logger.info(f"Sample interval: {config.sample_interval_seconds}s")
 
     try:
         analyze_and_save(args.video_file, output_path, config)
