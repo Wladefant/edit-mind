@@ -1,5 +1,6 @@
 {
   "name": "web",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,16 +11,19 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "6.19.0",
     "@react-router/fs-routes": "^7.9.5",
     "@react-router/node": "^7.9.2",
     "@react-router/serve": "^7.9.2",
-    "bcryptjs": "^3.0.3",
+    "bcryptjs": "^2.4.3",
     "chromadb": "^3.1.1",
     "cross-env": "^10.1.0",
+    "date-fns": "^4.1.0",
     "framer-motion": "^12.23.24",
     "isbot": "^5.1.31",
     "lucide-react": "^0.541.0",
+    "nanoid": "^5.1.6",
+    "node-fetch": "^3.3.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-hook-form": "^7.66.0",
@@ -33,7 +37,7 @@
     "@react-router/dev": "^7.9.2",
     "@tailwindcss/postcss": "^4.1.16",
     "@tailwindcss/vite": "^4.1.13",
-    "@types/node": "^22",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
@@ -41,7 +45,7 @@
     "postcss": "^8.5.6",
     "prisma": "6.19.0",
     "tailwindcss": "^4.1.16",
-    "typescript": "^5.9.2",
+    "typescript": "5.9.2",
     "vite": "^5.2.0",
     "vite-tsconfig-paths": "^5.1.4"
   }
