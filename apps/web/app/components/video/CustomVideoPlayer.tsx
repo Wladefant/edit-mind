@@ -1,5 +1,6 @@
 import type { Scene } from '@shared/types/scene'
 import { useRef, useState, useEffect, useCallback } from 'react'
+import { motion } from 'framer-motion'
 
 interface CustomVideoPlayerProps {
   source: string
@@ -8,7 +9,6 @@ interface CustomVideoPlayerProps {
   defaultStartTime?: number
   onTimeUpdate: (time: number) => void
 }
-
 export function CustomVideoPlayer({
   source,
   scenes = [],
@@ -29,14 +29,20 @@ export function CustomVideoPlayer({
 
     const onLoaded = () => setDuration(v.duration || 0)
     const onTime = () => setCurrentTime(v.currentTime)
+    const onPause = () => setIsPlaying(false)
+    const onPlaying = () => setIsPlaying(true)
 
     v.addEventListener('loadedmetadata', onLoaded)
     v.addEventListener('timeupdate', onTime)
+    v.addEventListener('pause', onPause)
+    v.addEventListener('playing', onPlaying)
+
     return () => {
       v.removeEventListener('loadedmetadata', onLoaded)
       v.removeEventListener('timeupdate', onTime)
     }
   }, [])
+
   useEffect(() => {
     onTimeUpdate(currentTime)
     return () => onTimeUpdate(0)
@@ -65,30 +71,32 @@ export function CustomVideoPlayer({
     v.play()
     setIsPlaying(true)
   }
+
   const skipTo = (time: number) => {
     const v = videoRef.current
     if (!v) return
     v.currentTime = time
   }
+
   return (
-    <div className="relative w-full h-full max-w-4xl rounded-xl overflow-hidden bg-black group">
+    <div className="relative w-full h-[calc(100vh-30rem)] rounded-xl overflow-hidden bg-black group shadow-md">
       <video
         ref={videoRef}
         src={source}
         poster={'/thumbnails/' + scenes[0]?.thumbnailUrl}
-        className="w-full h-full object-cover bg-black object-center min-h-72"
+        className="w-full h-full object-contain md:object-cover bg-black"
         onClick={togglePlay}
       />
 
       {title && (
-        <div className="absolute top-4 left-4 text-white text-sm bg-black/40 px-3 py-1 rounded-lg backdrop-blur-sm">
+        <div className="absolute top-6 left-6 text-white text-sm bg-black/40 px-3 py-1 rounded-lg backdrop-blur-sm">
           {title}
         </div>
       )}
 
-      <div className="absolute bottom-0 z-100 w-full h-10 bg-linear-to-t from-black/80 via-black/20 to-transparent opacity-100 transition-opacity duration-300" />
+      <div className="absolute bottom-0 w-full h-20 bg-linear-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
 
-      <div className="absolute bottom-4 z-100 left-4 right-4 h-2 bg-transparent rounded-full flex items-center cursor-pointer progress-container">
+      <div className="absolute bottom-6 left-6 right-6 h-2 bg-transparent rounded-full flex items-center cursor-pointer progress-container">
         <div className="relative flex w-full h-full gap-1">
           {scenes.map((s, i) => {
             const width = ((s.endTime - s.startTime) / duration) * 100
@@ -120,18 +128,36 @@ export function CustomVideoPlayer({
                 className="relative flex-1 rounded-sm overflow-hidden"
                 style={{ width: `${width}%` }}
               >
-                <div className="absolute inset-0 bg-white/25" />
-                <div
-                  className="absolute left-0 top-0 h-full bg-white transition-all duration-100"
-                  style={{ width: `${sceneProgress}%`, opacity: active ? 0.9 : 0.7 }}
+                <div className="absolute inset-0 bg-white/20 dark:bg-white/10" />
+
+                <motion.div
+                  className="absolute left-0 top-0 h-full bg-white"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${sceneProgress}%`, opacity: active ? 1 : 0.7 }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 120,
+                    damping: 20,
+                    mass: 0.4,
+                  }}
                 />
+
+                {active && (
+                  <motion.div
+                    className="absolute inset-0 bg-white/20 blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.3 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
               </div>
             )
           })}
 
           {hoverScene && (
             <div
-              className="absolute bottom-10 z-30 flex flex-col items-center"
+              className="absolute bottom-14 z-30 flex flex-col items-center"
               style={{
                 left: `${hoverX}px`,
                 transform: 'translateX(-50%)',
@@ -153,12 +179,9 @@ export function CustomVideoPlayer({
       </div>
 
       {!isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute z-0 inset-0 flex items-center justify-center focus:outline-none"
-        >
-          <div className="w-16 h-16 bg-white/15 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm hover:bg-white/25 transition">
-            <svg className="w-8 h-8 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+        <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center focus:outline-none">
+          <div className="w-20 h-20 bg-white/15 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm hover:bg-white/25 transition">
+            <svg className="w-10 h-10 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
