@@ -1,5 +1,5 @@
 import { ChromaClient, Collection, Where, WhereDocument } from 'chromadb'
-import { EmbeddingInput, CollectionStatistics } from '../types/vector'
+import { EmbeddingInput, CollectionStatistics, Filters } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
 import { SearchQuery, VideoMetadataSummary } from '../types/search'
@@ -136,68 +136,100 @@ const getAllVideos = async (): Promise<Video[]> => {
 const getAllVideosWithScenes = async (
   limit = 20,
   offset = 0
-): Promise<{ videos: VideoWithScenes[]; allSources: string[] }> => {
-  await initialize()
-  if (!collection) throw new Error('Collection not initialized')
+): Promise<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }> => {
+  try {
+    await initialize()
+    if (!collection) throw new Error('Collection not initialized')
 
-  const allSources = await getUniqueVideoSources()
-  const paginatedSources = allSources.slice(offset, offset + limit)
+    const allSources = await getUniqueVideoSources()
+    const paginatedSources = allSources.slice(offset, offset + limit)
 
-  const allDocs = await collection.get({
-    where: { source: { $in: paginatedSources } },
-    include: ['metadatas'],
-  })
+    const allDocs = await collection.get({
+      where: { source: { $in: paginatedSources } },
+      include: ['metadatas'],
+    })
 
-  const videosDict: Record<string, VideoWithScenes> = {}
+    const videosDict: Record<string, VideoWithScenes> = {}
 
-  for (let i = 0; i < allDocs.metadatas.length; i++) {
-    const metadata = allDocs.metadatas[i]
-    if (!metadata) continue
+    // Initialize sets for filters
+    const cameras = new Set<string>()
+    const colors = new Set<string>()
+    const locations = new Set<string>()
+    const faces = new Set<string>()
+    const objects = new Set<string>()
+    const shotTypes = new Set<string>()
 
-    const source = metadata.source
-      ?.toString()
-      .trim()
-      .replace(/^\.?\//, '')
-    if (!source) continue
+    for (let i = 0; i < allDocs.metadatas.length; i++) {
+      const metadata = allDocs.metadatas[i]
+      if (!metadata) continue
 
-    if (!videosDict[source]) {
-      videosDict[source] = {
-        source,
-        duration: parseFloat(metadata.duration?.toString() || '0.00'),
-        aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
-        camera: metadata.camera?.toString() || 'N/A',
-        category: metadata.category?.toString() || 'Uncategorized',
-        createdAt: metadata.createdAt?.toString() || new Date().toISOString(),
-        scenes: [],
-        sceneCount: 0,
-        thumbnailUrl: metadata.thumbnailUrl?.toString(),
+      const source = metadata.source
+        ?.toString()
+        .trim()
+        .replace(/^\.?\//, '')
+      if (!source) continue
+
+      if (!videosDict[source]) {
+        videosDict[source] = {
+          source,
+          duration: parseFloat(metadata.duration?.toString() || '0.00'),
+          aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+          camera: metadata.camera?.toString() || 'N/A',
+          category: metadata.category?.toString() || 'Uncategorized',
+          createdAt: metadata.createdAt?.toString() || new Date().toISOString(),
+          scenes: [],
+          sceneCount: 0,
+          thumbnailUrl: metadata.thumbnailUrl?.toString(),
+        }
       }
+
+      const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
+      videosDict[source].scenes.push(scene)
+
+      if (scene.camera) cameras.add(scene.camera.toString())
+      if (scene.dominantColorName) colors.add(scene.dominantColorName.toString())
+      if (scene.location) locations.add(scene.location.toString())
+      if (scene.faces) scene.faces.forEach((f: string) => faces.add(f))
+      if (scene.objects) scene.objects.forEach((o: string) => objects.add(o))
+      if (scene.shot_type) shotTypes.add(scene.shot_type.toString())
     }
 
-    const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
-    videosDict[source].scenes.push(scene)
-  }
+    const videosList = Object.values(videosDict).map((video) => {
+      video.scenes.sort((a, b) => a.startTime - b.startTime)
+      video.sceneCount = video.scenes.length
+      return video
+    })
 
-  const videosList = Object.values(videosDict).map((video) => {
-    video.scenes.sort((a, b) => a.startTime - b.startTime)
-    video.sceneCount = video.scenes.length
-    return video
-  })
-
-  // Deduplicate (safety measure) & sort by creation date
-  const uniqueVideos = Object.values(
-    videosList.reduce(
-      (acc, video) => {
-        acc[video.source] = video
-        return acc
-      },
-      {} as Record<string, VideoWithScenes>
+    // Deduplicate & sort by creation date
+    const uniqueVideos = Object.values(
+      videosList.reduce(
+        (acc, video) => {
+          acc[video.source] = video
+          return acc
+        },
+        {} as Record<string, VideoWithScenes>
+      )
     )
-  )
 
-  uniqueVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    uniqueVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-  return { videos: uniqueVideos, allSources }
+    const filters = {
+      cameras: Array.from(cameras),
+      colors: Array.from(colors),
+      locations: Array.from(locations),
+      faces: Array.from(faces),
+      objects: Array.from(objects),
+      shotTypes: Array.from(shotTypes),
+    }
+
+    return { videos: uniqueVideos, allSources, filters }
+  } catch {
+    return {
+      videos: [],
+      allSources: [],
+      filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [] },
+    }
+  }
 }
 
 const queryCollection = async (query: SearchQuery, nResults = 100): Promise<VideoWithScenes[]> => {
@@ -410,14 +442,14 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       })
 
       // Colors
-      scene.colors?.forEach((c: string) => {
-        const name = c.toLowerCase()
-        colorsCount[name] = (colorsCount[name] || 0) + 1
-      })
+      if (scene.dominantColorName) {
+        const name = scene.dominantColorName.toLowerCase()
+        colorsCount[name] = (shotTypesCount[name] || 0) + 1
+      }
 
       // Emotions
-      scene.emotions?.forEach((e: string) => {
-        const name = e.toLowerCase()
+      scene.emotions?.forEach((e) => {
+        const name = e.emotion.toLowerCase()
         emotionsCount[name] = (emotionsCount[name] || 0) + 1
       })
 
@@ -542,6 +574,31 @@ async function getUniqueVideoSources(): Promise<string[]> {
 
   return Array.from(uniqueSources)
 }
+async function updateScenesSource(oldSource: string, newSource: string): Promise<void> {
+  await initialize()
+  if (!collection) throw new Error('Collection not initialized')
+
+  const result = await collection.get({
+    where: { source: { $eq: oldSource } },
+    include: ['metadatas'],
+  })
+
+  if (!result.ids || result.ids.length === 0) {
+    console.warn(`No scenes found for source: ${oldSource}`)
+    return
+  }
+
+  const ids = result.ids
+  const metadatas = result.metadatas.map((metadata) => ({
+    ...metadata,
+    source: newSource,
+  }))
+
+  await collection.update({
+    ids,
+    metadatas,
+  })
+}
 
 export {
   embedDocuments,
@@ -558,4 +615,5 @@ export {
   getVideoWithScenesBySceneIds,
   getCollectionCount,
   getUniqueVideoSources,
+  updateScenesSource,
 }
