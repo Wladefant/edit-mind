@@ -1,27 +1,32 @@
 import chokidar from 'chokidar'
 import path from 'path'
 import { videoQueue } from './queue.js'
-import { db } from './services/db.js'
+import { prisma } from './services/db.js'
+import { SUPPORTED_VIDEO_EXTENSIONS } from '@shared/constants/index'
 
 export function watchFolder(folderPath: string) {
-  const watcher = chokidar.watch(folderPath, { ignored: /^\./, persistent: true })
+  const watcher = chokidar.watch(folderPath, { ignored: /^\./, persistent: true, ignoreInitial: true })
 
   watcher.on('add', async (filePath) => {
-    if (isVideoFile(filePath)) {
-      console.log('New video detected:', filePath)
-      await db.job.upsert({
-        where: { videoPath: filePath, id: '' },
-        create: { videoPath: filePath },
-        update: {},
-      })
-      await videoQueue.add('index-video', { videoPath: filePath })
-    }
+    if (!SUPPORTED_VIDEO_EXTENSIONS.test(filePath)) return
+
+    console.debug('New video detected:', filePath)
+    console.debug('Video folder path:', path.dirname(filePath))
+
+    const folder = await prisma.folder.findFirst({
+      where: {
+        path: path.dirname(filePath),
+      },
+    })
+
+    if (!folder) return
+
+    const job = await prisma.job.create({
+      data: { videoPath: filePath, userId: folder.userId, folderId: folder.id },
+    })
+
+    await videoQueue.add('index-video', { videoPath: filePath, jobId: job.id, folderId: folder.id })
   })
 
-  console.log(`Watching folder: ${folderPath}`)
-}
-
-function isVideoFile(filePath: string) {
-  const ext = path.extname(filePath).toLowerCase()
-  return ['.mp4', '.mov', '.mkv', '.avi'].includes(ext)
+  console.debug(`Watching folder: ${folderPath}`)
 }

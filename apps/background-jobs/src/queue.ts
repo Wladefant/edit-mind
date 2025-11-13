@@ -1,8 +1,18 @@
 import { Queue } from 'bullmq'
-import { config } from './config.js'
+import { config } from './config'
 import IORedis from 'ioredis'
 
-const connection = new IORedis(config.redisUrl, {
+export const connection = new IORedis(config.redisUrl, {
   maxRetriesPerRequest: null,
 })
-export const videoQueue = new Queue('video-indexing', { connection })
+
+export const videoQueue = new Queue('video-indexing', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+  },
+})

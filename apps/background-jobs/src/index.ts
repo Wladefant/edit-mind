@@ -1,18 +1,35 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import cors from 'cors';
-import foldersRoute from './routes/folders.js';
-import { initDB } from './services/db.js';
-import { config } from './config.js';
-import './jobs/videoIndexer.js'; 
+import express from 'express'
+import cors from 'cors'
+import { createBullBoard } from '@bull-board/api'
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
+import { ExpressAdapter } from '@bull-board/express'
+import foldersRoute from './routes/folders'
+import { config } from './config'
+import { videoQueue } from './queue'
+import './jobs/videoIndexer'
+import { pythonService } from '@shared/services/pythonService'
 
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
-app.use('/folders', foldersRoute);
+const app = express()
 
-app.get('/', (_req, res) => res.send('Background job service running'));
+app.use(cors())
+app.use(express.json())
 
-initDB().then(() => {
-  app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
-});
+const serverAdapter = new ExpressAdapter()
+serverAdapter.setBasePath('/')
+
+createBullBoard({
+  queues: [new BullMQAdapter(videoQueue)],
+  serverAdapter: serverAdapter,
+})
+
+app.use('/', serverAdapter.getRouter())
+
+app.use('/folders', foldersRoute)
+
+app.get('/health', (_req, res) => res.json({ status: 'ok' }))
+
+app.listen(config.port, async () => {
+  await pythonService.start()
+  console.warn(`Server running on port ${config.port}`)
+  console.warn(`Bull Board UI available at http://localhost:${config.port}`)
+})
