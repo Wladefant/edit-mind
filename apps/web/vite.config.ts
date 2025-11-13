@@ -8,16 +8,9 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
   resolve: {
     alias: {
-      '~': path.resolve(__dirname, 'app'), // for web/app/*
-      "@shared": path.resolve(__dirname, '../../packages/shared'), // for lib/*
-      '@/lib': path.resolve(__dirname, '../lib'), // for @/lib/*
-      '@/app': path.resolve(__dirname, './app'), // for @/app/*
-    },
-  },
-
-  build: {
-    rollupOptions: {
-      external: [],
+      '~': path.resolve(__dirname, 'app'),
+      '@shared': path.resolve(__dirname, '../../packages/shared'),
+      '@/app': path.resolve(__dirname, './app'),
     },
   },
 })

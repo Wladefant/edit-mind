@@ -12,6 +12,7 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
+      "@shared/*": ["../../packages/shared/*"],
     },
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

@@ -1,7 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  content: ["./src/**/*.{js,jsx,ts,tsx}", "../../packages/shared/**/*.ts"],
   darkMode: "class",
+  safelist: [
+  { pattern: /from-(purple|yellow|pink|blue|indigo)-\d{3}/ },
+  { pattern: /to-(indigo|red|teal)-\d{3}/ },
+  { pattern: /border-(purple|red|blue|indigo|teal)-\d{3}/ },
+  ],
   theme: {
     extend: {
       colors: {},
