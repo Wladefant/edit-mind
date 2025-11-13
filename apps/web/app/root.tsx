@@ -13,14 +13,16 @@ import {
 import './app.css'
 import { SessionProvider } from './providers/SessionProvider'
 import { getUser } from './services/user.sever'
-import type { Session } from './hooks/useSession'
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await getUser(request)
 
-  const session: Session = {
+  const session = {
     isAuthenticated: !!user,
-    user: user,
+    user: {
+      email: user?.email,
+      name: user?.name
+    },
   }
 
   return { session }
