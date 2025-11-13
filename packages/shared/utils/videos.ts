@@ -12,7 +12,7 @@ import {
   THUMBNAIL_QUALITY,
   THUMBNAIL_SCALE,
   THUMBNAILS_DIR,
-} from '@/lib/constants'
+} from '../constants'
 import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
 import { spawnFFmpeg, validateBinaries } from './ffmpeg'

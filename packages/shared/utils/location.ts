@@ -8,7 +8,7 @@ interface LocationCache {
   }
 }
 
-import { CACHE_FILE, CACHE_DURATION } from '@/lib/constants';
+import { CACHE_FILE, CACHE_DURATION } from '../constants';
 
 export const formatLocation = (lat: number | undefined, lon: number | undefined, alt: number | undefined): string => {
   if (lat === undefined || lon === undefined) return ''

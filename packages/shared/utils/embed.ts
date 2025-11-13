@@ -1,6 +1,5 @@
 import { createHash } from 'crypto'
 import { Scene } from '../types/scene'
-import { gcd } from '../utils'
 import { generateAllThumbnails, getCameraNameAndDate, getLocationFromVideo, getVideoMetadata } from './videos'
 import fs from 'fs/promises'
 import path from 'path'
@@ -8,11 +7,13 @@ import { embedDocuments } from '../services/vectorDb'
 import { existsSync } from 'fs'
 import { formatLocation } from './location'
 
-import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from 'lib/constants'
+import { EMBEDDING_BATCH_SIZE } from '../constants'
 import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
+import { gcd } from '.'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
+  const THUMBNAILS_DIR = process.env.THUMBNAILS_PATH || '/.thumbnails'
 
   const duration = metadata.duration
   const { latitude, longitude, altitude } = await getLocationFromVideo(videoFullPath)
@@ -80,7 +81,6 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
         return sceneToVectorFormat(scene, i + index)
       })
 
-      console.log(embeddingInputs)
       await embedDocuments(embeddingInputs)
     }
   } catch (err) {

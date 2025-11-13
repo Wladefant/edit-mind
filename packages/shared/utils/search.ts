@@ -1,46 +1,49 @@
-import { SearchSuggestion, VideoMetadataSummary } from '../types/search'
+import { VideoMetadataSummary, SearchSuggestion } from '../types/search';
 
 export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary): SearchSuggestion[] => {
   const suggestions: SearchSuggestion[] = []
 
-  if (metadataSummary.topFaces.length > 0) {
+  const { topFaces, topColors, topEmotions, shotTypes, topObjects } = metadataSummary
+
+  if (topFaces?.length)
     suggestions.push({
-      text: `scenes with @${metadataSummary.topFaces[0].name}`,
+      text: `scenes with @${topFaces[0].name ?? 'someone'}`,
       icon: '👤',
       category: 'people',
+      border: 'border-purple-500',
     })
-  }
-  if (metadataSummary.topColors.length > 0) {
+
+  if (topColors?.length)
     suggestions.push({
-      text: `scenes with ${metadataSummary.topColors[0].name}'s color`,
+      text: `scenes with ${topColors[0].name ?? 'vibrant'} color`,
       icon: '🎨',
       category: 'color',
+      border: 'border-red-500',
     })
-  }
 
-  if (metadataSummary.topEmotions.length > 0) {
+  if (topEmotions?.length)
     suggestions.push({
-      text: `${metadataSummary.topEmotions[0].name} moments`,
+      text: `${topEmotions[0].name ?? 'emotional'} moments`,
       icon: '😊',
       category: 'emotion',
+      border: 'border-red-500',
     })
-  }
 
-  if (metadataSummary.shotTypes.length > 0) {
+  if (shotTypes?.length)
     suggestions.push({
-      text: `${metadataSummary.shotTypes[0].name.replace('-', ' ')}s`,
+      text: shotTypes[0].name.replace('-', ' '),
       icon: '🎬',
       category: 'scene',
+      border: 'border-teal-500',
     })
-  }
 
-  if (metadataSummary.topObjects.length > 0) {
+  if (topObjects?.length)
     suggestions.push({
-      text: `scenes with ${metadataSummary.topObjects[0].name}`,
+      text: `scenes with ${topObjects[0].name ?? 'something'}`,
       icon: '📍',
       category: 'scene',
+      border: 'border-indigo-500',
     })
-  }
 
   return suggestions.slice(0, 5)
 }

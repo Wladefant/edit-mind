@@ -13,7 +13,7 @@ export const UNKNOWN_FACES_DIR = resolve('analysis_results/unknown_faces');
 export const CACHE_FILE = '.locations.json';
 
 // Timeouts and Intervals
-export const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+export const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const SERVICE_STARTUP_TIMEOUT = 60000; // 60 seconds
 export const HEALTH_CHECK_INTERVAL = 1000; // 1 second

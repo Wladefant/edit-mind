@@ -1,6 +1,6 @@
 import z from 'zod'
-import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../conveyor/schemas/app-schema'
 import { ShotType, AspectRatio } from '.'
+import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../schemas'
 
 export interface VideoSearchParams {
   action: string

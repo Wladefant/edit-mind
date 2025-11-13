@@ -5,36 +5,37 @@ import { pythonService } from '../services/pythonService'
  * Analyzes a video file using the persistent Python analysis service.
  * @param videoPath The full path to the video file.
  * @param onProgress Callback for progress updates.
- * @param onResult Callback for when the analysis is complete.
- * @param onError Callback for any errors that occur.
  */
 export function analyzeVideo(
   videoPath: string,
-  onProgress: (progress: AnalysisProgress) => void,
-  onResult: (result: { analysis: Analysis; category: string }) => void,
-  onError: (error: Error) => void
-): void {
-  try {
+  onProgress: (progress: AnalysisProgress) => void
+): Promise<{ analysis: Analysis; category: string }> {
+  return new Promise((resolve, reject) => {
     pythonService.analyzeVideo(
       videoPath,
       (progress) => {
-        onProgress(progress)
+        console.log('📈 PROGRESS CALLBACK EXECUTED:', progress)
+        if (onProgress) {
+          try {
+            onProgress(progress)
+          } catch (error) {
+            console.error('Error in progress callback:', error)
+          }
+        }
       },
       (result) => {
+        console.log('✅ COMPLETE CALLBACK EXECUTED:', result)
         let category = 'Uncategorized'
         if (result?.scene_analysis?.environment) {
           const env = result.scene_analysis.environment
           category = env.charAt(0).toUpperCase() + env.slice(1).replace(/_/g, ' ')
         }
-        onResult({ analysis: result, category })
+        resolve({ analysis: result, category })
       },
       (error) => {
-        console.error('Video analysis failed:', error)
-        onError(error)
+        console.error('❌ ERROR CALLBACK EXECUTED:', error)
+        reject(error)
       }
     )
-  } catch (error) {
-    console.error('Video analysis failed:', error)
-    onError(error as Error)
-  }
+  })
 }

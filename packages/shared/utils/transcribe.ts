@@ -1,32 +1,32 @@
 import { pythonService } from '../services/pythonService'
 import { TranscriptionProgress } from '../types/transcription'
 
+type ProgressCallback = (progress: TranscriptionProgress) => Promise<void>
 
-
-type ProgressCallback = (progress: TranscriptionProgress) => void
-
-export async function transcribeAudio(
-  videoFilePath: string,
-  transcriptionPath: string,
+export function transcribeAudio(
+  videoPath: string,
+  jsonFilePath: string,
   onProgress?: ProgressCallback
-): Promise<{ path: string } | undefined> {
-  return new Promise((resolve) => {
-    try {
-      pythonService.transcribe(
-        videoFilePath,
-        transcriptionPath,
-        (progress) => {
-          if (onProgress) onProgress(progress)
-        },
-        (_result) => {
-          if (onProgress) resolve({ path: transcriptionPath })
-        },
-        (error) => {
-          console.error('Video transcription failed:', error)
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    pythonService.transcribe(
+      videoPath,
+      jsonFilePath,
+      async (progress) => {
+        if (onProgress) {
+          try {
+            await onProgress(progress)
+          } catch (error) {
+            console.error('❌ Error in progress callback:', error)
+          }
         }
-      )
-    } catch (error) {
-      console.error('Video transcription failed:', error)
-    }
+      },
+      (result) => {
+        resolve(result)
+      },
+      (error) => {
+        reject(error)
+      }
+    )
   })
 }
