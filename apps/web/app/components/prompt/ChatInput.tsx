@@ -1,4 +1,4 @@
-import { Loader2, Sparkles } from 'lucide-react'
+import { Loader2, Send } from 'lucide-react';
 import type { RefObject } from 'react'
 
 interface ChatInputProps {
@@ -11,7 +11,7 @@ interface ChatInputProps {
 
 export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef }: ChatInputProps) {
   return (
-    <footer className="sticky bottom-0 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-t border-black/5 dark:border-white/10">
+    <footer className="sticky bottom-0 z-100 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-t border-black/5 dark:border-white/10">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5">
         <div className="relative flex items-center gap-2 bg-white/60 dark:bg-white/5 rounded-[20px] border border-black/10 dark:border-white/15 shadow-sm hover:shadow-md hover:bg-white/80 dark:hover:bg-white/8 focus-within:bg-white dark:focus-within:bg-white/10 focus-within:border-black/20 dark:focus-within:border-white/25 transition-all duration-200 px-4 py-2">
           <input
@@ -36,7 +36,7 @@ export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef }:
             {isLoading ? (
               <Loader2 className="w-[18px] h-[18px] animate-spin" />
             ) : (
-              <Sparkles className="w-[18px] h-[18px]" />
+              <Send className="w-[18px] h-[18px]" />
             )}
           </button>
         </div>

@@ -1,25 +1,22 @@
-import { Sparkles } from 'lucide-react';
-import { suggestions } from '../../constants/mockVideoData';
+import type { SearchSuggestion } from '@shared/types/search'
 
 interface WelcomeProps {
-  onSuggestionClick: (text: string) => void;
+  onSuggestionClick: (text: string) => void
+  suggestions: SearchSuggestion[]
 }
 
-export function Welcome({ onSuggestionClick }: WelcomeProps) {
+export function Welcome({ onSuggestionClick, suggestions }: WelcomeProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center space-y-12">
       <div className="space-y-6">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-full border border-purple-200/50 dark:border-purple-800/50">
-          <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-          <span className="text-md font-medium text-purple-700 dark:text-purple-300">
-            AI-Powered Video Search
-          </span>
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-linear-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-full border border-purple-200/50 dark:border-purple-800/50">
+          <span className="text-md font-medium text-purple-700 dark:text-purple-300">My videos gallery's second brain</span>
         </div>
 
         <h2 className="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.1] text-gray-900 dark:text-white">
           What videos are you
           <br className="hidden sm:block" />
-          <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <span className="bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
             {' '}
             looking for?
           </span>
@@ -34,15 +31,13 @@ export function Welcome({ onSuggestionClick }: WelcomeProps) {
           <button
             key={i}
             onClick={() => onSuggestionClick(s.text)}
-            className={`group relative px-6 py-5 text-left bg-gradient-to-br ${s.gradient} rounded-2xl border ${s.border} hover:border-opacity-80 dark:hover:border-opacity-80 transition-all duration-300 ${s.hover} `}
+            className={`group relative px-6 py-5 text-left rounded-2xl border-l-2 ${s.border} hover:border-opacity-80 cursor-pointer transition-all duration-300`}
           >
             <div className="flex items-center gap-4">
-              <span className="text-2xl group-hover:scale-110 transition-transform duration-300">
-                {s.icon}
-              </span>
+              <span className="text-2xl group-hover:scale-110 transition-transform duration-300">{s.icon}</span>
               <span className="font-medium text-gray-800 dark:text-gray-200">{s.text}</span>
             </div>
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/0 to-white/5 dark:from-white/0 dark:to-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="absolute inset-0 rounded-2xl bg-linear-to-br from-white/0 to-white/5 dark:from-white/0 dark:to-white/5 opacity-50 group-hover:opacity-100 transition-opacity duration-300" />
           </button>
         ))}
       </div>
@@ -52,5 +47,5 @@ export function Welcome({ onSuggestionClick }: WelcomeProps) {
         Try to be specific about what you're looking for
       </p>
     </div>
-  );
+  )
 }
