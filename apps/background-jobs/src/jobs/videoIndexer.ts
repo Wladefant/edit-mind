@@ -56,7 +56,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
   try {
     // Step 0: Thumbnail (0-10%)
     const thumbnailPath = path.join(THUMBNAILS_DIR, `${path.basename(videoPath)}.jpg`)
-    console.debug(`🖼 Generating thumbnail for: ${videoPath}`)
     try { await generateThumbnail(videoPath, thumbnailPath, 1) } catch (e) { console.error('Thumbnail error:', e) }
     await updateJob(jobId, { thumbnailPath: path.basename(thumbnailPath) })
     await job.updateProgress(10)
@@ -64,7 +63,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
     // Step 1: Transcription (10-40%)
     await updateJob(jobId, { stage: JobStage.transcribing, overallProgress: 10 })
     if (!existsSync(transcriptionPath)) {
-      console.debug(`🗣 Transcribing audio for: ${videoPath}`)
       await transcribeAudio(videoPath, transcriptionPath, async ({ progress }) => {
         const overallProgress = 10 + progress * 0.3
         await job.updateProgress(overallProgress)
@@ -81,7 +79,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
     // Step 2: Frame Analysis (40-70%)
     let analysis: Analysis, category: string
     if (!existsSync(analysisPath)) {
-      console.debug(`🧠 Starting frame analysis for: ${videoPath}`)
       const result = await analyzeVideo(videoPath, async ({ progress, frames_analyzed, total_frames }) => {
         const overallProgress = 40 + progress * 0.3
         await job.updateProgress(overallProgress)
@@ -90,7 +87,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
           progress: Math.round(progress),
           overallProgress: Math.round(overallProgress),
         })
-        if (progress % 10 === 0) console.debug(`📊 Analyzing frames: ${frames_analyzed}/${total_frames} (${progress.toFixed(1)}%)`)
       })
       analysis = result.analysis
       category = result.category
@@ -120,7 +116,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
     await job.updateProgress(100)
     await updateJob(jobId, { stage: JobStage.embedding, status: JobStatus.done, overallProgress: 100, progress: 100 })
 
-    console.debug(`🎉 Video processing completed successfully: ${videoPath}`)
     return { video: videoPath }
 
   } catch (error) {

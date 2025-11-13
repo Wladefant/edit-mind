@@ -10,9 +10,6 @@ export function watchFolder(folderPath: string) {
   watcher.on('add', async (filePath) => {
     if (!SUPPORTED_VIDEO_EXTENSIONS.test(filePath)) return
 
-    console.debug('New video detected:', filePath)
-    console.debug('Video folder path:', path.dirname(filePath))
-
     const folder = await prisma.folder.findFirst({
       where: {
         path: path.dirname(filePath),
@@ -24,9 +21,7 @@ export function watchFolder(folderPath: string) {
     const job = await prisma.job.create({
       data: { videoPath: filePath, userId: folder.userId, folderId: folder.id },
     })
-
+    console.debug('New video detected:', filePath)
     await videoQueue.add('index-video', { videoPath: filePath, jobId: job.id, folderId: folder.id })
   })
-
-  console.debug(`Watching folder: ${folderPath}`)
 }

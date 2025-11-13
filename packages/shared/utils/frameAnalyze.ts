@@ -14,7 +14,6 @@ export function analyzeVideo(
     pythonService.analyzeVideo(
       videoPath,
       (progress) => {
-        console.log('📈 PROGRESS CALLBACK EXECUTED:', progress)
         if (onProgress) {
           try {
             onProgress(progress)
@@ -24,7 +23,6 @@ export function analyzeVideo(
         }
       },
       (result) => {
-        console.log('✅ COMPLETE CALLBACK EXECUTED:', result)
         let category = 'Uncategorized'
         if (result?.scene_analysis?.environment) {
           const env = result.scene_analysis.environment
