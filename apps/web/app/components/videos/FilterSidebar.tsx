@@ -23,6 +23,7 @@ const getCategoryLabel = (category: string) => {
     faces: 'People',
     objects: 'Objects',
     shotTypes: 'Shot Types',
+    emotions: 'Emotions',
   }
   return labels[category] || category
 }
