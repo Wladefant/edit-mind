@@ -255,10 +255,7 @@ class FrameProcessor:
         self, 
         video_path: str
     ) -> Iterator[Tuple[Dict, float, int]]:
-        """
-        Memory-efficient streaming generator that yields frames directly.
-        No disk writes - everything stays in RAM.
-        """
+        """Memory-efficient streaming generator that yields frames directly."""
         cap = cv2.VideoCapture(video_path)
         
         try:
@@ -284,7 +281,7 @@ class FrameProcessor:
                     logger.warning(f"Failed to read frame at index {frame_idx}")
                     break
 
-                processed_frame = self._preprocess_frame(frame)
+                processed_frame, scale_factor, original_size = self._preprocess_frame(frame)
                 
                 timestamp_ms = round((frame_idx / fps) * 1000)
                 next_frame_idx = min(frame_idx + sample_interval, total_frames)
@@ -294,7 +291,9 @@ class FrameProcessor:
                     'frame': processed_frame,
                     'timestamp_ms': timestamp_ms,
                     'end_timestamp_ms': end_timestamp_ms,
-                    'frame_idx': frame_idx
+                    'frame_idx': frame_idx,
+                    'scale_factor': scale_factor,  
+                    'original_size': original_size  
                 }
                 
                 yield frame_data, fps, total_frames
@@ -307,18 +306,21 @@ class FrameProcessor:
             if cap is not None:
                 cap.release()
 
-    def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
-        """Resize frame for optimal processing. Returns new array for GC."""
+    def _preprocess_frame(self, frame: np.ndarray) -> tuple[np.ndarray, float, tuple]:
+        """Resize frame for optimal processing. Returns frame, scale_factor, and original size."""
         if frame is None:
             raise ValueError("Received None frame")
         
-        if self.config.resize_to_720p and frame.shape[0] > 720:
-            h, w = frame.shape[:2]
-            target_h = 720
-            target_w = int(w * (target_h / h))
-            return cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        original_h, original_w = frame.shape[:2]
         
-        return frame.copy()
+        if self.config.resize_to_720p and frame.shape[0] > 720:
+            target_h = 720
+            target_w = int(original_w * (target_h / original_h))
+            resized = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+            scale_factor = original_h / target_h  # Scale to convert back
+            return resized, scale_factor, (original_w, original_h)
+        
+        return frame.copy(), 1.0, (original_w, original_h)
 
 
 def load_plugins(config: AnalysisConfig) -> List[AnalyzerPlugin]:

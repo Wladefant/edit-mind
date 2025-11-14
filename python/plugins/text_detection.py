@@ -50,6 +50,9 @@ class TextDetectionPlugin(AnalyzerPlugin):
             return {}
 
         try:
+            # Get scaling factor to convert back to original dimensions
+            scale_factor = frame_analysis.get('scale_factor', 1.0)
+            
             # EasyOCR expects images in RGB format
             frame_rgb = frame[:, :, ::-1]
             
@@ -58,12 +61,34 @@ class TextDetectionPlugin(AnalyzerPlugin):
             
             detected_texts = []
             for (bbox, text, prob) in results:
-                # bbox is a list of 4 points (x, y)
-                # Convert numpy types to native Python types for JSON serialization
+                # bbox is a list of 4 points [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                # representing the corners of the text region (usually a rotated rectangle)
+                
+                # Scale bounding box points to original dimensions
+                scaled_bbox = [[int(p[0] * scale_factor), int(p[1] * scale_factor)] for p in bbox]
+                
+                # Calculate axis-aligned bounding box (x, y, width, height)
+                x_coords = [p[0] for p in scaled_bbox]
+                y_coords = [p[1] for p in scaled_bbox]
+                
+                x_min = min(x_coords)
+                y_min = min(y_coords)
+                x_max = max(x_coords)
+                y_max = max(y_coords)
+                
+                width = x_max - x_min
+                height = y_max - y_min
+                
                 detected_texts.append({
                     'text': text,
                     'confidence': float(prob),
-                    'bounding_box': [[int(p[0]), int(p[1])] for p in bbox]
+                    'bounding_box': scaled_bbox, 
+                    'bbox': {  
+                        'x': x_min,
+                        'y': y_min,
+                        'width': width,
+                        'height': height
+                    }
                 })
 
             

@@ -122,18 +122,31 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             return frame_analysis
         
         recognized_faces = self.face_recognizer.recognize_faces(frame)
+        scale_factor = frame_analysis.get('scale_factor', 1.0)
 
         output_faces = []
         for face in recognized_faces:
+            top, right, bottom, left = face['location']
+            x = left * scale_factor
+            y = top * scale_factor
+            width = (right - left) * scale_factor
+            height = (bottom - top) * scale_factor
             output_face = {
                 "name": face['name'],
                 "location": [int(i) for i in face['location']],
                 "emotion": face.get('emotion'),
+                "confidence": face.get("confidence"),
                 "encoding": (
                     face['encoding'].tolist() 
                     if isinstance(face['encoding'], np.ndarray) 
                     else face['encoding']
-                )
+                ),
+                "bbox": {
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height
+                    }
             }
             output_faces.append(output_face)
             

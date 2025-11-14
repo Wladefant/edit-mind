@@ -163,11 +163,13 @@ class TranscriptionService:
                     "start": seg.start,
                     "end": seg.end,
                     "text": seg.text.strip(),
+                    "confidence": getattr(seg, 'avg_logprob', None),  
                     "words": [
                         {
                             "start": w.start,
                             "end": w.end,
-                            "word": w.word
+                            "word": w.word,
+                            "confidence": getattr(w, 'probability', None) 
                         } for w in (seg.words or [])
                     ]
                 }
