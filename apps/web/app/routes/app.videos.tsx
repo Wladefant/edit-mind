@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
-import { CustomVideoPlayer } from '~/components/video/CustomVideoPlayer'
+import { CustomVideoPlayer } from '~/components/CustomVideoPlayer'
 import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
 import { getByVideoSource, updateScenesSource } from '@shared/services/vectorDb'
 import { Sidebar } from '~/components/dashboard/Sidebar'
@@ -245,6 +245,21 @@ export default function Video() {
                           className="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-gray-800 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-gray-700"
                         >
                           {emotion.emotion}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {activeScene.facesData && activeScene.facesData?.length > 0 && (
+                  <div className="mt-4">
+                    <h5 className="text-sm font-semibold text-gray-800 dark:text-gray-300 mb-2">Detected Emotions:</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {activeScene.facesData.map((emotion) => (
+                        <span
+                          key={emotion.name}
+                          className="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-gray-800 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-gray-700"
+                        >
+                          {JSON.stringify(emotion.bbox)}
                         </span>
                       ))}
                     </div>
