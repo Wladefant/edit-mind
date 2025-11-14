@@ -32,7 +32,7 @@ export const COLLECTION_NAME = 'video_content';
 // AI Models
 export const EMBEDDING_MODEL = 'text-embedding-004';
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
+export const SEARCH_AI_MODEL = 'Llama-3.2-3B-Instruct-Q4_K_M.gguf'
 
 // Files
 export const SUPPORTED_VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv)$/i
