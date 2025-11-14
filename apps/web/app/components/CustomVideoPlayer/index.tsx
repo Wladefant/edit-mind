@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useVideoDimensions } from '~/hooks/useVideoDimensions'
+import { useVideoDimensions } from './hooks/useVideoDimensions'
 import type { CustomVideoPlayerProps } from './types'
 
 import { useVideoControls } from './hooks/useVideoControls'
@@ -29,7 +29,7 @@ export function CustomVideoPlayer({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const overlayRef = useRef<HTMLDivElement | null>(null)
 
-  const { videoDimensions, updateVideoDimensions } = useVideoDimensions(videoRef, overlayRef)
+  const { videoDimensions } = useVideoDimensions(videoRef, overlayRef)
 
   const { isPlaying, setIsPlaying, volume, isMuted, togglePlay, toggleMute, handleVolumeChange, toggleFullscreen } =
     useVideoControls(videoRef)
@@ -62,15 +62,6 @@ export function CustomVideoPlayer({
       video.removeEventListener('playing', handlePlaying)
     }
   }, [setIsPlaying])
-
-  useEffect(() => {
-    const handleResize = () => {
-      updateVideoDimensions()
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [updateVideoDimensions])
 
   useEffect(() => {
     if (defaultStartTime) {
