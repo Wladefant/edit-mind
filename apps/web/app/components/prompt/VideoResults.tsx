@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { CustomVideoPlayer } from '~/components/video/CustomVideoPlayer'
+import { CustomVideoPlayer } from '~/components/CustomVideoPlayer'
 import type { VideoWithScenes } from '@shared/types/video'
 
 type VideoResultsProps = {
