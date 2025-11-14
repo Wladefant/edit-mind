@@ -151,13 +151,13 @@ const getAllVideosWithScenes = async (
 
     const videosDict: Record<string, VideoWithScenes> = {}
 
-    // Initialize sets for filters
     const cameras = new Set<string>()
     const colors = new Set<string>()
     const locations = new Set<string>()
     const faces = new Set<string>()
     const objects = new Set<string>()
     const shotTypes = new Set<string>()
+    const emotions = new Set<string>()
 
     for (let i = 0; i < allDocs.metadatas.length; i++) {
       const metadata = allDocs.metadatas[i]
@@ -191,6 +191,7 @@ const getAllVideosWithScenes = async (
       if (scene.location) locations.add(scene.location.toString())
       if (scene.faces) scene.faces.forEach((f: string) => faces.add(f))
       if (scene.objects) scene.objects.forEach((o: string) => objects.add(o))
+      if (scene.emotions) scene.emotions.forEach((o) => objects.add(o.emotion))
       if (scene.shot_type) shotTypes.add(scene.shot_type.toString())
     }
 
@@ -220,6 +221,7 @@ const getAllVideosWithScenes = async (
       faces: Array.from(faces),
       objects: Array.from(objects),
       shotTypes: Array.from(shotTypes),
+      emotions: Array.from(emotions),
     }
 
     return { videos: uniqueVideos, allSources, filters }
@@ -227,7 +229,7 @@ const getAllVideosWithScenes = async (
     return {
       videos: [],
       allSources: [],
-      filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [] },
+      filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [], emotions: [] },
     }
   }
 }
