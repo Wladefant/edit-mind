@@ -2,12 +2,21 @@ export interface Face {
   name: string
   location: [number, number, number, number]
   emotion?: Record<string, number>
+  bbox: BBox
+  confidence: number
+}
+export interface BBox {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface DetectedObject {
   label: string
   confidence: number
   box: [number, number, number, number]
+  bbox: BBox
 }
 
 export interface FrameAnalysis {
@@ -32,6 +41,7 @@ export interface DetectedText {
   text: string
   confidence: number
   bounding_box: [[number, number], [number, number], [number, number], [number, number]]
+  bbox: BBox
 }
 
 export interface SceneAnalysis {
