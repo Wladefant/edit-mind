@@ -1,15 +1,16 @@
 import { createHash } from 'crypto'
-import { Scene } from '../types/scene'
+import { DetectedTextData, FaceData, ObjectData, Scene, TranscriptionWord } from '../types/scene'
 import { generateAllThumbnails, getCameraNameAndDate, getLocationFromVideo, getVideoMetadata } from './videos'
 import fs from 'fs/promises'
 import path from 'path'
 import { embedDocuments } from '../services/vectorDb'
 import { existsSync } from 'fs'
-import { formatLocation } from './location'
+import { formatLocation, getLocationName } from './location'
 
 import { EMBEDDING_BATCH_SIZE } from '../constants'
 import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
 import { gcd } from '.'
+import { getAspectRatioDescription } from './aspectRatio'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
@@ -71,17 +72,17 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
         )
       }
 
-      const embeddingInputs = batch.map((scene, index) => {
+      const embeddingInputs = batch.map(async (scene, index) => {
         scene.camera = initialCamera
         scene.createdAt = createdAt
         scene.location = location
         scene.aspect_ratio = aspectRatio
         scene.category = category
         scene.duration = duration
-        return sceneToVectorFormat(scene, i + index)
+        return await sceneToVectorFormat(scene, i + index)
       })
 
-      await embedDocuments(embeddingInputs)
+      await embedDocuments(await Promise.all(embeddingInputs))
     }
   } catch (err) {
     console.error(err)
@@ -140,6 +141,34 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
         .map((o) => o.trim())
         .filter(Boolean)
     : []
+  let facesData: FaceData[] = []
+  try {
+    facesData = metadata.facesData ? JSON.parse(metadata.facesData as string) : []
+  } catch (e) {
+    console.warn('Failed to parse facesData:', e)
+  }
+
+  let objectsData: ObjectData[] = []
+  try {
+    objectsData = metadata.objectsData ? JSON.parse(metadata.objectsData as string) : []
+  } catch (e) {
+    console.warn('Failed to parse objectsData:', e)
+  }
+
+  let detectedTextData: DetectedTextData[] = []
+  try {
+    detectedTextData = metadata.detectedTextData ? JSON.parse(metadata.detectedTextData as string) : []
+  } catch (e) {
+    console.warn('Failed to parse detectedTextData:', e)
+  }
+
+  let transcriptionWords: TranscriptionWord[] = []
+  try {
+    transcriptionWords = metadata.transcriptionWords ? JSON.parse(metadata.transcriptionWords as string) : []
+  } catch (e) {
+    console.warn('Failed to parse transcriptionWords:', e)
+  }
+
   return {
     id: id,
     thumbnailUrl: metadata.thumbnailUrl?.toString() || '',
@@ -159,10 +188,14 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
     detectedText,
     location: metadata.location?.toString() || 'N/A',
     duration: metadata.duration,
+    detectedTextData,
+    transcriptionWords,
+    objectsData,
+    facesData,
   }
 }
 
-export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
+const generateVectorDocumentText = async (scene: Scene) => {
   const faces = scene.faces?.join(', ') || ''
   const objects = scene.objects?.join(', ') || ''
   const emotionsText =
@@ -172,8 +205,88 @@ export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
       .join(', ') || ''
   const detectedText = Array.isArray(scene.detectedText) ? scene.detectedText.join(', ') : scene.detectedText || ''
 
-  const text =
-    `Scene with ${faces}, objects: ${objects}. Emotions: ${emotionsText}. ${scene.transcription || ''}`.trim()
+  const textParts: string[] = []
+
+  if (scene.shot_type) {
+    const shotTypeDescriptions: Record<string, string> = {
+      'close-up': 'a close-up shot',
+      'medium-shot': 'a medium-shot scene',
+      'long-shot': 'a wide-angle scene',
+    }
+    textParts.push(`This is ${shotTypeDescriptions[scene.shot_type] || 'a ' + scene.shot_type}`)
+  } else {
+    textParts.push('This is a video scene')
+  }
+
+  if (faces) {
+    const faceList = scene.faces || []
+    if (faceList.length === 1) {
+      textParts.push(`featuring ${faces}`)
+    } else if (faceList.length === 2) {
+      textParts.push(`featuring ${faceList[0]} and ${faceList[1]}`)
+    } else if (faceList.length > 2) {
+      const lastFace = faceList[faceList.length - 1]
+      const otherFaces = faceList.slice(0, -1).join(', ')
+      textParts.push(`featuring ${otherFaces}, and ${lastFace}`)
+    }
+  }
+
+  if (scene.location) {
+    const locationName = await getLocationName(scene.location)
+    textParts.push(`in ${locationName || scene.location}`)
+  }
+
+  if (scene.description) {
+    textParts.push(`. The scene depicts ${scene.description}`)
+  }
+
+  if (objects) {
+    const objectList = scene.objects || []
+    if (objectList.length === 1) {
+      textParts.push(`. A ${objects} is visible in the scene`)
+    } else if (objectList.length > 1) {
+      textParts.push(`. Detected objects include ${objects}`)
+    }
+  }
+
+  if (scene.camera) {
+    textParts.push(`, captured with ${scene.camera}`)
+  }
+
+  if (emotionsText) {
+    textParts.push(`. Emotional analysis indicates that ${emotionsText}`)
+  }
+
+  if (detectedText) {
+    textParts.push(`. On-screen text displays: "${detectedText}"`)
+  }
+
+  if (scene.dominantColorName) {
+    textParts.push(`. The scene has a ${scene.dominantColorName} color palette`)
+  }
+
+  if (scene.transcription) {
+    textParts.push(`. The transcription reads: "${scene.transcription}"`)
+  }
+  if (scene.createdAt) {
+    textParts.push(`, captured at ${scene.createdAt}`)
+  }
+  if (scene.aspect_ratio) {
+    const aspectRatioDesc = getAspectRatioDescription(scene.aspect_ratio)
+    textParts.push(` in ${aspectRatioDesc} format`)
+  }
+  if (scene.category) {
+    textParts.push(` categorized as ${scene.category}`)
+  }
+
+  const text = textParts.join('').replace(/\s+/g, ' ').replace(/\.\./g, '.').trim()
+  return text
+}
+
+export const sceneToVectorFormat = async (scene: Scene, sceneIndex: number) => {
+  const detectedText = Array.isArray(scene.detectedText) ? scene.detectedText.join(', ') : scene.detectedText || ''
+
+  const text = await generateVectorDocumentText(scene)
 
   const metadata: Record<string, any> = {
     source: scene.source,
@@ -181,12 +294,10 @@ export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
     startTime: scene.startTime,
     endTime: scene.endTime,
     type: 'scene',
-    faces: Array.isArray(scene.faces) ? scene.faces.join(', ') : JSON.stringify(scene.faces || []),
-    objects: Array.isArray(scene.objects) ? scene.objects.join(', ') : JSON.stringify(scene.objects || []),
+    faces: scene.faces.join(', '),
+    objects: scene.objects.join(', '),
     transcription: scene.transcription || '',
-    emotions: Array.isArray(scene.emotions)
-      ? scene.emotions.map((e) => JSON.stringify(e)).join(', ')
-      : JSON.stringify(scene.emotions || []),
+    emotions: scene.emotions.map((e) => JSON.stringify(e)).join(', '),
     description: scene.description || '',
     shot_type: scene.shot_type || 'long-shot',
     detectedText: detectedText,
@@ -196,6 +307,11 @@ export const sceneToVectorFormat = (scene: Scene, sceneIndex: number) => {
     dominantColorName: scene.dominantColorName,
     camera: scene.camera,
     duration: scene.duration,
+
+    facesData: JSON.stringify(scene.facesData || []),
+    objectsData: JSON.stringify(scene.objectsData || []),
+    detectedTextData: JSON.stringify(scene.detectedTextData || []),
+    transcriptionWords: JSON.stringify(scene.transcriptionWords || []),
   }
 
   return {
