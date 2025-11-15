@@ -41,11 +41,11 @@ class AnalysisConfig:
     sample_interval_seconds: float = 2.0
     max_workers: int = 4
     batch_size: int = 16
-    yolo_confidence: float = 0.35
+    yolo_confidence: float = 0.5
     yolo_iou: float = 0.45
-    resize_to_720p: bool = True
+    resize_to_1080p: bool = True
     known_faces_file: str = 'known_faces.json'
-    yolo_model: str = 'yolov8n.pt'
+    yolo_model: str = 'yolov8x.pt'
     output_dir: str = 'analysis_results'
     unknown_faces_dir: str = 'unknown_faces'
     enable_streaming: bool = True
@@ -313,11 +313,11 @@ class FrameProcessor:
         
         original_h, original_w = frame.shape[:2]
         
-        if self.config.resize_to_720p and frame.shape[0] > 720:
-            target_h = 720
+        if self.config.resize_to_1080p and frame.shape[0] > 1080:
+            target_h = 1080
             target_w = int(original_w * (target_h / original_h))
             resized = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
-            scale_factor = original_h / target_h  # Scale to convert back
+            scale_factor = original_h / target_h  
             return resized, scale_factor, (original_w, original_h)
         
         return frame.copy(), 1.0, (original_w, original_h)
@@ -832,7 +832,7 @@ def main():
     if args.cleanup:
         config.memory_cleanup_interval = args.cleanup
     if args.no_resize:
-        config.resize_to_720p = False
+        config.resize_to_1080p = False
     if args.no_report:
         config.enable_performance_report = False
     if args.no_aggressive_gc:
