@@ -27,7 +27,6 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
     def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
         detections_results = self._run_object_detection([frame])
         
-        # Get scaling info
         scale_factor = frame_analysis.get('scale_factor', 1.0)
         
         frame_objects = []
@@ -52,6 +51,8 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
                     y = y1_orig
                     width = x2_orig - x1_orig
                     height = y2_orig - y1_orig
+                    if width < 20 or height < 20:
+                        continue  # ignore tiny detections
 
                     frame_objects.append({
                         "label": label,
@@ -80,7 +81,8 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
                 device=device,
                 conf=self.config['yolo_confidence'],
                 iou=self.config['yolo_iou'],
-                half=use_half
+                half=use_half,
+                augment=True,
             )
 
     def get_results(self) -> Any:
