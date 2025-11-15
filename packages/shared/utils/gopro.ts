@@ -4,17 +4,26 @@ import { readFileSync } from 'node:fs'
 import { GoProMetadata } from '../types/gopro'
 
 export async function getGoProVideoMetadata(videoFullPath: string) {
-  return new Promise((res, rej) => {
+  return new Promise((res, _rej) => {
     const file = readFileSync(videoFullPath)
     gpmfExtract(file)
       .then((extracted) => {
-        goproTelemetry(extracted, {}, (telemetry) => {
-          res(telemetry)
-        })
+        try {
+          goproTelemetry(extracted, {}, (telemetry) => {
+            res(telemetry)
+          })
+        } catch (err) {
+          console.error(`Failed to extract GPMF from ${videoFullPath}`, err)
+          res(null)
+        }
       })
-      .catch(rej)
+      .catch((err) => {
+        console.error(`Failed to extract GPMF from ${videoFullPath}`, err)
+        res(null)
+      })
   })
 }
+
 export function getGoProDeviceName(metadata: GoProMetadata): string {
   for (const key in metadata) {
     if (metadata[key]?.['device name']) {
