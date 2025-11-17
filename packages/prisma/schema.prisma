@@ -65,7 +65,7 @@ model Job {
   id         String    @id @default(cuid())
   videoPath  String
   thumbnailPath String?
-  fileSize Int @default(0)
+  fileSize BigInt @default(0)
   overallProgress  Int @default(0)
   progress   Int @default(0)
   stage      JobStage  @default(starting)
@@ -104,6 +104,7 @@ model ChatMessage {
   chatId            String
   chat              Chat            @relation(fields: [chatId], references: [id], onDelete: Cascade)
   outputSceneIds    String[]        @default([])
+  stitchedVideoPath String?       
 
   @@index([chatId, createdAt])
 }
