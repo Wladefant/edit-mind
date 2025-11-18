@@ -5,8 +5,11 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
 import { ExpressAdapter } from '@bull-board/express'
 import foldersRoute from './routes/folders'
 import { config } from './config'
-import { videoQueue } from './queue'
+import { faceMatcherQueue, immichImporterQueue, videoQueue } from './queue'
 import './jobs/videoIndexer'
+import './jobs/faceMatcher'
+import './jobs/ImmichImporter'
+
 import { pythonService } from '@shared/services/pythonService'
 
 const app = express()
@@ -18,7 +21,7 @@ const serverAdapter = new ExpressAdapter()
 serverAdapter.setBasePath('/')
 
 createBullBoard({
-  queues: [new BullMQAdapter(videoQueue)],
+  queues: [new BullMQAdapter(videoQueue), new BullMQAdapter(faceMatcherQueue), new BullMQAdapter(immichImporterQueue)],
   serverAdapter: serverAdapter,
 })
 
