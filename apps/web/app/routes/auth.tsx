@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Outlet } from 'react-router';
-import { Sidebar } from '~/components/auth/Sidebar'
+import { Sidebar } from '~/features/auth/components/Sidebar'
 
 export default function AuthLayout() {
   return (

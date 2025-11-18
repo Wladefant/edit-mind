@@ -11,7 +11,7 @@ import {
   type LoaderFunctionArgs,
 } from 'react-router'
 import './app.css'
-import { SessionProvider } from './providers/SessionProvider'
+import { SessionProvider } from './features/auth/providers/SessionProvider'
 import { getUser } from './services/user.sever'
 
 export async function loader({ request }: LoaderFunctionArgs) {

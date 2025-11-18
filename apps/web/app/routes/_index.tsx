@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { redirect, useLoaderData, useNavigate, type LoaderFunctionArgs } from 'react-router'
-import { useOnboarding } from '~/hooks/useOnboarding'
+import { useOnboarding } from '~/features/onboarding/hooks/useOnboarding'
 import { getUser } from '~/services/user.sever'
 
 export async function loader({ request }: LoaderFunctionArgs) {

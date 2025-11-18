@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 import { Folder as FolderIcon, Plus, Trash2, HardDrive, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
-import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
-import { Sidebar } from '~/components/dashboard/Sidebar'
+import { DashboardLayout } from '~/layouts/DashboardLayout'
+import { Sidebar } from '~/features/shared/components/Sidebar'
 import { useLoaderData, type MetaFunction } from 'react-router'
-import { AddFolder } from '~/components/AddFolder'
-import { DeleteFolder } from '~/components/DeleteFolder'
 import { prisma } from '~/services/database'
 import type { Folder, FolderStatus } from '@prisma/client'
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { AddFolder } from '~/features/settings/components/AddFolder'
+import { DeleteFolder } from '~/features/settings/components/DeleteFolder'
 
 export async function loader() {
   try {
@@ -21,7 +21,15 @@ export async function loader() {
         },
       },
     })
-    return { folders }
+    return {
+      folders: folders.map((folder) => ({
+        ...folder,
+        jobs: folder.jobs.map((job) => ({
+          ...job,
+          fileSize: parseInt(job.fileSize.toString()),
+        })),
+      })),
+    }
   } catch (error) {
     console.error(error)
     return null

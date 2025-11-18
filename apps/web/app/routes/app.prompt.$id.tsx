@@ -1,14 +1,14 @@
 import { AnimatePresence } from 'framer-motion'
-import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
-import { useChat } from '../hooks/useChat'
-import { Welcome } from '../components/prompt/Welcome'
-import { MessageList } from '../components/prompt/MessageList'
-import { LoadingIndicator } from '../components/prompt/LoadingIndicator'
-import { ChatInput } from '../components/prompt/ChatInput'
+import { DashboardLayout } from '~/layouts/DashboardLayout'
+import { useChat } from '../features/prompt/hooks/useChat'
 import { useLoaderData, useParams, type LoaderFunctionArgs, type MetaFunction, useRouteLoaderData } from 'react-router'
 import { getVideosMetadataSummary } from '@shared/services/vectorDb'
 import { generateSearchSuggestions } from '@shared/utils/search'
-import { ChatHistory } from '~/components/prompt/ChatHistory'
+import { ChatHistory } from '~/features/prompt/components/ChatHistory'
+import { Welcome } from '~/features/prompt/components/Welcome'
+import { MessageList } from '~/features/prompt/components/MessageList'
+import { LoadingIndicator } from '~/features/prompt/components/LoadingIndicator'
+import { ChatInput } from '~/features/prompt/components/ChatInput'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Prompt | Edit Mind' }]
@@ -27,14 +27,17 @@ export default function ChatPage() {
   const { chats } = useRouteLoaderData('routes/app') as { chats: any[] }
 
   const {
-    messages,
     input,
     isLoading,
-    messagesEndRef,
     inputRef,
     setInput,
     sendMessage,
     handleSuggestionClick,
+    messages,
+    messagesEndRef,
+    selectedScenes,
+    toggleSceneSelection,
+    stitchSelectedScenes,
   } = useChat(id)
   const { suggestions } = useLoaderData<typeof loader>()
 
@@ -47,7 +50,12 @@ export default function ChatPage() {
               <Welcome onSuggestionClick={handleSuggestionClick} suggestions={suggestions} />
             ) : (
               <div className="max-w-4xl mx-auto space-y-6 pb-8">
-                <MessageList messages={messages} />
+                <MessageList
+                  messages={messages}
+                  selectedScenes={selectedScenes}
+                  handleSelectScene={toggleSceneSelection}
+                  stitchSelectedScenes={stitchSelectedScenes}
+                />
                 {isLoading && <LoadingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
