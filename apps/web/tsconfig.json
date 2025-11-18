@@ -13,6 +13,7 @@
     "paths": {
       "~/*": ["./app/*"],
       "@shared/*": ["../../packages/shared/*"],
+      "@background-jobs/*": ["../../packages/background-jobs/*"]
     },
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
