@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Callable
 import time 
 
-async def create_faces_data_from_folder_async(faces_directory=".faces", output_json_path="faces.json"):
+async def create_faces_data_from_folder_async(faces_directory=".faces", output_json_path=".faces.json"):
     """
     Asynchronously scans the specified faces directory, expecting subfolders named after individuals,
     collects image paths, and optionally saves this data to a JSON file.
@@ -56,7 +56,7 @@ async def create_faces_data_from_folder_async(faces_directory=".faces", output_j
 async def batch_add_faces_from_folder(
     faces_directory=".faces",
     known_faces_file="known_faces.json",
-    output_json_path="faces.json",
+    output_json_path=".faces.json",
     progress_callback: Optional[Callable[[dict], None]] = None
 ):
     """

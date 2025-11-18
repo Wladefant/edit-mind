@@ -65,7 +65,10 @@ class MessageType(Enum):
     REINDEX_PROGRESS = "reindex_progress"
     REINDEX_COMPLETE = "reindex_complete"
     REINDEX_ERROR = "reindex_error"
-
+    FIND_MATCHING_FACES = "find_matching_faces"
+    FACE_MATCHING_PROGRESS = "face_matching_progress"
+    FACE_MATCHING_COMPLETE = "face_matching_complete"
+    FACE_MATCHING_ERROR = "face_matching_error"
 
 @dataclass
 class ServiceMetrics:
@@ -264,6 +267,7 @@ class MessageHandler:
             MessageType.TRANSCRIBE.value: self._handle_transcribe,
             MessageType.REINDEX_FACES.value: self._handle_reindex_faces,
             MessageType.HEALTH.value: self._handle_health,
+            MessageType.FIND_MATCHING_FACES.value: self._handle_find_matching_faces
         }
     
     def cleanup_guards(self, websocket: WebSocketServerProtocol) -> None:
@@ -589,14 +593,14 @@ class MessageHandler:
             
             faces_dir = payload.get("faces_directory", ".faces")
             known_faces_f = payload.get("known_faces_file", "known_faces.json")
-            output_json_f = payload.get("output_json_path", "faces.json")
+            output_json_f = payload.get("output_json_path", ".faces.json")
             
             if not isinstance(faces_dir, str):
                 faces_dir = ".faces"
             if not isinstance(known_faces_f, str):
                 known_faces_f = "known_faces.json"
             if not isinstance(output_json_f, str):
-                output_json_f = "faces.json"
+                output_json_f = ".faces.json"
             
             guard = CallbackGuard(websocket, self.connection_manager)
             self.active_guards.add(guard)
@@ -658,7 +662,96 @@ class MessageHandler:
                 guard.cancel()
                 self.active_guards.discard(guard)
 
-
+    async def _handle_find_matching_faces(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """Handle face matching request."""
+        person_name = payload.get("person_name")
+        reference_images = payload.get("reference_images")
+        unknown_faces_dir = payload.get("unknown_faces_dir", "analysis_results/unknown_faces")
+        tolerance = payload.get("tolerance", 0.6)
+        
+        if not isinstance(person_name, str) or not person_name:
+            await self._send_message(
+                websocket,
+                MessageType.FACE_MATCHING_ERROR,
+                {"message": "Missing or invalid 'person_name'"}
+            )
+            return
+        
+        if not isinstance(reference_images, list) or not reference_images:
+            await self._send_message(
+                websocket,
+                MessageType.FACE_MATCHING_ERROR,
+                {"message": "Missing or invalid 'reference_images'"}
+            )
+            return
+        
+        logger.info(f"Starting face matching for {person_name} with {len(reference_images)} references")
+        
+        guard = CallbackGuard(websocket, self.connection_manager)
+        self.active_guards.add(guard)
+        
+        async def progress_callback(data: Dict[str, Union[str, int]]) -> None:
+            """Progress callback for face matching."""
+            if not guard.is_active():
+                return
+            
+            progress_data: JsonDict = {
+                "person_name": person_name,
+                "current": data.get("current", 0),
+                "total": data.get("total", 0),
+                "progress": data.get("progress", 0),
+                "elapsed": data.get("elapsed", 0),
+                "matches_found": data.get("matches_found", 0)
+            }
+            
+            try:
+                await self._send_message(
+                    websocket,
+                    MessageType.FACE_MATCHING_PROGRESS,
+                    progress_data
+                )
+            except Exception:
+                pass
+        
+        try:
+            from face_matcher import find_and_label_matching_faces
+            
+            result = await find_and_label_matching_faces(
+                person_name=person_name,
+                reference_image_paths=reference_images,
+                unknown_faces_dir=unknown_faces_dir,
+                tolerance=tolerance,
+                progress_callback=progress_callback
+            )
+            
+            if result["success"]:
+                logger.info(f"Face matching complete: {result['matches_found']} matches found")
+                await self._send_message(
+                    websocket,
+                    MessageType.FACE_MATCHING_COMPLETE,
+                    result
+                )
+            else:
+                await self._send_message(
+                    websocket,
+                    MessageType.FACE_MATCHING_ERROR,
+                    {"message": result.get("error", "Unknown error")}
+                )
+        
+        except Exception as e:
+            logger.exception(f"Face matching failed for {person_name}")
+            await self._send_message(
+                websocket,
+                MessageType.FACE_MATCHING_ERROR,
+                {"message": f"Face matching failed: {str(e)}"}
+            )
+        finally:
+            guard.cancel()
+            self.active_guards.discard(guard)
 class WebSocketHandler:
     """Coordinates WebSocket connections and message processing."""
     

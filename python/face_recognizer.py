@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 
 class FaceRecognizer:
-    def __init__(self, known_faces_file='faces.json', tolerance=0.5, model='cnn'):
+    def __init__(self, known_faces_file='.faces.json', tolerance=0.5, model='cnn'):
         """
         Initialize the face recognizer.
         
@@ -79,7 +79,13 @@ class FaceRecognizer:
             face_locations,
             num_jitters=10  # More jitters = more accurate but slower
         )
-
+        def distance_to_confidence(face_distance, tolerance=self.tolerance):
+            """Convert face distance to confidence (0-1 scale)."""
+            if face_distance > tolerance:
+                return 0.0
+            # Smooth mapping: closer distance -> higher confidence
+            return round((1.0 - face_distance / tolerance) ** 2, 2)
+        
         recognized_faces = []
         for face_location, face_encoding in zip(face_locations, face_encodings):
             name = "Unknown"
@@ -89,7 +95,7 @@ class FaceRecognizer:
                 # Calculate distances to all known faces
                 face_distances = face_recognition.face_distance(
                     self.known_face_encodings, 
-                    face_encoding
+                    face_encoding,
                 )
                 
                 # Find best match
@@ -101,22 +107,25 @@ class FaceRecognizer:
                 if best_distance <= self.tolerance:
                     name = self.known_face_names[best_match_index]
                     # Convert distance to confidence score (0-1)
-                    confidence = 1.0 - best_distance
+                    confidence = distance_to_confidence(best_distance, self.tolerance)
+
             
             if name == "Unknown":
                 # Check if this unknown face has been seen before
                 found_existing_unknown = False
                 for unknown_name, encodings in self.unknown_face_encodings.items():
-                    if len(encodings) > 0:
+                    if encodings:
                         distances = face_recognition.face_distance(encodings, face_encoding)
                         if np.min(distances) <= self.tolerance:
                             name = unknown_name
                             found_existing_unknown = True
+                            confidence = distance_to_confidence(np.min(distances), self.tolerance)
                             break
                 
                 if not found_existing_unknown:
                     name = f"Unknown_{self.unknown_face_counter:03d}"
                     self.unknown_face_counter += 1
+                    confidence = 0.0 
                 self.unknown_face_encodings[name].append(face_encoding)
 
             recognized_faces.append({
