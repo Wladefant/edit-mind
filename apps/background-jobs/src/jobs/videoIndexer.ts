@@ -18,7 +18,17 @@ async function ensureDir(dir: string) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
-async function updateJob(jobId: string, data: Partial<{ stage: JobStage; progress: number; overallProgress: number; status: JobStatus; thumbnailPath?: string; fileSize?: number }>) {
+async function updateJob(
+  jobId: string,
+  data: Partial<{
+    stage: JobStage
+    progress: number
+    overallProgress: number
+    status: JobStatus
+    thumbnailPath?: string
+    fileSize?: bigint
+  }>
+) {
   await prisma.job.updateMany({
     where: { id: jobId },
     data: { ...data, updatedAt: new Date() },
@@ -49,15 +59,18 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
     stage: JobStage.starting,
     overallProgress: 0,
     progress: 0,
-    fileSize: fileStats.size,
+    fileSize: BigInt(fileStats.size),
   })
   await job.updateProgress(0)
 
   try {
     // Step 0: Thumbnail (0-10%)
     const thumbnailPath = path.join(THUMBNAILS_DIR, `${path.basename(videoPath)}.jpg`)
-    try { await generateThumbnail(videoPath, thumbnailPath, 1) } catch (e) { console.error('Thumbnail error:', e) }
-    await updateJob(jobId, { thumbnailPath: path.basename(thumbnailPath) })
+    try {
+      await generateThumbnail(videoPath, thumbnailPath, 1)
+    } catch (e) {
+      console.error('Thumbnail error:', e)
+    }
     await job.updateProgress(10)
 
     // Step 1: Transcription (10-40%)
@@ -117,7 +130,6 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
     await updateJob(jobId, { stage: JobStage.embedding, status: JobStatus.done, overallProgress: 100, progress: 100 })
 
     return { video: videoPath }
-
   } catch (error) {
     console.error('❌ Error processing video:', videoPath, error)
     await updateJob(jobId, { status: JobStatus.error })
