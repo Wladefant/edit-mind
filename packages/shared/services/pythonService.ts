@@ -5,6 +5,7 @@ import WebSocket from 'ws'
 import { Analysis, AnalysisProgress } from '../types/analysis'
 import { IS_WIN, MAX_RESTARTS, RESTART_BACKOFF_MS } from '../constants'
 import { FaceIndexingProgress } from '../types/face'
+import { MatchResult } from '../types/faces'
 
 class PythonService {
   private static instance: PythonService
@@ -239,7 +240,44 @@ class PythonService {
 
     this.client.send(JSON.stringify(message))
   }
+  public findMatchingFaces(
+    personName: string,
+    referenceImages: string[],
+    unknownFacesDir: string,
+    onProgress: (progress: any) => void,
+    onComplete: (result: { matches: MatchResult[]; matches_found: number }) => void,
+    onError: (error: Error) => void
+  ): void {
+    if (!this.isRunning || !this.client) {
+      onError(new Error('Python service is not running.'))
+      return
+    }
 
+    if (this.client.readyState !== WebSocket.OPEN) {
+      onError(new Error(`WebSocket not open. State: ${this.client.readyState}`))
+      return
+    }
+
+    this.messageCallbacks.delete('face_matching_progress')
+    this.messageCallbacks.delete('face_matching_complete')
+    this.messageCallbacks.delete('face_matching_error')
+
+    this.messageCallbacks.set('face_matching_progress', onProgress)
+    this.messageCallbacks.set('face_matching_complete', onComplete)
+    this.messageCallbacks.set('face_matching_error', onError)
+
+    const message = {
+      type: 'find_matching_faces',
+      payload: {
+        person_name: personName,
+        reference_images: referenceImages,
+        unknown_faces_dir: unknownFacesDir,
+        tolerance: 0.6,
+      },
+    }
+
+    this.client.send(JSON.stringify(message))
+  }
   public getServiceUrl(): string | null {
     return this.serviceUrl
   }
