@@ -1,15 +1,16 @@
 import { AnimatePresence } from 'framer-motion'
-import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
-import { useChat } from '../hooks/useChat'
-import { Welcome } from '../components/prompt/Welcome'
-import { ChatInput } from '../components/prompt/ChatInput'
-import { type MetaFunction, useRouteLoaderData } from 'react-router'
+import { DashboardLayout } from '~/layouts/DashboardLayout'
+import { useChat } from '../features/prompt/hooks/useChat'
+import { useLoaderData, type MetaFunction, useRouteLoaderData } from 'react-router';
 import { getVideosMetadataSummary } from '@shared/services/vectorDb'
 import { generateSearchSuggestions } from '@shared/utils/search'
-import { useLoaderData } from 'react-router'
-import { ChatHistory } from '~/components/prompt/ChatHistory'
-import { LoadingIndicator } from '~/components/prompt/LoadingIndicator'
-import { MessageList } from '~/components/prompt/MessageList'
+import { ChatHistory } from '~/features/prompt/components/ChatHistory'
+import { Welcome } from '~/features/prompt/components/Welcome'
+import { MessageList } from '~/features/prompt/components/MessageList'
+import { LoadingIndicator } from '~/features/prompt/components/LoadingIndicator'
+import { ChatInput } from '~/features/prompt/components/ChatInput'
+
+import type { Chat } from '@prisma/client'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Prompt | Edit Mind' }]
@@ -22,10 +23,21 @@ export async function loader() {
 }
 
 export default function ChatPage() {
-  const { input, isLoading, inputRef, setInput, sendMessage, handleSuggestionClick, messages, messagesEndRef } =
-    useChat()
+  const {
+    input,
+    isLoading,
+    inputRef,
+    setInput,
+    sendMessage,
+    handleSuggestionClick,
+    messages,
+    messagesEndRef,
+    selectedScenes,
+    toggleSceneSelection,
+    stitchSelectedScenes,
+  } = useChat()
   const { suggestions } = useLoaderData<typeof loader>()
-  const { chats } = useRouteLoaderData('routes/app') as { chats: any[] }
+  const { chats } = useRouteLoaderData('routes/app') as { chats: Chat[] }
 
   return (
     <DashboardLayout sidebar={<ChatHistory chats={chats} />}>
@@ -36,7 +48,12 @@ export default function ChatPage() {
               <Welcome onSuggestionClick={handleSuggestionClick} suggestions={suggestions} />
             ) : (
               <div className="max-w-4xl mx-auto space-y-6 pb-8">
-                <MessageList messages={messages} />
+                <MessageList
+                  messages={messages}
+                  selectedScenes={selectedScenes}
+                  handleSelectScene={toggleSceneSelection}
+                  stitchSelectedScenes={stitchSelectedScenes}
+                />
                 {isLoading && <LoadingIndicator />}
                 <div ref={messagesEndRef} />
               </div>

@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'framer-motion'
-import { useOnboarding } from '~/hooks/useOnboarding'
-import { OnboardingStep } from '~/components/onboarding/OnboardingStep'
-import { OnboardingNavigation } from '~/components/onboarding/OnboardingNavigation'
-import { SkipButton } from '~/components/onboarding/SkipButton'
+import { OnboardingNavigation } from '~/features/onboarding/components/OnboardingNavigation'
+import { OnboardingStep } from '~/features/onboarding/components/OnboardingStep'
+import { SkipButton } from '~/features/onboarding/components/SkipButton'
+import { useOnboarding } from '~/features/onboarding/hooks/useOnboarding'
 
 export default function Onboarding() {
   const { currentStep, handleNext, handleSkip, goToStep, onboardingSteps, isLastStep, totalSteps } = useOnboarding()

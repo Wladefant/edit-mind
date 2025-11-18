@@ -1,10 +1,10 @@
-import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
-import { Sidebar } from '~/components/dashboard/Sidebar'
+import { DashboardLayout } from '~/layouts/DashboardLayout'
+import { Sidebar } from '~/features/shared/components/Sidebar'
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { useLoaderData, useRevalidator } from 'react-router'
 import { prisma } from '~/services/database'
-import { JobsGrid } from '~/components/JobsGrid'
 import { useEffect } from 'react'
+import { JobsGrid } from '~/features/settings/components/JobsGrid'
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const { id } = params
