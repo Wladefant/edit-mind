@@ -6,15 +6,14 @@ import { BADGE_COLORS } from '../constants/styles'
 interface AIVisionBadgeProps {
   currentScene: Scene | null
   showOverlays: boolean
+  showControls: boolean
 }
 
-export function AIVisionBadge({ currentScene, showOverlays }: AIVisionBadgeProps) {
+export function AIVisionBadge({ currentScene, showOverlays, showControls }: AIVisionBadgeProps) {
   if (!showOverlays || !currentScene) return null
 
   const hasAnyDetections =
-    currentScene.facesData?.length ||
-    currentScene.objectsData?.length ||
-    currentScene.detectedTextData?.length
+    currentScene.facesData?.length || currentScene.objectsData?.length || currentScene.detectedTextData?.length
 
   if (!hasAnyDetections) return null
 
@@ -22,7 +21,7 @@ export function AIVisionBadge({ currentScene, showOverlays }: AIVisionBadgeProps
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: -20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+        animate={{ opacity: showControls ? 1 : 0, x: showControls ? 0 : 20 }}
         exit={{ opacity: 0, scale: 0.9, y: -20 }}
         className="absolute top-6 left-6 flex items-center gap-3 px-4 py-3 rounded-2xl bg-black/80 backdrop-blur-xl border-2 border-white/20 shadow-2xl"
       >
@@ -35,18 +34,14 @@ export function AIVisionBadge({ currentScene, showOverlays }: AIVisionBadgeProps
         {currentScene.facesData && currentScene.facesData.length > 0 && (
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${BADGE_COLORS.face.bg}`}>
             <User size={14} className={BADGE_COLORS.face.text} strokeWidth={2.5} />
-            <span className={`text-sm font-bold ${BADGE_COLORS.face.text}`}>
-              {currentScene.facesData.length}
-            </span>
+            <span className={`text-sm font-bold ${BADGE_COLORS.face.text}`}>{currentScene.facesData.length}</span>
           </div>
         )}
 
         {currentScene.objectsData && currentScene.objectsData.length > 0 && (
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${BADGE_COLORS.object.bg}`}>
             <Tag size={14} className={BADGE_COLORS.object.text} strokeWidth={2.5} />
-            <span className={`text-sm font-bold ${BADGE_COLORS.object.text}`}>
-              {currentScene.objectsData.length}
-            </span>
+            <span className={`text-sm font-bold ${BADGE_COLORS.object.text}`}>{currentScene.objectsData.length}</span>
           </div>
         )}
 

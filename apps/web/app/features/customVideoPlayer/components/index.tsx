@@ -98,7 +98,7 @@ export function CustomVideoPlayer({
         />
       </div>
 
-      <AIVisionBadge currentScene={currentScene} showOverlays={showOverlays} />
+      <AIVisionBadge currentScene={currentScene} showOverlays={showOverlays} showControls={showControls} />
 
       {title && (
         <motion.div
