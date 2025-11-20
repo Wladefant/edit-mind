@@ -14,6 +14,9 @@ export interface VideoSearchParams {
   camera?: string
   transcriptionQuery?: string
   detectedText?: string
+  faces?: string[]
+  locations?: string[]
+  semanticQuery?: string
 }
 
 export type SearchQuery = {
@@ -26,6 +29,8 @@ export type SearchQuery = {
   camera?: string
   transcriptionQuery?: string
   detectedText?: string
+  locations?: string[]
+  semanticQuery?: string
 }
 
 export type SearchSuggestion = z.infer<typeof searchSuggestionSchema>
@@ -53,4 +58,37 @@ export interface VideoConfig {
 export interface SearchMetadata {
   aspectRatio?: AspectRatio
   faces?: string[]
+}
+
+export interface SearchAnalytics {
+  query: string
+  extractedParams: VideoSearchParams
+  finalResultsCount: number
+  durationMs: number
+  timestamp: Date
+}
+export interface SearchStats {
+  query: string
+  durationMs: number
+  resultsCount: number
+  timestamp: Date
+  performance: {
+    rating: 'excellent' | 'good' | 'fair' | 'poor'
+    isFast: boolean
+    isAcceptable: boolean
+    needsOptimization: boolean
+  }
+  complexity: {
+    level: 'simple' | 'moderate' | 'complex'
+    score: number
+    factors: string[]
+  }
+  queryDetails: {
+    hasFaces: boolean
+    hasLocations: boolean
+    hasEmotions: boolean
+    hasObjects: boolean
+    hasTranscription: boolean
+    hasSemanticSearch: boolean
+  }
 }
