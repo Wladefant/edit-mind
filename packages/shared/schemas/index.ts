@@ -1,32 +1,100 @@
 import { z } from 'zod'
 
-const emotionSchema = z.object({
+export const emotionSchema = z.object({
   name: z.string(),
   emotion: z.string(),
 })
 
+export const boundingBoxSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0).max(1),
+  height: z.number().min(0).max(1),
+})
+
+export const faceSchema = z.object({
+  name: z.string(),
+  bbox: boundingBoxSchema.optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  emotion: z.string().optional(),
+})
+
+export const objectDataSchema = z.object({
+  label: z.string(),
+  bbox: boundingBoxSchema.optional(),
+  confidence: z.number().min(0).max(1).optional(),
+})
+
+export const detectedTextDataSchema = z.object({
+  text: z.string(),
+  bbox: boundingBoxSchema.optional(),
+  confidence: z.number().min(0).max(1).optional(),
+})
+
+export const transcriptionWordSchema = z.object({
+  word: z.string(),
+  start: z.number(),
+  end: z.number(),
+  confidence: z.number().min(0).max(1).optional(),
+})
+
 export const sceneSchema = z.object({
   id: z.string(),
+  source: z.string(),
+  thumbnailUrl: z.string().optional(),
   startTime: z.number(),
   endTime: z.number(),
-  objects: z.array(z.string()),
+  duration: z.number().optional(),
   faces: z.array(z.string()),
+  objects: z.array(z.string()),
+  detectedText: z.array(z.string()),
+  facesData: z.array(faceSchema).optional(),
+  objectsData: z.array(objectDataSchema).optional(),
+  detectedTextData: z.array(detectedTextDataSchema).optional(),
+  transcription: z.string(),
+  transcriptionWords: z.array(transcriptionWordSchema).optional(),
+  description: z.string(),
+  shot_type: z.string(),
+  emotions: z.array(emotionSchema),
+  dominantColorHex: z.string(),
+  dominantColorName: z.string(),
+  camera: z.string(),
+  createdAt: z.string(),
+  location: z.string(),
+  category: z.string().optional(),
+  aspect_ratio: z.string().optional(),
+})
+
+export type Scene = z.infer<typeof sceneSchema>
+
+export const chromaMetadataSchema = z.object({
+  source: z.string(),
+  thumbnailUrl: z.string(),
+  startTime: z.number(),
+  endTime: z.number(),
+  duration: z.number(),
+  type: z.literal('scene'),
+  faces: z.string(),
+  objects: z.string(),
   transcription: z.string(),
   description: z.string(),
   shot_type: z.string(),
-  thumbnailUrl: z.string().optional(),
-  emotions: z.array(emotionSchema),
-  source: z.string(),
-  category: z.string().optional(),
-  aspect_ratio: z.string().optional(),
-  camera: z.string(),
+  detectedText: z.string(),
+  facesData: z.string(),
+  objectsData: z.string(),
+  detectedTextData: z.string(),
+  transcriptionWords: z.string(),
+  emotions: z.string(),
   createdAt: z.string(),
+  location: z.string(),
   dominantColorHex: z.string(),
   dominantColorName: z.string(),
-  location: z.string(),
-  duration: z.number().optional(),
-  detectedText: z.array(z.string()),
+  camera: z.string(),
+  aspect_ratio: z.string(),
+  category: z.string(),
 })
+
+export type ChromaMetadata = z.infer<typeof chromaMetadataSchema>
 
 export const videoSchema = z.object({
   fileName: z.string().optional(),
@@ -68,7 +136,7 @@ const settingsSchema = z.object({
   batch_size: z.number(),
   yolo_confidence: z.number(),
   yolo_iou: z.number(),
-  resize_to_720p: z.boolean(),
+  resize_to_1080p: z.boolean(),
   yolo_model: z.string(),
   output_dir: z.string(),
 })
@@ -155,6 +223,7 @@ export const unknownFace = z.object({
     aspect_ratio: z.number(),
   }),
 })
+
 export const appIpcSchema = {
   version: {
     args: z.tuple([]),
