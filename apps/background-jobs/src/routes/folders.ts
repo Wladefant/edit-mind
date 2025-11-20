@@ -1,6 +1,6 @@
 import express from 'express'
 import { prisma } from '../services/db'
-import { findVideoFiles } from '@shared/utils/videos'
+import { findVideoFiles } from '@shared/utils/videos';
 import { watchFolder } from '../watcher'
 import { videoQueue } from 'src/queue'
 
@@ -26,8 +26,12 @@ router.post('/trigger', async (req, res) => {
     for (const video of videos) {
       const job = await prisma.job.upsert({
         where: { videoPath: video.path, id: '' },
-        create: { videoPath: video.path, userId: folder?.userId, folderId: folder.id },
-        update: { folderId: folder.id },
+        create: {
+          videoPath: video.path,
+          userId: folder?.userId,
+          folderId: folder.id,
+        },
+        update: { folderId: folder.id},
       })
       await videoQueue.add('index-video', { videoPath: video.path, jobId: job.id, folderId: folder.id })
     }
