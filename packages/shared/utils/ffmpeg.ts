@@ -21,3 +21,12 @@ export const spawnFFmpeg = (args: string[]): ChildProcess => {
 
   return spawn(ffmpegPath, args)
 }
+
+let ffprobeStaticInstance: typeof import('ffmpeg-ffprobe-static') | null = null;
+
+export const loadFFprobeStatic = async () => {
+  if (!ffprobeStaticInstance) {
+    ffprobeStaticInstance = (await import('ffmpeg-ffprobe-static')).default;
+  }
+  return ffprobeStaticInstance;
+};
