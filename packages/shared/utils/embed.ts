@@ -72,14 +72,14 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
         )
       }
 
-      const embeddingInputs = batch.map(async (scene, index) => {
+      const embeddingInputs = batch.map(async (scene) => {
         scene.camera = initialCamera
         scene.createdAt = createdAt
         scene.location = location
         scene.aspect_ratio = aspectRatio
         scene.category = category
         scene.duration = duration
-        return await sceneToVectorFormat(scene, i + index)
+        return await sceneToVectorFormat(scene)
       })
 
       await embedDocuments(await Promise.all(embeddingInputs))
@@ -283,7 +283,7 @@ const generateVectorDocumentText = async (scene: Scene) => {
   return text
 }
 
-export const sceneToVectorFormat = async (scene: Scene, sceneIndex: number) => {
+export const sceneToVectorFormat = async (scene: Scene) => {
   const detectedText = Array.isArray(scene.detectedText) ? scene.detectedText.join(', ') : scene.detectedText || ''
 
   const text = await generateVectorDocumentText(scene)
@@ -298,7 +298,7 @@ export const sceneToVectorFormat = async (scene: Scene, sceneIndex: number) => {
     objects: scene.objects.join(', '),
     transcription: scene.transcription || '',
     emotions: scene.emotions.map((e) => JSON.stringify(e)).join(', '),
-    description: scene.description || '',
+    description: text,
     shot_type: scene.shot_type || 'long-shot',
     detectedText: detectedText,
     createdAt: scene.createdAt,
@@ -315,7 +315,7 @@ export const sceneToVectorFormat = async (scene: Scene, sceneIndex: number) => {
   }
 
   return {
-    id: `${path.basename(scene.source)}_scene_${sceneIndex}`,
+    id: scene.id || `${path.basename(scene.source)}_scene_${scene.startTime}_${scene.endTime}`,
     text,
     metadata,
   }
