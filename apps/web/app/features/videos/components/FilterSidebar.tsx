@@ -7,7 +7,7 @@ import type { Filters } from '@shared/types/vector'
 import { useSession } from '~/features/auth/hooks/useSession'
 
 interface FilterSidebarProps {
-  filters: Filters
+  filters: Filters | never[]
   selectedFilters: Record<string, string[]>
   onFilterChange: (filters: Record<string, string[]>) => void
   onClose: () => void
