@@ -36,7 +36,6 @@ export async function loader({ params }: LoaderFunctionArgs) {
       },
     })
   } catch (error) {
-    console.error(error)
     throw new Response(`File not found or error loading media: ${error}`, { status: 404 })
   }
 }
