@@ -5,7 +5,7 @@ import { getAllVideosWithScenes } from '@shared/services/vectorDb'
 import { FilterSidebar } from '~/features/videos/components/FilterSidebar'
 import { useState } from 'react'
 import { useFilterSidebar } from '~/features/videos/hooks/useFilterSidebar'
-import { VideoCard } from '~/features/videos/components/VideoCard'
+import { VideoCard } from '~/features/shared/components/VideoCard'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Dashboard | Edit Mind' }]
