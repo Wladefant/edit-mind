@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import 'dotenv/config'
-import { VideoSearchParams } from '../types/search';
+import { VideoSearchParams } from '../types/search'
 import { CACHE_TTL, GEMINI_API_KEY } from '../constants'
-import { getVideoAnalytics } from '../utils/analytics';
+import { getVideoAnalytics } from '../utils/analytics'
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
 
@@ -30,12 +30,9 @@ export async function generateActionFromPrompt(query: string, useCache = true): 
   return result
 }
 
-/**
- * Generates action from the prompt
- * @param query The user's query asking for a compilation.
- */
+
 export async function generateActionFromPromptInternal(query: string): Promise<VideoSearchParams> {
-  const prompt = `You are a video search parameter extraction assistant. Extract structured data from user queries.
+const prompt = `You are a video search parameter extraction assistant. Extract structured data from user queries.
 
 STRICT REQUIREMENTS:
 1. Return ONLY valid JSON, no markdown formatting
@@ -51,32 +48,62 @@ FIELD SPECIFICATIONS:
 - description: Natural language scene description (string, required)
 - outputFilename: Kebab-case name without extension, max 50 chars (string, required)
 - objects: Physical objects/items in scene (array of strings)
-- transcriptionQuery: Exact text to search for in video transcriptions (string or null). Extract from:
-  * Text inside single or double quotes
-  * Phrases after "says", "mentions", "talks about", "containing the word(s)"
-  * Any explicit text search request
+- faces: Array of person names mentioned (extract @mentions and names, array of strings)
+- locations: Array of location names (indoor, outdoor, office, beach, etc., array of strings)
+- transcriptionQuery: Exact text to search for in video transcriptions (string or null)
+- semanticQuery: Conceptual/contextual search terms for ranking (string or null)
+  * Extract abstract concepts like "brainstorming", "celebrating", "discussing"
+  * Relationship phrases like "working together", "presenting to"
+  * Context that goes beyond exact keywords
 
 EXAMPLES:
-Input: "Create a 30 second vertical video of me looking happy"
-Output: {"action":"looking","emotions":["happy"],"shot_type":null,"aspect_ratio":"9:16","duration":30,"description":"person looking happy","outputFilename":"happy-vertical-30s","objects":[],"transcriptionQuery":null}
+Input: "Show me scenes with @Ilias and @Pierre talking about Strapi outdoors"
+Output: {
+  "action":"talking",
+  "emotions":[],
+  "shot_type":null,
+  "aspect_ratio":null,
+  "duration":null,
+  "description":"Ilias and Pierre talking about Strapi outdoors",
+  "outputFilename":"ilias-pierre-strapi-outdoors",
+  "objects":[],
+  "faces":["Ilias","Pierre"],
+  "locations":["outdoor"],
+  "transcriptionQuery":"Strapi",
+  "semanticQuery":"talking about discussing collaboration"
+}
 
-Input: "2 minute video of @Ilias riding a bike outdoors"
-Output: {"action":"riding a bike","emotions":[],"shot_type":"long-shot","aspect_ratio":null,"duration":120,"description":"person riding bicycle outdoors","outputFilename":"ilias-bike-ride-2min","objects":["bicycle"],"transcriptionQuery":null}
+Input: "Find exciting product launch moments"
+Output: {
+  "action":"",
+  "emotions":["excited"],
+  "shot_type":null,
+  "aspect_ratio":null,
+  "duration":null,
+  "description":"exciting product launch moments",
+  "outputFilename":"exciting-product-launch",
+  "objects":[],
+  "faces":[],
+  "locations":[],
+  "transcriptionQuery":null,
+  "semanticQuery":"product launch announcement reveal celebration applause excitement"
+}
 
-Input: "a clip where someone says 'that's awesome'"
-Output: {"action":"","emotions":[],"shot_type":null,"aspect_ratio":null,"duration":null,"description":"someone says that's awesome","outputFilename":"clip-thats-awesome","objects":[],"transcriptionQuery":"that's awesome"}
-
-Input: "Compile my happiest moments from last summer"
-Output: {"action":"","emotions":["happy"],"shot_type":null,"aspect_ratio":null,"duration":null,"description":"happy summer moments","outputFilename":"happy-summer-moments","objects":[],"transcriptionQuery":null}
-
-Input: "Generate a video with all scenes mention the word 'Yalla Let's code'"
-Output: {"action":"","emotions":[],"shot_type":null,"aspect_ratio":null,"duration":null,"description":"scenes mentioning yalla let's code","outputFilename":"yalla-lets-code-scenes","objects":[],"transcriptionQuery":"Yalla Let's code"}
-
-Input: "Find clips where I talk about machine learning"
-Output: {"action":"talking","emotions":[],"shot_type":null,"aspect_ratio":null,"duration":null,"description":"talking about machine learning","outputFilename":"machine-learning-clips","objects":[],"transcriptionQuery":"machine learning"}
-
-Input: "Show me videos containing the phrase 'hello world'"
-Output: {"action":"","emotions":[],"shot_type":null,"aspect_ratio":null,"duration":null,"description":"videos with hello world phrase","outputFilename":"hello-world-videos","objects":[],"transcriptionQuery":"hello world"}
+Input: "Clips where @Sarah is brainstorming with the team"
+Output: {
+  "action":"brainstorming",
+  "emotions":[],
+  "shot_type":null,
+  "aspect_ratio":null,
+  "duration":null,
+  "description":"Sarah brainstorming with team",
+  "outputFilename":"sarah-team-brainstorming",
+  "objects":["whiteboard"],
+  "faces":["Sarah"],
+  "locations":["indoor"],
+  "transcriptionQuery":null,
+  "semanticQuery":"brainstorming collaboration discussing ideas planning whiteboard session"
+}
 
 USER QUERY: ${query}
 
@@ -169,9 +196,13 @@ Your response:`
 export async function generateGeneralResponse(userPrompt: string, chatHistory?: any[]): Promise<string> {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
-  const historyContext = chatHistory && chatHistory.length > 0
-    ? `\n\nRecent conversation:\n${chatHistory.slice(-5).map(m => `${m.sender}: ${m.text}`).join('\n')}`
-    : ''
+  const historyContext =
+    chatHistory && chatHistory.length > 0
+      ? `\n\nRecent conversation:\n${chatHistory
+          .slice(-5)
+          .map((m) => `${m.sender}: ${m.text}`)
+          .join('\n')}`
+      : ''
 
   const prompt = `You are a friendly, helpful AI assistant for a video library application. You help users:
 1. Search and compile their videos
@@ -196,13 +227,12 @@ Your response:`
   }
 }
 
-
 export async function classifyIntent(prompt: string): Promise<{
   type: 'compilation' | 'analytics' | 'general'
   needsVideoData: boolean
 }> {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
-  
+
   const classificationPrompt = `Classify this user query about their video library:
 
 Query: "${prompt}"
@@ -229,7 +259,11 @@ Your response:`
 
   try {
     const result = await model.generateContent(classificationPrompt)
-    const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim()
+    const text = result.response
+      .text()
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim()
     return JSON.parse(text)
   } catch (error) {
     console.error('Error classifying intent:', error)
@@ -238,12 +272,8 @@ Your response:`
   }
 }
 
-
-
-
-
 export async function generateAnalyticsResponse(
-  userPrompt: string, 
+  userPrompt: string,
   analytics: Awaited<ReturnType<typeof getVideoAnalytics>>
 ): Promise<string> {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
@@ -255,8 +285,20 @@ Here's what you found in their video library:
 - Total scenes: ${analytics.totalScenes}
 - Total duration: ${analytics.totalDurationFormatted} (${analytics.totalDuration} seconds)
 ${analytics.dateRange ? `- Date range: ${analytics.dateRange.oldest.toLocaleDateString()} to ${analytics.dateRange.newest.toLocaleDateString()}` : ''}
-${Object.keys(analytics.emotionCounts).length > 0 ? `- Emotions detected: ${Object.entries(analytics.emotionCounts).map(([e, c]) => `${e} (${c})`).join(', ')}` : ''}
-${Object.keys(analytics.faceOccurrences).length > 0 ? `- People appearing: ${Object.entries(analytics.faceOccurrences).map(([f, c]) => `@${f} appears in ${c} scenes`).join(', ')}` : ''}
+${
+  Object.keys(analytics.emotionCounts).length > 0
+    ? `- Emotions detected: ${Object.entries(analytics.emotionCounts)
+        .map(([e, c]) => `${e} (${c})`)
+        .join(', ')}`
+    : ''
+}
+${
+  Object.keys(analytics.faceOccurrences).length > 0
+    ? `- People appearing: ${Object.entries(analytics.faceOccurrences)
+        .map(([f, c]) => `@${f} appears in ${c} scenes`)
+        .join(', ')}`
+    : ''
+}
 
 Respond naturally and conversationally (2-4 sentences). Include specific numbers and insights. Be enthusiastic and helpful.
 
@@ -274,4 +316,16 @@ Your response:`
     console.error('Error generating analytics response:', error)
     return `I found ${analytics.uniqueVideos} videos (${analytics.totalScenes} scenes) with a total duration of ${analytics.totalDurationFormatted}.`
   }
+}
+
+export async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  const embeddings: number[][] = []
+  const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
+
+  for (const text of texts) {
+    const result = await model.embedContent(text)
+    embeddings.push(result.embedding.values)
+  }
+
+  return embeddings
 }
