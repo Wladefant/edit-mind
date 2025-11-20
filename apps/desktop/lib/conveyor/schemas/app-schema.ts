@@ -66,7 +66,7 @@ const settingsSchema = z.object({
   batch_size: z.number(),
   yolo_confidence: z.number(),
   yolo_iou: z.number(),
-  resize_to_720p: z.boolean(),
+  resize_to_1080p: z.boolean(),
   yolo_model: z.string(),
   output_dir: z.string(),
 })
