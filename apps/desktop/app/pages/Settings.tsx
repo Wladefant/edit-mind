@@ -67,10 +67,10 @@ export const Settings: React.FC = () => {
           onChange={handleInputChange}
         />
         <SettingsSwitch
-          id="resize_to_720p"
+          id="resize_to_1080p"
           label="Resize to 720p"
-          checked={settings.resize_to_720p || false}
-          onCheckedChange={(checked) => handleSwitchChange('resize_to_720p', checked)}
+          checked={settings.resize_to_1080p || false}
+          onCheckedChange={(checked) => handleSwitchChange('resize_to_1080p', checked)}
         />
       </SettingsSection>
       <Button onClick={handleSaveSettings}>Save Settings</Button>
