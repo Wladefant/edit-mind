@@ -5,7 +5,7 @@ import {
   generateCompilationResponse,
   generateGeneralResponse,
 } from '@shared/services/gemini'
-import { getVideoWithScenesBySceneIds, queryCollection } from '@shared/services/vectorDb'
+import { getVideoWithScenesBySceneIds, hybridSearch } from '@shared/services/vectorDb';
 import type { ActionFunction, LoaderFunction } from 'react-router'
 import { prisma } from '~/services/database'
 import { getVideoAnalytics } from '@shared/utils/analytics'
@@ -80,7 +80,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       const { shot_type, emotions, description, aspect_ratio, objects, camera, transcriptionQuery } =
         await generateActionFromPrompt(prompt)
 
-      const results = await queryCollection({
+      const results = await hybridSearch({
         faces,
         shot_type,
         emotions,
@@ -113,5 +113,8 @@ export const action: ActionFunction = async ({ request, params }) => {
     },
   })
 
-  return messageAssistant
+  return {
+    ...messageAssistant,
+    outputScenes: await getVideoWithScenesBySceneIds(outputSceneIds),
+  }
 }

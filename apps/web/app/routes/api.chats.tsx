@@ -6,7 +6,7 @@ import {
   generateCompilationResponse,
   generateGeneralResponse,
 } from '@shared/services/gemini'
-import { queryCollection } from '@shared/services/vectorDb'
+import { hybridSearch } from '@shared/services/vectorDb';
 import { prisma } from '~/services/database'
 import { getVideoAnalytics } from '@shared/utils/analytics'
 import { getUser } from '~/services/user.sever'
@@ -59,7 +59,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const { shot_type, emotions, description, aspect_ratio, objects, camera, transcriptionQuery } =
         await generateActionFromPrompt(prompt)
 
-      const results = await queryCollection({
+      const results = await hybridSearch({
         faces,
         shot_type,
         emotions,
