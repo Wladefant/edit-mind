@@ -1,6 +1,5 @@
 import { VideoSearchParams } from '../types/search'
 import { LlamaModel, LlamaContext } from 'node-llama-cpp'
-import path from 'path'
 import { z } from 'zod'
 import { getVideoAnalytics } from '../utils/analytics'
 import { CACHE_TTL, SEARCH_AI_MODEL } from '../constants'
@@ -31,7 +30,7 @@ class LlamaModelManager {
       this.llama = await getLlama()
     }
 
-    const modelPath = path.join(process.cwd(), 'models', SEARCH_AI_MODEL)
+    const modelPath = SEARCH_AI_MODEL
 
     this.model = await this.llama.loadModel({ modelPath })
     if (!this.model) throw new Error('Failed to load model')
@@ -117,7 +116,7 @@ JSON OUTPUT:`
   private sanitizeFilename(filename: string): string {
     return (
       filename
-        .toLowerCase()
+        ?.toLowerCase()
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-+|-+$/g, '')
@@ -164,7 +163,7 @@ JSON OUTPUT:`
 const modelManager = new LlamaModelManager()
 
 export async function generateActionFromPrompt(query: string, useCache = true): Promise<VideoSearchParams> {
-  const cacheKey = `params:${query.toLowerCase().trim()}`
+  const cacheKey = `params:${query?.toLowerCase().trim()}`
 
   if (useCache) {
     const cached = modelManager.getCachedResult(cacheKey)
@@ -253,7 +252,7 @@ export async function classifyIntent(prompt: string): Promise<{
   type: 'compilation' | 'analytics' | 'general'
   needsVideoData: boolean
 }> {
-  const cacheKey = `intent:${prompt.toLowerCase().trim()}`
+  const cacheKey = `intent:${prompt?.toLowerCase().trim()}`
   const cached = modelManager.getCachedResult(cacheKey)
   if (cached) return cached
 
