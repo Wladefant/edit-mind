@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useFetcher } from 'react-router-dom'
+import lodash from 'lodash'
 import type { VideoWithScenes } from '@shared/types/video'
 import type { SearchStats } from '@shared/types/search'
+import type { Suggestion } from '@shared/services/suggestion'
+
+const { debounce } = lodash
 
 interface UseVideoSearchResult {
   query: string
@@ -9,37 +13,88 @@ interface UseVideoSearchResult {
   results: VideoWithScenes[]
   stats: SearchStats | null
   isLoading: boolean
+  isSearching: boolean
   isError: boolean
   performSearch: () => void
   clearSearch: () => void
+  selectedSuggestion: Record<string, string>
+  setSelectedSuggestion: (selectedSuggestion: Record<string, string>) => void
+  suggestions: Record<string, Suggestion[]>
+  showSuggestions: boolean
+  setShowSuggestions: (show: boolean) => void
+  handleSuggestionSelect: (suggestion: Suggestion) => void
+  fetchSuggestions: (q: string) => void
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
-  const fetcher = useFetcher()
+  const searchFetcher = useFetcher()
+  const suggestionFetcher = useFetcher()
+
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VideoWithScenes[]>([])
   const [stats, setStats] = useState<SearchStats | null>(null)
-  
+  const [selectedSuggestion, setSelectedSuggestion] = useState<Record<string, string>>({})
+  const [suggestions, setSuggestions] = useState<Record<string, Suggestion[]>>({})
+  const [showSuggestions, setShowSuggestions] = useState(false)
+
   const lastSearchQueryRef = useRef('')
 
-  const isLoading = fetcher.state === 'submitting' || fetcher.state === 'loading'
-  const isError = fetcher.data?.success === false
+  const isSearching = searchFetcher.state === 'submitting' || searchFetcher.state === 'loading'
+  const isLoadingSuggestions = suggestionFetcher.state === 'submitting' || suggestionFetcher.state === 'loading'
+  const isLoading = isSearching || isLoadingSuggestions
+  const isError = searchFetcher.data?.success === false
 
   useEffect(() => {
-    if (fetcher.data?.videos) {
-      setResults(fetcher.data.videos)
-      setStats(fetcher.data.stats || null)
+    if (searchFetcher.data?.videos) {
+      setResults(searchFetcher.data.videos)
+      setStats(searchFetcher.data.stats || null)
     }
-  }, [fetcher.data])
+  }, [searchFetcher.data])
+
+  useEffect(() => {
+    if (suggestionFetcher.data?.suggestions) {
+      setSuggestions(suggestionFetcher.data.suggestions)
+      if (Object.keys(suggestionFetcher.data.suggestions).length > 0) {
+        setShowSuggestions(true)
+      }
+    }
+  }, [suggestionFetcher.data])
+
+  const debouncedFetch = useMemo(
+    () =>
+      debounce((q: string) => {
+        if (q.length >= 2) {
+          suggestionFetcher.submit(
+            { query: q },
+            {
+              method: 'post',
+              action: '/api/suggestions',
+              encType: 'application/json',
+            }
+          )
+        } else {
+          setSuggestions({})
+          setShowSuggestions(false)
+        }
+      }, 150),
+    [suggestionFetcher]
+  )
+
+  const fetchSuggestions = useCallback(
+    (q: string) => {
+      debouncedFetch(q)
+    },
+    [debouncedFetch]
+  )
 
   const performSearch = useCallback(() => {
     if (!query.trim()) return
-    
+
     if (lastSearchQueryRef.current === query) {
       return
     }
-    
-    if (fetcher.state === 'submitting' || fetcher.state === 'loading') {
+
+    if (searchFetcher.state === 'submitting' || searchFetcher.state === 'loading') {
       return
     }
 
@@ -47,21 +102,56 @@ export function useVideoSearch(): UseVideoSearchResult {
 
     const formData = new FormData()
     formData.append('query', query)
-    
-    fetcher.submit(formData, {
+    formData.append('suggestions', JSON.stringify(selectedSuggestion))
+
+    searchFetcher.submit(formData, {
       method: 'POST',
       action: '/app/search',
     })
-  }, [query, fetcher])
+
+    setShowSuggestions(false)
+  }, [query, searchFetcher, selectedSuggestion])
+
+  const handleSuggestionSelect = useCallback(
+    (suggestion: Suggestion) => {
+      setQuery(suggestion.text)
+      setShowSuggestions(false)
+      setSelectedSuggestion(() => ({
+        [suggestion.type]: suggestion.text,
+      }))
+
+      setTimeout(() => {
+        lastSearchQueryRef.current = suggestion.text
+
+        const formData = new FormData()
+        formData.append('query', suggestion.text)
+        formData.append(
+          'suggestions',
+          JSON.stringify({
+            ...selectedSuggestion,
+            [suggestion.type]: suggestion.text,
+          })
+        )
+
+        searchFetcher.submit(formData, {
+          method: 'POST',
+          action: '/app/search',
+        })
+      }, 100)
+    },
+    [searchFetcher, selectedSuggestion]
+  )
 
   const clearSearch = useCallback(() => {
     setQuery('')
     setResults([])
     setStats(null)
+    setSelectedSuggestion({})
+    setSuggestions({})
+    setShowSuggestions(false)
     lastSearchQueryRef.current = ''
-  }, [])
-
-
+    debouncedFetch.cancel()
+  }, [debouncedFetch])
 
   return {
     query,
@@ -69,8 +159,16 @@ export function useVideoSearch(): UseVideoSearchResult {
     results,
     stats,
     isLoading,
+    isSearching,
     isError,
     performSearch,
     clearSearch,
+    selectedSuggestion,
+    setSelectedSuggestion,
+    suggestions,
+    showSuggestions,
+    setShowSuggestions,
+    handleSuggestionSelect,
+    fetchSuggestions,
   }
 }

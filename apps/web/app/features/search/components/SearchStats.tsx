@@ -1,5 +1,6 @@
 import { Clock, Zap, FileSearch } from 'lucide-react'
 import type { SearchStats } from '@shared/types/search'
+import type { JSX } from 'react'
 
 interface SearchStatsProps {
   stats: SearchStats
@@ -7,30 +8,18 @@ interface SearchStatsProps {
 }
 
 export function SearchStats({ stats, resultsCount }: SearchStatsProps) {
-  const getPerformanceColor = (rating: string) => {
-    switch (rating) {
-      case 'excellent':
-        return 'text-green-500'
-      case 'good':
-        return 'text-blue-500'
-      case 'fair':
-        return 'text-yellow-500'
-      case 'poor':
-        return 'text-red-500'
-      default:
-        return 'text-gray-500'
-    }
+  const performanceMap: Record<string, { color: string; icon: JSX.Element }> = {
+    excellent: { color: 'text-green-500', icon: <Zap size={16} className="text-green-500" /> },
+    good: { color: 'text-blue-500', icon: <Zap size={16} className="text-blue-500" /> },
+    fair: { color: 'text-yellow-500', icon: <Clock size={16} className="text-yellow-500" /> },
+    poor: { color: 'text-red-500', icon: <Clock size={16} className="text-red-500" /> },
+    default: { color: 'text-gray-400', icon: <Clock size={16} className="text-gray-400" /> },
   }
 
-  const getPerformanceIcon = (rating: string) => {
-    if (rating === 'excellent' || rating === 'good') {
-      return <Zap size={16} className="text-green-500" />
-    }
-    return <Clock size={16} className="text-gray-500" />
-  }
+  const { color, icon } = performanceMap[stats.performance.rating] || performanceMap.default
 
   return (
-    <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
       <div className="flex items-center gap-2">
         <FileSearch size={16} />
         <span>
@@ -39,13 +28,15 @@ export function SearchStats({ stats, resultsCount }: SearchStatsProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {getPerformanceIcon(stats.performance.rating)}
-        <span className={getPerformanceColor(stats.performance.rating)}>{stats.durationMs}ms</span>
+        {icon}
+        <span className={`${color}`} title={`Search duration: ${stats.durationMs}ms`}>
+          {stats.durationMs}ms
+        </span>
       </div>
 
       {stats.complexity.level !== 'simple' && (
-        <div className="px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
-          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium capitalize">
+        <div className="px-2 py-0.5 rounded-full bg-blue-100 border border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 capitalize">
             {stats.complexity.level} search
           </span>
         </div>
@@ -53,9 +44,18 @@ export function SearchStats({ stats, resultsCount }: SearchStatsProps) {
 
       {stats.complexity.factors.length > 0 && (
         <div className="group relative">
-          <span className="text-xs text-gray-400 cursor-help">{stats.complexity.factors.length} filters</span>
+          <span
+            className="text-xs text-gray-400 cursor-help"
+            aria-label="Search filters"
+            tabIndex={0}
+          >
+            {stats.complexity.factors.length} filters
+          </span>
           <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-50">
-            <div className="bg-black/95 text-white text-xs rounded-lg p-3 shadow-xl min-w-[200px]">
+            <div
+              className="bg-black/95 text-white text-xs rounded-lg p-3 shadow-xl min-w-[200px]"
+              role="tooltip"
+            >
               <div className="font-semibold mb-2">Search Filters:</div>
               <ul className="space-y-1">
                 {stats.complexity.factors.map((factor, i) => (

@@ -1,4 +1,4 @@
-import { FileSearch, FolderPlus } from 'lucide-react'
+import { FileSearch } from 'lucide-react';
 
 interface EmptyStateProps {
   hasQuery: boolean
@@ -33,11 +33,13 @@ export function EmptyState({ hasQuery, query }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-20">
       <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-6">
-        <FolderPlus size={32} className="text-gray-400" />
+        <FileSearch size={32} className="text-gray-400" />
       </div>
-      <h4 className="text-xl font-semibold text-black dark:text-white mb-3">No videos indexed yet</h4>
+
+      <h4 className="text-xl font-semibold text-black dark:text-white mb-3">Search your videos</h4>
+
       <p className="text-gray-600 dark:text-gray-400 text-base mb-8 max-w-sm mx-auto">
-        Start by adding your video folders in settings to begin searching.
+        Start typing in the search box to quickly find the video you're looking for.
       </p>
     </div>
   )
