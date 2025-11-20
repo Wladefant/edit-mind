@@ -12,7 +12,7 @@ export const generateSceneDescription = (objects: DetectedObject[], faces: Face[
     objectCounts[obj.label] = (objectCounts[obj.label] || 0) + 1
   }
 
-  if (faces.length > 0 && objectCounts['person']) {
+  if (faces && faces.length > 0 && objectCounts['person']) {
     delete objectCounts['person']
   }
 
@@ -96,6 +96,34 @@ export const createScenes = async (
       detectedText: frame.detected_text?.map((item) => item.text) || [],
       location: '',
       duration: 0,
+      facesData: frame.faces?.map((face) => ({
+        name: face.name,
+        bbox: face.bbox,
+        confidence: face.confidence,
+      })),
+      transcriptionWords: transcription.segments
+        .filter((segment) => segment.end >= startTime && segment.start <= endTime)
+
+        .flatMap((segment) =>
+          segment.words
+            .filter((word) => word.start >= startTime && word.end <= endTime)
+            .map((word) => ({
+              start: word.start,
+              end: word.end,
+              word: word.word,
+              confidence: word.confidence,
+            }))
+        ),
+      objectsData: frame.objects?.map((object) => ({
+        label: object.label,
+        bbox: object.bbox,
+        confidence: object.confidence,
+      })),
+      detectedTextData: frame.detected_text?.map((text) => ({
+        text: text.text,
+        bbox: text.bbox,
+        confidence: text.confidence,
+      })),
     }
 
     scenes.push(currentScene)
