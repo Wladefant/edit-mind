@@ -1,38 +1,40 @@
-import path from 'path';
-import { resolve } from 'path';
+import path from 'path'
 import 'dotenv/config'
 
 // General
-export const IS_WIN = process.platform === 'win32';
+export const IS_WIN = process.platform === 'win32'
 
 // Directories
-export const THUMBNAILS_DIR = path.resolve('.thumbnails');
-export const FACES_DIR = path.resolve('.faces');
-export const PROCESSED_VIDEOS_DIR = path.resolve('.results');
-export const UNKNOWN_FACES_DIR = resolve('analysis_results/unknown_faces');
-export const CACHE_FILE = '.locations.json';
+export const THUMBNAILS_DIR = path.resolve('.thumbnails')
+export const FACES_DIR = process.env.FACES_DIR || '.faces'
+export const PROCESSED_VIDEOS_DIR = path.resolve('.results')
+export const UNKNOWN_FACES_DIR = process.env.UNKNOWN_FACES_DIR || '.unknown_faces'
+export const KNOWN_FACES_DIR = process.env.KNOWN_FACES_DIR || '.faces.json'
+export const BACKGROUND_JOBS_DIR = process.env.BACKGROUND_JOBS_DIR || '/apps/background-jobs'
+
+export const CACHE_FILE = '.locations.json'
 
 // Timeouts and Intervals
-export const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-export const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
-export const SERVICE_STARTUP_TIMEOUT = 60000; // 60 seconds
-export const HEALTH_CHECK_INTERVAL = 1000; // 1 second
+export const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+export const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000 // 30 days
+export const SERVICE_STARTUP_TIMEOUT = 60000 // 60 seconds
+export const HEALTH_CHECK_INTERVAL = 1000 // 1 second
 
 // Service settings
-export const MAX_RESTARTS = 10;
-export const RESTART_BACKOFF_MS = 1000;
-export const EMBEDDING_BATCH_SIZE = 200;
-export const MAX_DEPTH = 5;
+export const MAX_RESTARTS = 10
+export const RESTART_BACKOFF_MS = 1000
+export const EMBEDDING_BATCH_SIZE = 200
+export const MAX_DEPTH = 5
 
 // ChromaDB
-export const CHROMA_HOST = process.env.CHROMA_HOST || 'localhost';
-export const CHROMA_PORT = process.env.CHROMA_PORT || '8000';
-export const COLLECTION_NAME = 'video_content';
+export const CHROMA_HOST = process.env.CHROMA_HOST || 'localhost'
+export const CHROMA_PORT = process.env.CHROMA_PORT || '8000'
+export const COLLECTION_NAME = 'video_content'
 
 // AI Models
-export const EMBEDDING_MODEL = 'text-embedding-004';
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-export const SEARCH_AI_MODEL = 'Llama-3.2-3B-Instruct-Q4_K_M.gguf'
+export const EMBEDDING_MODEL = 'text-embedding-004'
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+export const SEARCH_AI_MODEL = process.env.SEARCH_AI_MODEL
 
 // Files
 export const SUPPORTED_VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv)$/i
