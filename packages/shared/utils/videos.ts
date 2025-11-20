@@ -3,7 +3,6 @@ import path from 'path'
 import { ChildProcess } from 'child_process'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import ffprobeStatic from 'ffmpeg-ffprobe-static'
 import {
   BATCH_THUMBNAIL_QUALITY,
   DEFAULT_FPS,
@@ -15,7 +14,7 @@ import {
 } from '../constants'
 import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
-import { spawnFFmpeg, validateBinaries } from './ffmpeg'
+import { loadFFprobeStatic, spawnFFmpeg, validateBinaries } from './ffmpeg'
 import { validateFile } from './file'
 import ffmpeg from 'fluent-ffmpeg'
 
@@ -98,7 +97,7 @@ export async function generateAllThumbnails(
   const filterComplex = timestamps
     .map(
       (ts, idx) =>
-    `[0:v]select='between(t,${ts},${ts+0.1})',setpts=PTS-STARTPTS,scale=${THUMBNAIL_SCALE}:flags=fast_bilinear[v${idx}]`
+        `[0:v]select='between(t,${ts},${ts + 0.1})',setpts=PTS-STARTPTS,scale=${THUMBNAIL_SCALE}:flags=fast_bilinear[v${idx}]`
     )
     .join(';')
 
@@ -147,10 +146,7 @@ export async function findVideoFiles(
           results.push([{ path: fullPath, mtime: stats.mtime }])
         }
       } catch (error) {
-        console.warn(
-          `Warning: Could not access ${fullPath}:`,
-          error instanceof Error ? error.message : 'Unknown error'
-        )
+        console.warn(`Warning: Could not access ${fullPath}:`, error instanceof Error ? error.message : 'Unknown error')
       }
     }
 
@@ -187,6 +183,7 @@ export async function getCameraNameAndDate(videoFullPath: string): Promise<Camer
   try {
     await validateFile(videoFullPath)
     validateBinaries()
+    const ffprobeStatic = await loadFFprobeStatic()
 
     const { stdout } = await execFileAsync(ffprobeStatic.ffprobePath!, [
       '-v',
@@ -230,6 +227,7 @@ const parseFPS = (frameRate: string | undefined): number => {
 export async function getVideoMetadata(videoFilePath: string): Promise<VideoMetadata> {
   await validateFile(videoFilePath)
   validateBinaries()
+  const ffprobeStatic = await loadFFprobeStatic()
 
   return new Promise((resolve, reject) => {
     ffmpeg.setFfprobePath(ffprobeStatic.ffprobePath!)
