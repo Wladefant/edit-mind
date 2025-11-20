@@ -1,9 +1,11 @@
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
-import { DashboardLayout } from '~/components/dashboard/DashboardLayout'
+import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { getAllVideosWithScenes } from '@shared/services/vectorDb'
-import { FilterSidebar } from '~/components/videos/FilterSidebar'
+import { FilterSidebar } from '~/features/videos/components/FilterSidebar'
 import { useState } from 'react'
+import { useFilterSidebar } from '~/features/videos/hooks/useFilterSidebar'
+import { VideoCard } from '~/features/videos/components/VideoCard'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Dashboard | Edit Mind' }]
@@ -15,15 +17,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const limit = 20
   const offset = (page - 1) * limit
 
-  const { videos, allSources, filters } = await getAllVideosWithScenes(limit, offset)
+  const filters: Record<string, string[]> = {}
+  url.searchParams.forEach((value, key) => {
+    if (key.startsWith('filter_')) {
+      const category = key.replace('filter_', '')
+      filters[category] = value.split(',').filter(Boolean)
+    }
+  })
+
+  const { videos, allSources, filters: availableFilters } = await getAllVideosWithScenes(limit, offset, filters)
+
   const total = allSources.length
-  return { videos, page, limit, total, filters }
+  return { videos, page, limit, total, filters: availableFilters, appliedFilters: filters }
 }
 
 export default function Dashboard() {
   const { videos, total, page, limit, filters } = useLoaderData<typeof loader>()
   const navigate = useNavigate()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const { isSidebarOpen, setIsSidebarOpen } = useFilterSidebar()
   const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({})
 
   const totalPages = Math.ceil(total / limit)
@@ -91,38 +102,15 @@ export default function Dashboard() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                 {videos.map((video) => (
-                  <Link
-                    to={`/app/videos?source=/${video.source}`}
+                  <VideoCard
                     key={video.source}
-                    className="relative cursor-pointer group overflow-hidden rounded-3xl bg-white/10 dark:bg-white/5 border border-gray-100 dark:border-white/10 backdrop-blur-sm transition-all hover:scale-[1.02] hover:shadow-2xl duration-300"
-                  >
-                    <div className="w-full h-full">
-                      <img
-                        src={'/thumbnails/' + video.thumbnailUrl}
-                        alt={video.fileName}
-                        className={`object-cover w-auto h-full  ${video.aspect_ratio === '16:9' ? 'aspect-video' : 'aspect-9/16'} rounded-3xl`}
-                      />
-                    </div>
-
-                    <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/30 to-transparent opacity-100 pointer-events-none" />
-
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-[15px] leading-tight truncate drop-shadow-sm">
-                          {video.fileName}
-                        </span>
-                        <span className="text-base text-gray-200">
-                          {new Date(video.createdAt).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </span>
-                      </div>
-                      <span className="bg-white/25 backdrop-blur-md text-[12px] px-2 py-0.5 rounded-md">
-                        {Math.round(parseFloat(video.duration.toString()))} sec
-                      </span>
-                    </div>
-                  </Link>
+                    source={video.source}
+                    fileName={video.fileName}
+                    thumbnailUrl={video.thumbnailUrl}
+                    duration={parseFloat(video.duration.toString())}
+                    createdAt={video.createdAt}
+                    aspectRatio={video.aspect_ratio === '16:9' ? '16:9' : '9:16'}
+                  />
                 ))}
               </div>
 
