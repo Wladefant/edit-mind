@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { LoginSchema } from '~/schemas/auth'
+import { LoginSchema } from '~/features/auth/schemas/auth'
 import { prisma } from './database'
 import { getSession, commitSession } from './session'
 import bcrypt from 'bcryptjs'
