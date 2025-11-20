@@ -20,3 +20,5 @@ apps/web/.react-router
 test-videos
 internal
 apps/background-jobs/known_faces.json
+.faces.json
+*.gguf
