@@ -3,7 +3,7 @@ FROM node:22.20.0
 # Configure pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@8.6.9 --activate
+RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 WORKDIR /app
 
@@ -14,8 +14,8 @@ COPY apps/background-jobs/package.json ./apps/background-jobs/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/prisma/ ./packages/prisma/
 
-RUN --mount=type=cache,id=pnpm,target=/root/.pnpm-store \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
+
 
 # Copy application source and rebuild native modules
 COPY . .
