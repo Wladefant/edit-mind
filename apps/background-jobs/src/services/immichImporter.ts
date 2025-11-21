@@ -1,9 +1,9 @@
 import { immichImporterQueue } from 'src/queue'
 
-export async function addImmichImporterJob(apiKey: string) {
+export async function addImmichImporterJob(integrationId: string) {
   const job = await immichImporterQueue.add(
     'immich-importer',
-    { apiKey },
+    { integrationId },
     {
       attempts: 3,
       backoff: {
