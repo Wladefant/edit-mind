@@ -149,7 +149,8 @@ class TranscriptionService:
                 beam_size=5,
                 word_timestamps=True,
                 vad_filter=True,
-                log_progress=True  
+                log_progress=True,
+                batch_size=16,  # Process multiple segments at once
             )
             total_duration = round(info.duration, 2) if info else 0.0
             processed_duration = 0.0
