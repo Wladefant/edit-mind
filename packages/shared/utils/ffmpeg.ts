@@ -1,9 +1,20 @@
+import { chmod } from 'fs/promises'
+import { existsSync } from 'fs'
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import { spawn, ChildProcess } from 'child_process'
-import fs from 'fs'
 
-export const validateBinaries = (): void => {
+const ensureBinaryPermissions = async (binaryPath: string): Promise<void> => {
+  try {
+    if (existsSync(binaryPath)) {
+      await chmod(binaryPath, 0o755)
+    }
+  } catch (error) {
+    console.warn(`Failed to set permissions for ${binaryPath}:`, error)
+  }
+}
+
+export const validateBinaries = async (): Promise<void> => {
   if (!ffmpegInstaller.path) {
     throw new Error('FFmpeg binary not found.')
   }
@@ -11,22 +22,24 @@ export const validateBinaries = (): void => {
     throw new Error('FFprobe binary not found.')
   }
   
-  if (!fs.existsSync(ffmpegInstaller.path)) {
+  // Ensure binaries have execute permissions
+  await ensureBinaryPermissions(ffmpegInstaller.path)
+  await ensureBinaryPermissions(ffprobeInstaller.path)
+  
+  if (!existsSync(ffmpegInstaller.path)) {
     throw new Error(`FFmpeg binary not found at path: ${ffmpegInstaller.path}`)
   }
-  if (!fs.existsSync(ffprobeInstaller.path)) {
+  if (!existsSync(ffprobeInstaller.path)) {
     throw new Error(`FFprobe binary not found at path: ${ffprobeInstaller.path}`)
   }
 }
 
-export const spawnFFmpeg = (args: string[]): ChildProcess => {
-  validateBinaries()
+export const spawnFFmpeg = async (args: string[]): Promise<ChildProcess> => {
+  await validateBinaries()
   return spawn(ffmpegInstaller.path, args)
 }
 
-export const loadFFprobeStatic = async () => {
-  return {
-    ffmpegPath: ffmpegInstaller.path,
-    ffprobePath: ffprobeInstaller.path
-  }
+export const spawnFFprobe = async (args: string[]): Promise<ChildProcess> => {
+  await validateBinaries()
+  return spawn(ffprobeInstaller.path, args)
 }

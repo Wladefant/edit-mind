@@ -1,3 +1,4 @@
+import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import fs from 'fs'
 import path from 'path'
 import { ChildProcess } from 'child_process'
@@ -14,7 +15,7 @@ import {
 } from '../constants'
 import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
-import { loadFFprobeStatic, spawnFFmpeg, validateBinaries } from './ffmpeg'
+import {  spawnFFmpeg, validateBinaries } from './ffmpeg'
 import { validateFile } from './file'
 import ffmpeg from 'fluent-ffmpeg'
 
@@ -75,7 +76,7 @@ export async function generateThumbnail(videoPath: string, thumbnailPath: string
     'error',
   ]
 
-  const ffmpegProcess = spawnFFmpeg(args)
+  const ffmpegProcess = await spawnFFmpeg(args)
   return handleFFmpegProcess(ffmpegProcess, 'thumbnail generation')
 }
 
@@ -118,7 +119,7 @@ export async function generateAllThumbnails(
 
   args.push('-y')
 
-  const ffmpegProcess = spawnFFmpeg(args)
+  const ffmpegProcess = await spawnFFmpeg(args)
   return handleFFmpegProcess(ffmpegProcess, 'batch thumbnail generation')
 }
 
@@ -183,9 +184,8 @@ export async function getCameraNameAndDate(videoFullPath: string): Promise<Camer
   try {
     await validateFile(videoFullPath)
     validateBinaries()
-    const ffprobeStatic = await loadFFprobeStatic()
 
-    const { stdout } = await execFileAsync(ffprobeStatic.ffprobePath!, [
+    const { stdout } = await execFileAsync(ffprobeInstaller.path!, [
       '-v',
       'quiet',
       '-print_format',
@@ -227,10 +227,9 @@ const parseFPS = (frameRate: string | undefined): number => {
 export async function getVideoMetadata(videoFilePath: string): Promise<VideoMetadata> {
   await validateFile(videoFilePath)
   validateBinaries()
-  const ffprobeStatic = await loadFFprobeStatic()
 
   return new Promise((resolve, reject) => {
-    ffmpeg.setFfprobePath(ffprobeStatic.ffprobePath!)
+    ffmpeg.setFfprobePath(ffprobeInstaller.path!)
 
     ffmpeg.ffprobe(videoFilePath, (err, metadata) => {
       if (err) {

@@ -172,7 +172,7 @@ const processClip = async (
 
   const argsWithAudio = [...baseArgs.slice(0, 8), '-map', '0:v:0', '-map', '0:a:0?', ...baseArgs.slice(8)]
 
-  const process = spawnFFmpeg(argsWithAudio)
+  const process = await spawnFFmpeg(argsWithAudio)
   const result = await handleFFmpegProcess(process, `clip processing (${scene.source})`)
 
   if (result.code === 0) {
@@ -198,7 +198,7 @@ const processClip = async (
     ...baseArgs.slice(8),
   ]
 
-  const retryProcess = spawnFFmpeg(argsWithSilentAudio)
+  const retryProcess = await spawnFFmpeg(argsWithSilentAudio)
   const retryResult = await handleFFmpegProcess(retryProcess, `clip processing retry (${scene.source})`)
 
   if (retryResult.code !== 0) {
@@ -229,7 +229,7 @@ const concatenateClips = async (fileListPath: string, outputPath: string): Promi
     'error',
   ]
 
-  const process = spawnFFmpeg(args)
+  const process = await spawnFFmpeg(args)
   const result = await handleFFmpegProcess(process, 'concatenation')
 
   if (result.code !== 0 && (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0)) {
