@@ -1,13 +1,24 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["lib/main/index.d.ts", "electron.vite.config.*", "lib/**/*", "resources/**/*", "app/**/*"],
+  "include": [
+    "lib/main/index.d.ts", 
+    "electron.vite.config.*", 
+    "lib/**/*", 
+    "resources/**/*", 
+    "app/**/*",
+    "../../packages/shared/**/*"  // Add this to include shared package files
+  ],
   "compilerOptions": {
     "composite": true,
     "moduleResolution": "bundler",
     "types": ["electron-vite/node"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@shared/*": ["../../packages/shared/*"]  // This should point to the source files
     }
-  }
+  },
+  "references": [
+    { "path": "../../packages/shared" }  // Use references instead of files
+  ]
 }

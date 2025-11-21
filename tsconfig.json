@@ -1,12 +1,6 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["packages/shared/*"]
-    }
+    "baseUrl": "."
   },
-  "include": [
-    "apps/**/*",
-    "packages/**/*"
-  ]
+  "include": ["apps/**/*", "packages/**/*"]
 }

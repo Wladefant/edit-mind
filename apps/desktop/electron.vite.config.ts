@@ -1,29 +1,32 @@
 import { resolve } from 'path'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 const aliases = {
   '@/app': resolve(__dirname, 'app'),
   '@/lib': resolve(__dirname, 'lib'),
   '@/resources': resolve(__dirname, 'resources'),
-  '@shared': resolve(__dirname, '../../packages/shared'),
+  '@shared': resolve(__dirname, '../../packages/shared/dist'),
 }
-
 export default defineConfig({
   main: {
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@shared', 'ffmpeg-ffprobe-static'],
+      }),
+    ],
+    resolve: {
+      alias: aliases,
+    },
     build: {
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
         },
+        external: ['chromadb', '@shared', 'onnxruntime-node', '@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe'],
       },
     },
-    resolve: {
-      alias: aliases,
-      extensions: ['.js', '.ts', '.jsx', '.tsx', '.json'],
-    },
-    plugins: [externalizeDepsPlugin()],
   },
   preload: {
     build: {

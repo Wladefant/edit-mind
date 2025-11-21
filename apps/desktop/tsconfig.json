@@ -1,8 +1,6 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./",
-    "baseUrl": "./",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
       "@/app/*": ["./app/*"],
@@ -12,4 +10,9 @@
     }
   },
   "files": [],
+  "references": [
+    { "path": "./tsconfig.node.json" }, 
+    { "path": "./tsconfig.web.json" },
+    { "path": "../../packages/shared" } 
+  ]
 }

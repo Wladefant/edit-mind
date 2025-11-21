@@ -11,13 +11,13 @@
     "composite": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
-    "types": [
-      "electron-vite/node"
-    ],
+    "types": ["electron-vite/node"],
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"],
+      "@shared/*": ["../../packages/shared/*"] 
     }
-  }
+  },
+  "references": [
+    { "path": "../../packages/shared" }  
+  ]
 }

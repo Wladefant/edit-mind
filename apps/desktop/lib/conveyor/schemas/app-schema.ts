@@ -185,7 +185,7 @@ export const appIpcSchema = {
   searchDocuments: {
     args: z.tuple([z.string()]),
     return: z.object({
-      results: z.array(sceneSchema),
+      results: z.array(videoSchema),
       duration: z.number().nullable(),
       aspect_ratio: z.string().nullable(),
       faces: z.array(z.string()).nullable(),

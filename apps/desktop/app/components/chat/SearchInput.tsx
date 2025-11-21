@@ -8,8 +8,8 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react';
-import defaultFaces from '../../../faces.json';
-import type { Video } from '@/lib/types/video';
+import defaultFaces from '../../../.faces.json';
+import type { Video } from '@shared/types/video';
 import { useClickOutside } from '@/app/hooks/useClickOutside';
 import { useFaceExtraction } from '@/app/hooks/useFaceExtraction';
 import { useFilteredFaces } from '@/app/hooks/useFilteredFaces';

@@ -1,5 +1,4 @@
 import { type App, dialog, shell, type WebContents } from 'electron'
-import { handle, sender } from '@shared/main/shared'
 import { findVideoFiles, generateThumbnail } from '@shared/utils/videos'
 import path from 'path'
 import fs from 'fs/promises'
@@ -21,9 +20,10 @@ import { generateActionFromPrompt } from '@shared/services/gemini'
 import { stitchVideos } from '@shared/utils/sticher'
 import { exportToFcpXml } from '@shared/utils/fcpxml'
 import { convertTimeToWords } from '@shared/utils/time'
-import { pythonService } from '@shared/services/pythonService'
 import { getLocationName } from '@shared/utils/location'
 import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
+import { handle, sender } from '@/lib/main/shared'
+import { reindexFaces } from '@shared/utils/faces'
 
 export const registerAppHandlers = (app: App, webContents: WebContents) => {
   const send = sender(webContents)
@@ -65,7 +65,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
   handle('getAllVideos', async () => {
     try {
-      const videos = await getAllVideosWithScenes()
+      const { videos } = await getAllVideosWithScenes()
 
       return videos
     } catch (e) {
@@ -255,7 +255,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     }
   })
 
-  handle('reindexAllFaces', async (jsonFile, faceId, name) => {
+  handle('reindexAllFaces', async (jsonFile, _faceId, _name) => {
     const unknownFacesDir = path.join(process.cwd(), 'analysis_results', 'unknown_faces')
 
     try {
@@ -267,20 +267,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
         console.error(error)
       }
 
-      return new Promise<{ success: boolean }>((resolve, reject) => {
-        pythonService.reindexFaces(
-          (_progress) => {
-            console.log(_progress)
-          },
-          (_result) => {
-            resolve({ success: true })
-          },
-          (error) => {
-            console.error(error)
-            reject({ success: false })
-          }
-        )
-      })
+      return await reindexFaces()
 
       return { success: true }
     } catch (error) {
@@ -470,26 +457,22 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
 
-            const { analysis, category } = await new Promise<{ analysis: any; category: string }>((resolve, reject) => {
-              analyzeVideo(
-                video,
-                ({ progress, elapsed, frames_analyzed, total_frames }) => {
-                  send('indexing-progress', {
-                    video,
-                    progress: progress,
-                    step: 'frame-analysis',
-                    success: true,
-                    stepIndex: 1,
-                    thumbnailUrl,
-                    elapsed: convertTimeToWords(elapsed),
-                    totalFrames: total_frames,
-                    framesProcessed: frames_analyzed,
-                  })
-                },
-                (result) => resolve(result),
-                (error) => reject(error)
-              )
-            })
+            const { analysis, category } = await analyzeVideo(
+              video,
+              ({ progress, elapsed, frames_analyzed, total_frames }) => {
+                send('indexing-progress', {
+                  video,
+                  progress: progress,
+                  step: 'frame-analysis',
+                  success: true,
+                  stepIndex: 1,
+                  thumbnailUrl,
+                  elapsed: convertTimeToWords(elapsed),
+                  totalFrames: total_frames,
+                  framesProcessed: frames_analyzed,
+                })
+              }
+            )
 
             await fs.writeFile(analysisPath, JSON.stringify({ analysis, category }, null, 2))
 

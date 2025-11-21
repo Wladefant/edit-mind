@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UnknownFace, KnownFace } from '@/lib/types/face';
+import { UnknownFace, KnownFace } from '@shared/types/face';
 
 export const useTraining = () => {
   const [unknownFaces, setUnknownFaces] = useState<UnknownFace[]>([]);
