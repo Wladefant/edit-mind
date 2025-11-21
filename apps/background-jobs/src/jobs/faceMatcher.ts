@@ -6,7 +6,7 @@ import type { Scene } from '@shared/types/scene'
 import { pythonService } from '@shared/services/pythonService'
 import { connection } from '../queue'
 import { findMatchingFaces, reindexFaces } from '@shared/utils/faces'
-import { FaceLabelingJobData, MatchResult } from '@shared/types/faces'
+import { FaceLabelingJobData, MatchResult } from '@shared/types/face'
 
 const FACES_DIR = '.faces'
 

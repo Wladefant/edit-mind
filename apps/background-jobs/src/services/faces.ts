@@ -2,7 +2,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { existsSync } from 'fs'
 import { faceMatcherQueue } from 'src/queue'
-import { AddFaceLabelingJobParams } from '@shared/types/faces'
+import { AddFaceLabelingJobParams } from '@shared/types/face'
 import { KNOWN_FACES_DIR, UNKNOWN_FACES_DIR } from '@shared/constants'
 
 export const getAllUnknownFaces = async () => {
