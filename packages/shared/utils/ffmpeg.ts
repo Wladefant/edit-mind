@@ -1,32 +1,32 @@
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
+import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import { spawn, ChildProcess } from 'child_process'
-import ffprobeStatic from 'ffmpeg-ffprobe-static'
 import fs from 'fs'
 
 export const validateBinaries = (): void => {
-  if (!ffprobeStatic.ffmpegPath) {
-    throw new Error('FFmpeg binary not found. Please ensure ffmpeg-static is properly installed.')
+  if (!ffmpegInstaller.path) {
+    throw new Error('FFmpeg binary not found.')
   }
-  if (!ffprobeStatic?.ffprobePath) {
-    throw new Error('FFprobe binary not found. Please ensure ffprobe-static is properly installed.')
+  if (!ffprobeInstaller.path) {
+    throw new Error('FFprobe binary not found.')
+  }
+  
+  if (!fs.existsSync(ffmpegInstaller.path)) {
+    throw new Error(`FFmpeg binary not found at path: ${ffmpegInstaller.path}`)
+  }
+  if (!fs.existsSync(ffprobeInstaller.path)) {
+    throw new Error(`FFprobe binary not found at path: ${ffprobeInstaller.path}`)
   }
 }
 
 export const spawnFFmpeg = (args: string[]): ChildProcess => {
   validateBinaries()
-
-  const ffmpegPath = ffprobeStatic.ffmpegPath!
-  if (!fs.existsSync(ffmpegPath)) {
-    throw new Error(`FFmpeg binary not found at path: ${ffmpegPath}`)
-  }
-
-  return spawn(ffmpegPath, args)
+  return spawn(ffmpegInstaller.path, args)
 }
 
-let ffprobeStaticInstance: typeof import('ffmpeg-ffprobe-static') | null = null;
-
 export const loadFFprobeStatic = async () => {
-  if (!ffprobeStaticInstance) {
-    ffprobeStaticInstance = (await import('ffmpeg-ffprobe-static')).default;
+  return {
+    ffmpegPath: ffmpegInstaller.path,
+    ffprobePath: ffprobeInstaller.path
   }
-  return ffprobeStaticInstance;
-};
+}

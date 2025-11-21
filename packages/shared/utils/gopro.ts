@@ -3,7 +3,7 @@ import gpmfExtract from 'gpmf-extract'
 import { readFileSync } from 'node:fs'
 import { GoProMetadata } from '../types/gopro'
 
-export async function getGoProVideoMetadata(videoFullPath: string) {
+export async function getGoProVideoMetadata(videoFullPath: string): Promise<GoProMetadata | null> {
   return new Promise((res, _rej) => {
     const file = readFileSync(videoFullPath)
     gpmfExtract(file)

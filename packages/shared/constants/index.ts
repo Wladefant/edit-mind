@@ -42,3 +42,7 @@ export const DEFAULT_FPS = 30
 export const THUMBNAIL_SCALE = '320:-1'
 export const THUMBNAIL_QUALITY = '4'
 export const BATCH_THUMBNAIL_QUALITY = '3'
+
+
+export const PYTHON_SCRIPT = path.resolve(process.env.PYTHON_SCRIPT || "./python")
+export const VENV_PATH = path.resolve(process.env.VENV_PATH || "./venv")

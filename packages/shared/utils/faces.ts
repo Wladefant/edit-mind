@@ -1,5 +1,5 @@
 import { pythonService } from '../services/pythonService'
-import { FaceIndexProgress } from '../types/faces'
+import { FaceIndexProgress } from '../types/face'
 
 type ProgressCallback = (progress: FaceIndexProgress) => Promise<void>
 

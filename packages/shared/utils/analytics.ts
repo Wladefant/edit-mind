@@ -1,6 +1,7 @@
 import { formatDuration } from 'date-fns'
 import { generateActionFromPrompt } from '../services/gemini'
-import { getVideoWithScenesBySceneIds, queryCollection } from '../services/vectorDb'
+import { queryCollection } from '../services/vectorDb'
+import { Scene } from '../types/scene'
 
 export async function getVideoAnalytics(prompt: string) {
   const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
@@ -8,7 +9,7 @@ export async function getVideoAnalytics(prompt: string) {
   const { shot_type, emotions, description, aspect_ratio, objects, transcriptionQuery } =
     await generateActionFromPrompt(prompt)
 
-  const results = await queryCollection({
+  const videosWithScenes = await queryCollection({
     faces,
     shot_type,
     emotions,
@@ -18,10 +19,8 @@ export async function getVideoAnalytics(prompt: string) {
     transcriptionQuery,
   })
 
-  const sceneIds = results.flatMap((result) => result.scenes.map((scene) => scene.id))
-  const videosWithScenes = await getVideoWithScenesBySceneIds(sceneIds)
-
-  const allScenes = videosWithScenes.flatMap((video) => video.scenes.filter((scene) => sceneIds.includes(scene.id)))
+  const allScenes: Scene[] = videosWithScenes.flatMap((video) => video.scenes)
+  const sceneIds = allScenes.map((scene) => scene.id)
 
   const totalDuration = allScenes.reduce((sum, scene) => {
     const duration = scene.endTime - scene.startTime
@@ -37,8 +36,8 @@ export async function getVideoAnalytics(prompt: string) {
 
   const emotionCounts = allScenes.reduce(
     (acc, scene) => {
-      scene.emotions?.forEach((emotion: string) => {
-        acc[emotion] = (acc[emotion] || 0) + 1
+      scene.emotions?.forEach((emotion: { name: string; emotion: string }) => {
+        acc[emotion.emotion] = (acc[emotion.emotion] || 0) + 1
       })
       return acc
     },
@@ -58,7 +57,7 @@ export async function getVideoAnalytics(prompt: string) {
 
   return {
     totalDuration,
-    totalDurationFormatted: formatDuration(totalDuration),
+    totalDurationFormatted: formatDuration({ seconds: totalDuration }),
     uniqueVideos,
     totalScenes,
     dateRange:

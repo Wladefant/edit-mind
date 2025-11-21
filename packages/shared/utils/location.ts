@@ -1,5 +1,6 @@
 import fetch from 'node-fetch'
 import * as fs from 'fs/promises'
+import { CACHE_FILE, CACHE_DURATION } from '../constants'
 
 interface LocationCache {
   [key: string]: {
@@ -7,8 +8,6 @@ interface LocationCache {
     timestamp: number
   }
 }
-
-import { CACHE_FILE, CACHE_DURATION } from '../constants';
 
 export const formatLocation = (lat: number | undefined, lon: number | undefined, alt: number | undefined): string => {
   if (lat === undefined || lon === undefined) return ''
@@ -79,6 +78,17 @@ async function saveCache(cache: LocationCache): Promise<void> {
   await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8')
 }
 
+interface NominatimResponse {
+  display_name: string
+  address?: {
+    city?: string
+    town?: string
+    village?: string
+    hamlet?: string
+    country?: string
+  }
+}
+
 export async function getLocationName(location: string): Promise<string> {
   const locationData = parseLocation(location)
 
@@ -118,11 +128,11 @@ export async function getLocationName(location: string): Promise<string> {
     throw new Error(`Geocoding failed: ${response.status} - ${errorBody}`)
   }
 
-  const data = await response.json()
+  const data = (await response.json()) as NominatimResponse
 
   let locationName: string
 
-  if (data.address) {
+  if (data && data.address) {
     const addr = data.address
     const city = addr.city || addr.town || addr.village || addr.hamlet
     const country = addr.country

@@ -3,7 +3,7 @@ import { ShotType, AspectRatio } from '.'
 import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../schemas'
 
 export interface VideoSearchParams {
-  action: string
+  action: string | null
   emotions: string[]
   shot_type: ShotType | null
   aspect_ratio: AspectRatio | null
@@ -12,7 +12,7 @@ export interface VideoSearchParams {
   outputFilename: string
   objects: string[]
   camera?: string
-  transcriptionQuery?: string
+  transcriptionQuery?: string | null
   detectedText?: string
   faces?: string[]
   locations?: string[]
@@ -27,7 +27,7 @@ export type SearchQuery = {
   description?: string
   objects?: string[]
   camera?: string
-  transcriptionQuery?: string
+  transcriptionQuery?: string  | null
   detectedText?: string
   locations?: string[]
   semanticQuery?: string

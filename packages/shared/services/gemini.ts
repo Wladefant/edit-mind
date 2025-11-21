@@ -4,6 +4,10 @@ import { VideoSearchParams } from '../types/search'
 import { CACHE_TTL, GEMINI_API_KEY } from '../constants'
 import { getVideoAnalytics } from '../utils/analytics'
 
+if (!GEMINI_API_KEY) {
+  throw new Error('GEMINI_API_KEY is not defined')
+}
+
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
 
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
@@ -143,8 +147,6 @@ Respond with ONLY the JSON object:`
   }
 }
 export async function generateAssistantMessage(userPrompt: string, resultsCount: number): Promise<string> {
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
   const prompt = `You are a helpful video compilation assistant. The user requested: "${userPrompt}"
 

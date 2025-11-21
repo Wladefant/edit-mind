@@ -7,8 +7,9 @@ import { CACHE_TTL, SEARCH_AI_MODEL } from '../constants'
 export const VideoSearchParamsSchema = z.object({
   action: z.string().nullable(),
   emotions: z.array(z.string()).default([]),
-  shot_type: z.string().nullable(),
-  aspect_ratio: z.string().nullable().default('16:9'),
+  shot_type: z.enum(['medium-shot', 'long-shot', 'close-up']).nullable(),
+
+  aspect_ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '8:7']).nullable().default('16:9'),
   duration: z.number().positive().nullable(),
   description: z.string().min(1),
   outputFilename: z.string().min(1),

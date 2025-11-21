@@ -101,7 +101,7 @@ export const createScenes = async (
         bbox: face.bbox,
         confidence: face.confidence,
       })),
-      transcriptionWords: transcription.segments
+      transcriptionWords: transcription?.segments
         .filter((segment) => segment.end >= startTime && segment.start <= endTime)
 
         .flatMap((segment) =>

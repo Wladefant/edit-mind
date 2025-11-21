@@ -8,38 +8,34 @@ import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME } from '../constants'
 import { getEmbeddings } from '../services/embedding'
 import { suggestionCache } from './suggestion'
 
-let client: ChromaClient | null = null
-let collection: Collection | null = null
+export const createVectorDbClient = async (): Promise<{
+  collection: Collection | null
+  client: ChromaClient | null
+}> => {
+  let client: ChromaClient | null = null
+  let collection: Collection | null = null
 
-const initialize = async (name: string = COLLECTION_NAME): Promise<void> => {
-  if (client && collection) return
+  if (client && collection)
+    return {
+      client,
+      collection,
+    }
 
-  try {
-    client = new ChromaClient({
-      path: `http://${CHROMA_HOST}:${CHROMA_PORT}`,
-    })
+  console.debug(`http://${CHROMA_HOST}:${CHROMA_PORT}`)
+  client = new ChromaClient({ path: `http://${CHROMA_HOST}:${CHROMA_PORT}` })
+  console.debug(COLLECTION_NAME)
+  collection = await client.getOrCreateCollection({ name: COLLECTION_NAME })
 
-    await client.heartbeat()
-
-    collection = await client.getOrCreateCollection({
-      name,
-      embeddingFunction: undefined,
-    })
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        status: 'error',
-        message: `Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
-        hint: 'Make sure ChromaDB server is running. Start it with: docker run -p 8000:8000 chromadb/chroma',
-      })
-    )
-    throw error
+  return {
+    client,
+    collection,
   }
 }
 
 async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) throw new Error('Collection not initialized')
 
     const ids = documents.map((d) => d.id)
@@ -64,7 +60,7 @@ async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
 
 async function getStatistics(): Promise<CollectionStatistics> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
 
     if (!collection) {
       throw new Error('Collection not initialized')
@@ -72,7 +68,7 @@ async function getStatistics(): Promise<CollectionStatistics> {
 
     const count = await collection.count()
 
-    const results = await collection.get({
+    const results = await collection?.get({
       limit: count,
       include: ['metadatas', 'embeddings', 'documents'],
     })
@@ -102,13 +98,13 @@ async function getStatistics(): Promise<CollectionStatistics> {
 }
 async function getAllDocs(): Promise<GetResult<Metadata>> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
 
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
-    const allDocs = await collection.get({
+    const allDocs = await collection?.get({
       include: ['metadatas'],
     })
 
@@ -121,13 +117,13 @@ async function getAllDocs(): Promise<GetResult<Metadata>> {
 
 const getAllVideos = async (): Promise<Video[]> => {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
 
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
-    const allDocs = await collection.get({
+    const allDocs = await collection?.get({
       include: ['metadatas'],
     })
 
@@ -164,7 +160,8 @@ const getAllVideosWithScenes = async (
   searchFilters?: Partial<Filters>
 ): Promise<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }> => {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) throw new Error('Collection not initialized')
 
     const allSources = await getUniqueVideoSources()
@@ -173,7 +170,7 @@ const getAllVideosWithScenes = async (
 
     if (searchFilters) {
       whereClause = applyFilters(searchFilters)
-      const allDocs = await collection.get({
+      const allDocs = await collection?.get({
         where:
           Object.keys(whereClause).length > 0
             ? { $and: [{ source: { $in: paginatedSources } }, whereClause] }
@@ -257,6 +254,11 @@ const getAllVideosWithScenes = async (
 
       return { videos: uniqueVideos, allSources, filters }
     }
+    return {
+      videos: [],
+      allSources: [],
+      filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [], emotions: [] },
+    }
   } catch {
     return {
       videos: [],
@@ -268,18 +270,16 @@ const getAllVideosWithScenes = async (
 
 const queryCollection = async (query: SearchQuery, nResults = 500): Promise<VideoWithScenes[]> => {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
 
-    if (!collection) {
-      throw new Error('Collection not initialized')
-    }
+    if (!collection) throw new Error('Collection not initialized')
 
     const whereClause = applyFilters(query)
 
-    const result = await collection.get({
+    const result = await collection?.get({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       include: ['metadatas', 'documents', 'embeddings'],
-      limit: nResults
+      limit: nResults,
     })
 
     const videosDict: Record<string, VideoWithScenes> = {}
@@ -338,12 +338,13 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
     return []
   }
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
-    const results = await collection.get({
+    const results = await collection?.get({
       where: {
         source: {
           $in: videoSources,
@@ -362,12 +363,13 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
 
 async function getByVideoSource(videoSource: string): Promise<Scene[]> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
-    const result = await collection.get({
+    const result = await collection?.get({
       where: {
         source: {
           $eq: videoSource,
@@ -387,12 +389,13 @@ async function getByVideoSource(videoSource: string): Promise<Scene[]> {
 
 async function updateDocuments(scene: Scene): Promise<void> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
-    const existing = await collection.get({
+    const existing = await collection?.get({
       where: {
         $and: [{ source: scene?.source }, { startTime: scene?.startTime }, { endTime: scene?.endTime }],
       },
@@ -422,11 +425,12 @@ async function updateDocuments(scene: Scene): Promise<void> {
 }
 
 async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
-  await initialize()
+  const { collection } = await createVectorDbClient()
+
   if (!collection) throw new Error('Collection not initialized')
 
   try {
-    const allDocs = await collection.get({
+    const allDocs = await collection?.get({
       include: ['metadatas'],
     })
 
@@ -499,7 +503,8 @@ async function updateMetadata(metadata: Scene): Promise<void> {
 }
 async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<Scene[]> {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
+
     if (!collection) {
       throw new Error('Collection not initialized')
     }
@@ -508,7 +513,7 @@ async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<Scene[]
       return []
     }
 
-    const result = await collection.get({
+    const result = await collection?.get({
       ids: sceneIds,
       include: ['metadatas'],
     })
@@ -533,36 +538,42 @@ async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<Scene[]
 }
 
 async function getCollectionCount(): Promise<number> {
-  await initialize()
+  const { collection } = await createVectorDbClient()
+
   return await collection!.count()
 }
 
 async function getUniqueVideoSources(): Promise<string[]> {
-  await initialize()
+  const { collection } = await createVectorDbClient()
+
   if (!collection) throw new Error('Collection not initialized')
 
-  const allDocs = await collection.get({ include: ['metadatas'] })
+  const allDocs = await collection?.get({ include: ['metadatas'] })
 
   const uniqueSources = new Set<string>()
   allDocs.metadatas
     ?.sort((a, b) => {
-      const timeA = isNaN(Date.parse(a.createdAt.toString())) ? 0 : new Date(a.createdAt.toString()).getTime()
-      const timeB = isNaN(Date.parse(b.createdAt.toString())) ? 0 : new Date(b.createdAt.toString()).getTime()
+      if (a && a.createdAt && b && b.createdAt) {
+        const timeA = isNaN(Date.parse(a.createdAt.toString())) ? 0 : new Date(a.createdAt.toString()).getTime()
+        const timeB = isNaN(Date.parse(b.createdAt.toString())) ? 0 : new Date(b.createdAt.toString()).getTime()
 
-      return timeB - timeA
+        return timeB - timeA
+      }
+      return -1
     })
     .forEach((metadata) => {
-      const source = metadata?.source.toString()
+      const source = metadata?.source?.toString()
       if (source) uniqueSources.add(source)
     })
 
   return Array.from(uniqueSources)
 }
 async function updateScenesSource(oldSource: string, newSource: string): Promise<void> {
-  await initialize()
+  const { collection } = await createVectorDbClient()
+
   if (!collection) throw new Error('Collection not initialized')
 
-  const result = await collection.get({
+  const result = await collection?.get({
     where: { source: { $eq: oldSource } },
     include: ['metadatas'],
   })
@@ -586,7 +597,7 @@ async function updateScenesSource(oldSource: string, newSource: string): Promise
 
 const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWithScenes[]> => {
   try {
-    await initialize()
+    const { collection } = await createVectorDbClient()
 
     if (!collection) {
       throw new Error('Collection not initialized')
@@ -594,7 +605,7 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
 
     const whereClause = applyFilters(query)
 
-    let finalScenes: { metadatas: Metadata[]; ids: string[] } | undefined[] = []
+    let finalScenes: { metadatas: (Metadata | null)[]; ids: string[] } | null = null
 
     if (query.semanticQuery) {
       console.debug('Performing hybrid search...')
@@ -608,10 +619,12 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
         include: ['metadatas'],
       })
 
-      finalScenes = { metadatas: vectorQuery.metadatas[0], ids: vectorQuery.ids[0] }
+      if (vectorQuery.metadatas.length > 0) {
+        finalScenes = { metadatas: vectorQuery.metadatas[0], ids: vectorQuery.ids[0] }
+      }
     } else {
       console.debug('Performing metadata-only search...')
-      const result = await collection.get({
+      const result = await collection?.get({
         where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         limit: nResults,
         include: ['metadatas'],
@@ -619,12 +632,13 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
       finalScenes = { metadatas: result.metadatas, ids: result.ids }
     }
 
-    if (finalScenes[0] === undefined) {
+    if (!finalScenes || finalScenes.ids.length === 0) {
       return []
     }
+
     const videosDict: Record<string, VideoWithScenes> = {}
 
-    if (finalScenes && finalScenes.metadatas && finalScenes.ids) {
+    if (finalScenes.metadatas && finalScenes.ids) {
       for (let i = 0; i < finalScenes.metadatas.length; i++) {
         const metadata = finalScenes.metadatas[i]
         if (!metadata) continue
@@ -725,7 +739,6 @@ function applyFilters(query: SearchQuery): Where | WhereDocument {
 export {
   embedDocuments,
   getStatistics,
-  initialize,
   getAllVideosWithScenes,
   getAllVideos,
   hybridSearch,

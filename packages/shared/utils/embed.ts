@@ -34,7 +34,8 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
     if (goproTelemetry) {
       initialCamera = getGoProDeviceName(goproTelemetry)
 
-      const gpsCoordinates = extractGPS(goproTelemetry['1'] || {})
+      const streamData = goproTelemetry['1']
+      const gpsCoordinates = extractGPS(streamData || {})
       if (gpsCoordinates.length > 0) {
         location = formatLocation(gpsCoordinates[0]?.lat, gpsCoordinates[0]?.lon, gpsCoordinates[0]?.alt)
       } else {
