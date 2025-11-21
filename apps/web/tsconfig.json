@@ -1,5 +1,4 @@
 {
-  "extends": "../../tsconfig.json",
   "include": ["app", "react-router.config.ts", "vite.config.ts", ".react-router/types/**/*", "server.ts"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
@@ -13,7 +12,7 @@
     "paths": {
       "~/*": ["./app/*"],
       "@shared/*": ["../../packages/shared/*"],
-      "@background-jobs/*": ["../../packages/background-jobs/*"]
+      "@background-jobs/*": ["../../apps/background-jobs/*"]
     },
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
