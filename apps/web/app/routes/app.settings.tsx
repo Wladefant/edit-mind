@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Folder as FolderIcon, Plus, Trash2, HardDrive, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Folder as FolderIcon, Plus, Trash2, HardDrive, CheckCircle2, AlertCircle, Loader2, Upload } from 'lucide-react'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { Sidebar } from '~/features/shared/components/Sidebar'
 import { useLoaderData, type MetaFunction } from 'react-router'
@@ -175,6 +175,28 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+        </section>
+
+        <section className="bg-linear-to-br from-purple-50 to-purple-50 dark:from-purple-950/20 dark:to-purple-950/20 rounded-3xl shadow-sm border border-purple-200 dark:border-purple-800 overflow-hidden mb-12">
+          <div className="px-8 py-6">
+            <div className="flex items-start justify-between gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <Upload className="w-6 h-6 text-purple-700 dark:text-purple-300" />
+                  <h2 className="text-2xl font-semibold text-black dark:text-white">Immich Import</h2>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Import videos directly from your Immich photo library
+                </p>
+              </div>
+              <Link
+                to="/app/immich-import"
+                className="flex items-center gap-2 px-6 py-3 bg-purple-600 dark:bg-purple-500 text-white rounded-full font-medium text-sm hover:bg-purple-700 dark:hover:bg-purple-600 active:scale-95 transition-all shadow-lg"
+              >
+                Go to Immich Import
+              </Link>
+            </div>
+          </div>
         </section>
 
         <section className="bg-transparent rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
