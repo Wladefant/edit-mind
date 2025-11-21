@@ -7,14 +7,13 @@ import { embedDocuments } from '../services/vectorDb'
 import { existsSync } from 'fs'
 import { formatLocation, getLocationName } from './location'
 
-import { EMBEDDING_BATCH_SIZE } from '../constants'
+import { EMBEDDING_BATCH_SIZE, THUMBNAILS_DIR } from '../constants'
 import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
 import { gcd } from '.'
 import { getAspectRatioDescription } from './aspectRatio'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
-  const THUMBNAILS_DIR = process.env.THUMBNAILS_PATH || '/.thumbnails'
 
   const duration = metadata.duration
   const { latitude, longitude, altitude } = await getLocationFromVideo(videoFullPath)

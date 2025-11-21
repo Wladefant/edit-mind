@@ -25,7 +25,7 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         self.all_faces: List[Dict] = []
         self.unknown_faces_output_path = None
         self.known_faces_file = config['known_faces_file']
-        self.current_video_path = None
+
 
     def setup(self) -> None:
         """Initialize face recognizer and load known faces."""

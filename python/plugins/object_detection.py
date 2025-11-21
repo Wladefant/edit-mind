@@ -4,7 +4,9 @@ import torch
 from ultralytics import YOLO
 
 from plugins.base import AnalyzerPlugin
+import logging
 
+logger = logging.getLogger(__name__)
 
 
 class ObjectDetectionPlugin(AnalyzerPlugin):
@@ -21,6 +23,12 @@ class ObjectDetectionPlugin(AnalyzerPlugin):
         Initializes the YOLO model.
         """
         self.yolo_model = YOLO(self.config['yolo_model'])
+        
+        requested_device = self.config['device']
+        if "cuda" in requested_device.lower() and not torch.cuda.is_available():
+            logger.warning(f"Requested device '{requested_device}' not available. Falling back to CPU.")
+            self.config['device'] = 'cpu'
+        
         self.yolo_model.to(self.config['device'])
         self.yolo_model.fuse()
 

@@ -3,7 +3,7 @@ import { prisma } from '../services/db'
 import { connection } from '../queue'
 import path from 'path'
 import { existsSync, mkdirSync, promises as fs } from 'fs'
-import { PROCESSED_VIDEOS_DIR } from '@shared/constants'
+import { PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
 import { Scene } from '@shared/types/scene'
 import { Analysis } from '@shared/types/analysis'
 import { generateThumbnail } from '@shared/utils/videos'
@@ -37,7 +37,6 @@ async function updateJob(
 
 async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
   const { videoPath, jobId } = job.data
-  const THUMBNAILS_DIR = process.env.THUMBNAILS_PATH || '/.thumbnails'
   const videoDir = path.join(PROCESSED_VIDEOS_DIR, path.basename(videoPath))
   const transcriptionPath = path.join(videoDir, 'transcription.json')
   const analysisPath = path.join(videoDir, 'analysis.json')

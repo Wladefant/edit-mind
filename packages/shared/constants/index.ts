@@ -8,6 +8,7 @@ export const IS_WIN = process.platform === 'win32'
 export const THUMBNAILS_DIR = path.resolve('.thumbnails')
 export const FACES_DIR = process.env.FACES_DIR || '.faces'
 export const PROCESSED_VIDEOS_DIR = path.resolve('.results')
+export const DATA_DIR = path.resolve('data')
 export const UNKNOWN_FACES_DIR = process.env.UNKNOWN_FACES_DIR || '.unknown_faces'
 export const KNOWN_FACES_DIR = process.env.KNOWN_FACES_DIR || '.faces.json'
 export const BACKGROUND_JOBS_DIR = process.env.BACKGROUND_JOBS_DIR || '/apps/background-jobs'

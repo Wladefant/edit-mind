@@ -7,9 +7,9 @@ import 'dotenv/config'
 export const IS_WIN = process.platform === 'win32';
 
 // Directories
-export const THUMBNAILS_DIR = path.resolve('.thumbnails');
+export const THUMBNAILS_DIR = process.env.THUMBNAILS_PATH || '/.thumbnails'
 export const FACES_DIR = path.resolve('.faces');
-export const PROCESSED_VIDEOS_DIR = path.resolve('.results');
+export const PROCESSED_VIDEOS_DIR = process.env.PROCESSED_VIDEOS_DIR ||  path.resolve('.results');
 export const UNKNOWN_FACES_DIR = resolve('analysis_results/unknown_faces');
 export const CACHE_FILE = '.locations.json';
 
