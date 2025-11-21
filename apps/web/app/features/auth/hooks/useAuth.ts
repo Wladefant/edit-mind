@@ -8,7 +8,7 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null)
 
   const { setSession } = useSession()
-  const fetcher = useFetcher<{ session: { email: string; name: string } } | { error: string }>()
+  const fetcher = useFetcher<{ error: string }>()
 
   const handleAuth = async (values: LoginFormValues | RegisterFormValues, endpoint: string) => {
     setError(null)
@@ -30,26 +30,17 @@ export function useAuth() {
       setError('Failed to logout')
     }
   }
+  
   const loading = fetcher.state === 'submitting'
 
   useEffect(() => {
-    if (fetcher.data && 'session' in fetcher.data) {
-      setSession({
-        isAuthenticated: true,
-        user: { email: fetcher.data.session.email, name: fetcher.data.session.name },
-      })
-    }
     if (fetcher.data && 'error' in fetcher.data) {
       setError(fetcher.data.error)
     }
-    return () => {
-      setSession({ isAuthenticated: false, user: null })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher, fetcher.data, navigate])
+  }, [fetcher.data])
 
   return {
-    loading: loading,
+    loading,
     error,
     handleAuth,
     handleLogout,
