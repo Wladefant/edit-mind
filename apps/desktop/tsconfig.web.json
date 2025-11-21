@@ -5,7 +5,8 @@
     "app/**/*",
     "lib/**/*",
     "lib/conveyor/*.d.ts",
-    "resources/**/*"
+    "resources/**/*",
+    "../../packages/ui/**/*"
   ],
   "compilerOptions": {
     "composite": true,
@@ -15,10 +16,8 @@
     "paths": {
       "@/*": ["./*"],
       "@shared/*": ["../../packages/shared/*"],
-      "@ui/*": ["../../packages/ui/src/*"] 
+      "@ui/*": ["../../packages/ui/src/*"]
     }
   },
-  "references": [
-    { "path": "../../packages/shared" }  
-  ]
+  "references": [{ "path": "../../packages/shared" }]
 }

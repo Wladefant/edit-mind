@@ -8,13 +8,13 @@ const aliases = {
   '@/lib': resolve(__dirname, 'lib'),
   '@/resources': resolve(__dirname, 'resources'),
   '@shared': resolve(__dirname, '../../packages/shared/dist'),
-  '@ui': resolve(__dirname, '../../packages/shared/src'),
+  '@ui': resolve(__dirname, '../../packages/ui/src'),
 }
 export default defineConfig({
   main: {
     plugins: [
       externalizeDepsPlugin({
-        exclude: ['@shared', 'ffmpeg-ffprobe-static'],
+        exclude: ['@shared', 'sharp'],
       }),
     ],
     resolve: {
@@ -25,7 +25,7 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
         },
-        external: ['chromadb', '@shared', 'onnxruntime-node', '@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe'],
+        external: ['chromadb', '@shared', 'onnxruntime-node', '@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe', 'sharp', 'egm96-universal'],
       },
     },
   },
