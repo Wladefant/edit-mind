@@ -110,6 +110,12 @@ export default function Dashboard() {
                     duration={parseFloat(video.duration.toString())}
                     createdAt={video.createdAt}
                     aspectRatio={video.aspect_ratio === '16:9' ? '16:9' : '9:16'}
+                    metadata={{
+                      faces: video.faces,
+                      objects: video.objects,
+                      emotions: video.emotions,
+                      shotTypes: video.shotTypes,
+                    }}
                   />
                 ))}
               </div>

@@ -171,24 +171,24 @@ export function VideoCard({
               <div className="space-y-3">
                 {metadata.faces && metadata.faces.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-300">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-300">
                       <User className="w-3 h-3" />
                       <span className="font-medium">People</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {metadata.faces.slice(0, 5).map((face, idx) => (
-                        <div key={idx} className="text-xs bg-blue-500/20 text-blue-200 border-blue-500/30">
+                        <div key={idx} className="text-sm bg-blue-500/20 text-blue-200 border-blue-500/30">
                           {face}
                         </div>
                       ))}
-                      {metadata.faces.length > 5 && <div className="text-xs">+{metadata.faces.length - 5}</div>}
+                      {metadata.faces.length > 5 && <div className="text-sm">+{metadata.faces.length - 5}</div>}
                     </div>
                   </div>
                 )}
 
                 {metadata.emotions && metadata.emotions.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-300">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-300">
                       <Smile className="w-3 h-3" />
                       <span className="font-medium">Emotions</span>
                     </div>
@@ -198,7 +198,7 @@ export function VideoCard({
                         return (
                           <div
                             key={idx}
-                            className="text-xs bg-yellow-500/20 text-yellow-200 border-yellow-500/30 flex items-center gap-1"
+                            className="text-sm bg-yellow-500/20 text-yellow-200 border-yellow-500/30 flex items-center gap-1"
                           >
                             {Icon && <Icon className="w-3 h-3" />}
                             {emotion}
@@ -211,30 +211,30 @@ export function VideoCard({
 
                 {metadata.objects && metadata.objects.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-300">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-300">
                       <Package className="w-3 h-3" />
                       <span className="font-medium">Objects</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {metadata.objects.slice(0, 4).map((object, idx) => (
-                        <div key={idx} className="text-xs bg-green-500/20 text-green-200 border-green-500/30">
+                        <div key={idx} className="text-sm bg-green-500/20 text-green-200 border-green-500/30">
                           {object}
                         </div>
                       ))}
-                      {metadata.objects.length > 4 && <div className="text-xs">+{metadata.objects.length - 4}</div>}
+                      {metadata.objects.length > 4 && <div className="text-sm">+{metadata.objects.length - 4}</div>}
                     </div>
                   </div>
                 )}
 
                 {metadata.shotTypes && metadata.shotTypes.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-300">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-300">
                       <Camera className="w-3 h-3" />
                       <span className="font-medium">Shot Types</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {metadata.shotTypes.map((shotType, idx) => (
-                        <div key={idx} className="text-xs bg-purple-500/20 text-purple-200 border-purple-500/30">
+                        <div key={idx} className="text-sm bg-purple-500/20 text-purple-200 border-purple-500/30">
                           {shotType}
                         </div>
                       ))}
@@ -247,15 +247,15 @@ export function VideoCard({
         </AnimatePresence>
 
         {!showMetadata && metadata && (
-          <div className="absolute top-3 right-3 flex gap-1.5 z-10">
+          <div className="absolute top-3 left-3 flex gap-1.5 z-10">
             {metadata.faces && metadata.faces.length > 0 && (
-              <div className="bg-blue-500/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+              <div className="bg-blue-500/80 backdrop-blur-sm text-white text-sm px-2 py-1 rounded-full flex items-center gap-1">
                 <User className="w-3 h-3" />
                 <span>{metadata.faces.length}</span>
               </div>
             )}
             {metadata.objects && metadata.objects.length > 0 && (
-              <div className="bg-green-500/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+              <div className="bg-green-500/80 backdrop-blur-sm text-white text-sm px-2 py-1 rounded-full flex items-center gap-1">
                 <Package className="w-3 h-3" />
                 <span>{metadata.objects.length}</span>
               </div>
@@ -270,7 +270,7 @@ export function VideoCard({
             </span>
             <span className="text-sm text-gray-200">{formattedDate}</span>
           </div>
-          <span className="bg-white/25 backdrop-blur-md text-xs px-2 py-1 rounded-md">{Math.round(duration)} sec</span>
+          <span className="bg-white/25 backdrop-blur-md text-sm px-2 py-1 rounded-md">{Math.round(duration)} sec</span>
         </div>
       </Link>
     </motion.div>

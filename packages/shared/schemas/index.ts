@@ -109,6 +109,10 @@ export const videoSchema = z.object({
   thumbnailUrl: z.string().optional(),
   dominantColorHex: z.string().optional(),
   dominantColorName: z.string().optional(),
+  faces: z.array(z.string()),
+  objects: z.array(z.string()),
+  emotions: z.array(z.string()),
+  shotTypes: z.array(z.string()),
 })
 
 export const searchSuggestionSchema = z.object({

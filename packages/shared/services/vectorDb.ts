@@ -143,6 +143,10 @@ const getAllVideos = async (): Promise<Video[]> => {
             category: metadata.category?.toString() || 'Uncategorized',
             createdAt: metadata.createdAt?.toString() || 'N/A',
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
+            faces: [],
+            emotions: [],
+            objects: [],
+            shotTypes: [],
           }
         }
       }
@@ -209,11 +213,31 @@ const getAllVideosWithScenes = async (
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
+            faces: [],
+            emotions: [],
+            objects: [],
+            shotTypes: [],
           }
         }
 
         const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
         videosDict[source].scenes.push(scene)
+
+        // Collect per-video faces, emotions, objects, shot types
+        if (scene.faces)
+          scene.faces.forEach((f) => {
+            if (!videosDict[source].faces?.includes(f)) videosDict[source].faces.push(f)
+          })
+        if (scene.emotions)
+          scene.emotions.forEach((e) => {
+            if (!videosDict[source].emotions?.includes(e.emotion)) videosDict[source].emotions.push(e.emotion)
+          })
+        if (scene.objects)
+          scene.objects.forEach((o) => {
+            if (!videosDict[source].objects?.includes(o)) videosDict[source].objects.push(o)
+          })
+        if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
+          videosDict[source].shotTypes.push(scene.shot_type)
 
         if (scene.camera) cameras.add(scene.camera.toString())
         if (scene.dominantColorName) colors.add(scene.dominantColorName.toString())
@@ -305,11 +329,30 @@ const queryCollection = async (query: SearchQuery, nResults = 500): Promise<Vide
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
+            faces: [],
+            emotions: [],
+            objects: [],
+            shotTypes: [],
           }
         }
 
         const scene: Scene = metadataToScene(metadata, result.ids[i])
         videosDict[source].scenes.push(scene)
+        // Collect per-video faces, emotions, objects, shot types
+        if (scene.faces)
+          scene.faces.forEach((f) => {
+            if (!videosDict[source].faces?.includes(f)) videosDict[source].faces.push(f)
+          })
+        if (scene.emotions)
+          scene.emotions.forEach((e) => {
+            if (!videosDict[source].emotions?.includes(e.emotion)) videosDict[source].emotions.push(e.emotion)
+          })
+        if (scene.objects)
+          scene.objects.forEach((o) => {
+            if (!videosDict[source].objects?.includes(o)) videosDict[source].objects.push(o)
+          })
+        if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
+          videosDict[source].shotTypes.push(scene.shot_type)
       }
     }
 
@@ -659,11 +702,31 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
+            faces: [],
+            emotions: [],
+            objects: [],
+            shotTypes: [],
           }
         }
 
         const scene: Scene = metadataToScene(metadata, finalScenes.ids[i])
         videosDict[source].scenes.push(scene)
+
+        // Collect per-video faces, emotions, objects, shot types
+        if (scene.faces)
+          scene.faces.forEach((f) => {
+            if (!videosDict[source].faces?.includes(f)) videosDict[source].faces.push(f)
+          })
+        if (scene.emotions)
+          scene.emotions.forEach((e) => {
+            if (!videosDict[source].emotions?.includes(e.emotion)) videosDict[source].emotions.push(e.emotion)
+          })
+        if (scene.objects)
+          scene.objects.forEach((o) => {
+            if (!videosDict[source].objects?.includes(o)) videosDict[source].objects.push(o)
+          })
+        if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
+          videosDict[source].shotTypes.push(scene.shot_type)
       }
     }
 
