@@ -23,6 +23,7 @@ model User {
   chats     Chat[]
   folders   Folder[]
   jobs      Job[]
+  integration   Integration?
 }
 
 
@@ -107,4 +108,14 @@ model ChatMessage {
   stitchedVideoPath String?       
 
   @@index([chatId, createdAt])
+}
+
+model Integration {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  immichApiKey  String
+  immichBaseUrl String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
