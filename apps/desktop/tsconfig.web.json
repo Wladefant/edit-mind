@@ -14,7 +14,8 @@
     "types": ["electron-vite/node"],
     "paths": {
       "@/*": ["./*"],
-      "@shared/*": ["../../packages/shared/*"] 
+      "@shared/*": ["../../packages/shared/*"],
+      "@ui/*": ["../../packages/ui/src/*"] 
     }
   },
   "references": [

@@ -8,6 +8,7 @@ const aliases = {
   '@/lib': resolve(__dirname, 'lib'),
   '@/resources': resolve(__dirname, 'resources'),
   '@shared': resolve(__dirname, '../../packages/shared/dist'),
+  '@ui': resolve(__dirname, '../../packages/shared/src'),
 }
 export default defineConfig({
   main: {

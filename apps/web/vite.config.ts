@@ -11,6 +11,7 @@ export default defineConfig({
       '~': path.resolve(__dirname, 'app'),
       '@background-jobs': path.resolve(__dirname, '../../apps/background-jobs'),
       '@shared': path.resolve(__dirname, '../../packages/shared'),
+      '@ui': path.resolve(__dirname, '../../packages/ui'),
       '@/app': path.resolve(__dirname, './app'),
     },
   },
