@@ -12,22 +12,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://user:password@postgres:5432/app
-      - HOST_MEDIA_PATH=/media/videos
-      - CHROMA_URL=http://chroma:8000
-      - PYTHON_PORT=8765
-      - USE_UNIX_SOCKET=true
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
     env_file:
       - ../.env
     volumes:
-      - ..:/app:delegated
+      - ..:/app
       - ../.thumbnails:/.thumbnails
-      - background_jobs_node_modules:/app/node_modules:cached
-      - python_venv:/app/python/.venv:cached
+      - background_jobs_node_modules:/app/node_modules
+      - python_venv:/app/python/.venv
     networks:
       - app-network
 
@@ -38,43 +29,33 @@ services:
     image: edit-mind-web:dev
     ports:
       - "3745:3745"
-    environment:
-      - PORT=3745
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
-      - BACKGROUND_JOBS_URL=http://background-jobs:4000
-      - DATABASE_URL=postgresql://user:password@postgres:5432/app
-    env_file:
-      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
       chroma:
         condition: service_started
+    env_file:
+      - ../.env
     volumes:
-      - ..:/app:delegated
-      - web_node_modules:/app/node_modules:cached
-      - ../.thumbnails:/.thumbnails:cached
+      - ..:/app
+      - web_node_modules:/app/node_modules
+      - ../.thumbnails:/.thumbnails
     networks:
       - app-network
 
   chroma:
     image: chromadb/chroma:latest
-    container_name: chroma
     ports:
       - "8000:8000"
     volumes:
       - ../.chroma_db:/data
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
+    env_file:
+      - ../.env
     networks:
       - app-network
 
   redis:
     image: redis:7-alpine
-    container_name: redis
     ports:
       - "6379:6379"
     networks:
@@ -82,24 +63,19 @@ services:
 
   postgres:
     image: postgres:16
-    container_name: postgres
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=app
-      - PGDATA=/var/lib/postgresql/data/pgdata 
     ports:
       - "5433:5432"
+    env_file:
+      - ../.env
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks:
-      - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d app"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: unless-stopped 
+    networks:
+      - app-network
 
 volumes:
   pgdata:
@@ -109,4 +85,3 @@ volumes:
 
 networks:
   app-network:
-    driver: bridge

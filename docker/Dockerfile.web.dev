@@ -1,31 +1,28 @@
 FROM node:22.20.0
 
+# Configure pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@8.6.9 --activate
 
 WORKDIR /app
 
-# Copy package files
-COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml ./
-COPY package.json ./
-COPY prisma.config.ts ./
-COPY apps/web/ ./apps/web
+# Install Node.js dependencies with layer caching
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json prisma.config.ts ./
+COPY apps/web/package.json ./apps/web/
 COPY apps/background-jobs/package.json ./apps/background-jobs/
-COPY packages/shared/ ./packages/shared
-COPY packages/prisma/ ./packages/prisma
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/prisma/ ./packages/prisma/
 
-# Install dependencies
-RUN --mount=type=cache,id=pnpm,target=/root/.pnpm-store pnpm install --frozen-lockfile
-RUN pnpm rebuild @tailwindcss/oxide
-RUN pnpm rebuild rollup
+RUN --mount=type=cache,id=pnpm,target=/root/.pnpm-store \
+    pnpm install --frozen-lockfile
 
+# Copy application source and rebuild native modules
+COPY . .
 
-# Copy necessary config files
-COPY tsconfig.json ./
-COPY apps/web/vite.config.ts ./apps/web/vite.config.ts
+RUN pnpm rebuild @tailwindcss/oxide && \
+    pnpm rebuild rollup
 
 EXPOSE 3745
 
-CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm prisma generate && pnpm prisma db seed &&  pnpm prisma generate  && pnpm --filter web dev --port 3745 --host"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm prisma generate && pnpm prisma db seed && pnpm --filter web dev --port 3745 --host"]
