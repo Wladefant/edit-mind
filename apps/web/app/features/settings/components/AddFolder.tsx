@@ -6,7 +6,7 @@ interface ServerFolder {
   path: string
   name: string
   isDirectory: boolean
-  children?: ServerFolder[]
+  mtime?: number
 }
 
 interface AddFolderProps {
@@ -21,11 +21,14 @@ export function AddFolder({ isOpen, onClose, onAdd }: AddFolderProps) {
   const [loadingFolders, setLoadingFolders] = useState(false)
   const [selectedPath, setSelectedPath] = useState('')
   const [isAdding, setIsAdding] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortOption, setSortOption] = useState<'recent' | 'older'>('recent')
 
   const fetchAvailableFolders = async (path: string = '/') => {
     setLoadingFolders(true)
     try {
-      const response = await fetch(`/api/folders?path=${encodeURIComponent(path)}`)
+      const params = new URLSearchParams({ path, search: searchQuery, sort: sortOption })
+      const response = await fetch(`/api/folders?${params.toString()}`)
       const data = await response.json()
       setAvailableFolders(data.folders || [])
       setCurrentPath(path)
@@ -43,7 +46,13 @@ export function AddFolder({ isOpen, onClose, onAdd }: AddFolderProps) {
       setCurrentPath('/')
       fetchAvailableFolders('/')
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
+
+  useEffect(() => {
+    if (isOpen) fetchAvailableFolders(currentPath)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, sortOption])
 
   const handleNavigateToFolder = (folderPath: string) => {
     fetchAvailableFolders(folderPath)
@@ -103,12 +112,30 @@ export function AddFolder({ isOpen, onClose, onAdd }: AddFolderProps) {
               </button>
             </div>
 
+            <div className="px-6 py-2 mb-4 flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search folders..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-black dark:border-gray-700 dark:text-white"
+              />
+              <select
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as 'recent' | 'older')}
+                className="px-3 py-2 pr-2 border rounded-lg text-sm dark:bg-black dark:border-gray-700 dark:text-white"
+              >
+                <option value="recent">Recent</option>
+                <option value="older">Older</option>
+              </select>
+            </div>
+
             <div className="px-6 py-2 flex items-center gap-2 overflow-x-auto text-sm text-gray-600 dark:text-gray-400">
               {getBreadcrumbs().map((crumb, idx) => (
                 <div key={crumb.path} className="flex items-center gap-1">
                   <button
                     onClick={() => handleNavigateToFolder(crumb.path)}
-                    className="whitespace-nowrap hover:text-black dark:hover:text-white transition-colors"
+                    className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px] hover:text-black dark:hover:text-white transition-colors"
                   >
                     {crumb.name}
                   </button>
@@ -137,12 +164,13 @@ export function AddFolder({ isOpen, onClose, onAdd }: AddFolderProps) {
                     }`}
                   >
                     <div
-                      className="flex items-center gap-3 w-full"
+                      className="flex items-center gap-3 w-full min-w-0"
                       onClick={() => folder.isDirectory && handleNavigateToFolder(folder.path)}
                     >
                       <Folder className="w-5 h-5 text-black dark:text-white shrink-0" />
                       <span className="text-sm text-black dark:text-white truncate">{folder.name}</span>
                     </div>
+
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
