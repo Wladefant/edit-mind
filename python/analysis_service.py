@@ -16,7 +16,10 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, Connecti
 from transcribe import TranscriptionService
 from analyze import AnalysisConfig, OutputManager, VideoAnalysisResult, VideoAnalyzer
 from batch_add_faces import batch_add_faces_from_folder
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -309,7 +312,8 @@ class MessageHandler:
         self,
         websocket: WebSocketServerProtocol,
         msg_type: MessageType,
-        payload: JsonDict
+        payload: JsonDict,
+        job_id: Optional[str] = None
     ) -> bool:
         """Send a message through the connection manager."""
         if not websocket:
@@ -317,6 +321,10 @@ class MessageHandler:
             return False
 
         try:
+            # Add job_id to payload if provided
+            if job_id is not None:
+                payload = {**payload, "job_id": job_id}
+            
             message = json.dumps({
                 "type": msg_type.value,
                 "payload": payload
@@ -357,13 +365,24 @@ class MessageHandler:
             )
             return
         
+        job_id = payload.get("job_id") 
+        if not isinstance(job_id, str):
+            logger.error("Missing or invalid 'job_id' in payload")
+            await self._send_message(
+                websocket,
+                MessageType.ANALYSIS_ERROR,
+                {"message": "Missing or invalid 'job_id' in payload"}
+            )
+            return
+            
         video_path = Path(video_path_str)
         if not video_path.exists():
             logger.error(f"Video file not found: {video_path}")
             await self._send_message(
                 websocket,
                 MessageType.ANALYSIS_ERROR,
-                {"message": f"Video file not found: {video_path}"}
+                {"message": f"Video file not found: {video_path}"},
+                job_id=job_id
             )
             return
         
@@ -374,7 +393,8 @@ class MessageHandler:
             await self._send_message(
                 websocket,
                 MessageType.ANALYSIS_ERROR,
-                {"message": f"Video is already being analyzed: {video_path.name}"}
+                {"message": f"Video is already being analyzed: {video_path.name}"},
+                job_id=job_id
             )
             return
         
@@ -385,14 +405,15 @@ class MessageHandler:
         logger.info(f"Starting analysis for: {video_path.name} with {len(settings_dict)} custom settings")
         
         async with self.analysis_semaphore:
-            await self._run_analysis_workflow(websocket, video_path, video_path_normalized, config)
-    
+                await self._run_analysis_workflow(websocket, video_path, video_path_normalized, config, job_id)
+                
     async def _run_analysis_workflow(
         self,
         websocket: WebSocketServerProtocol,
         video_path: Path,
         video_path_normalized: str,
-        config: AnalysisConfig
+        config: AnalysisConfig,
+        job_id: str
     ) -> None:
         """Execute the complete analysis workflow with proper cleanup."""
         self.state.start_analysis(video_path_normalized)
@@ -405,13 +426,14 @@ class MessageHandler:
             self.active_guards.add(guard)
             
             analyzer = VideoAnalyzer(video_path_normalized, config)
-            result = await self._execute_analysis(websocket, analyzer, guard)
+            result = await self._execute_analysis(websocket, analyzer, guard, job_id)
             
             if result.error:
                 await self._send_message(
                     websocket,
                     MessageType.ANALYSIS_ERROR,
-                    {"message": f"Analysis failed: {result.error}"}
+                    {"message": f"Analysis failed: {result.error}"},
+                    job_id=job_id
                 )
             else:
                 output_path = OutputManager.get_output_path(video_path_normalized, config.output_dir)
@@ -420,7 +442,7 @@ class MessageHandler:
                 
                 result_dict = result.to_dict()
                 if isinstance(result_dict, dict):
-                    await self._send_message(websocket, MessageType.ANALYSIS_COMPLETED, result_dict)  
+                    await self._send_message(websocket, MessageType.ANALYSIS_COMPLETED, result_dict, job_id=job_id)  
                     success = True
         
         except (BrokenPipeError, OSError) as e:
@@ -431,7 +453,8 @@ class MessageHandler:
             await self._send_message(
                 websocket,
                 MessageType.ANALYSIS_ERROR,
-                {"message": f"Internal error: {str(e)}"}
+                {"message": f"Internal error: {str(e)}"},
+                job_id=job_id
             )
         finally:
             if guard:
@@ -441,12 +464,12 @@ class MessageHandler:
             if analyzer:
                 analyzer.progress_callback = None
                 del analyzer
-    
     async def _execute_analysis(
         self,
         websocket: WebSocketServerProtocol,
         analyzer: VideoAnalyzer,
-        guard: CallbackGuard
+        guard: CallbackGuard,
+        job_id: str
     ) -> VideoAnalysisResult:
         """Execute video analysis with progress updates."""
         loop = asyncio.get_running_loop()
@@ -464,15 +487,12 @@ class MessageHandler:
                 "elapsed": elapsed,
                 "total_frames": total_frames
             }
-            try:
-                future = asyncio.run_coroutine_threadsafe(
-                      self._send_message(websocket,MessageType.ANALYSIS_PROGRESS, progress_data),
-                    loop
-                )
-                result = future.result(timeout=1.0)
-                logger.debug(f"Sent Analysis progress: {progress_data} (sent={result})")
-            except Exception as e:
-                logger.warning(f"Failed to send analysis progress {progress_data}: {e}")
+            asyncio.run_coroutine_threadsafe(
+                self._send_message(websocket, MessageType.ANALYSIS_PROGRESS, progress_data, job_id=job_id),
+                loop
+            )
+            logger.debug(f"Sent Analysis progress: {progress_data}")
+         
         
         
         try:
@@ -481,13 +501,14 @@ class MessageHandler:
             result = await loop.run_in_executor(None, analyzer.analyze)
             result_dict = result.to_dict()
             try:
-                await self._send_message(websocket,MessageType.ANALYSIS_COMPLETED, result_dict)
+                await self._send_message(websocket, MessageType.ANALYSIS_COMPLETED, result_dict, job_id=job_id)
             except Exception as e:
                 logger.warning(f"Failed to send frame analysis complete event: {e}")
 
             return result
         finally:
             analyzer.progress_callback = None
+
     
     def _build_analysis_config(self, settings: Dict[str, JsonValue]) -> AnalysisConfig:
         """Build analysis configuration from settings dictionary."""
@@ -518,7 +539,12 @@ class MessageHandler:
             )
             logger.error(f"Invalid transcription request payload: {payload}")
             return
-
+        
+        job_id = payload.get("job_id") 
+        if not isinstance(job_id, str):
+            logger.error("Missing or invalid 'job_id' in payload")
+            job_id = None  # Continue but log the issue
+            
         video_path_normalized = str(Path(video_path).resolve())
         self.state.start_transcription(video_path_normalized)
         logger.info(f"Started transcription for: {video_path_normalized}")
@@ -532,15 +558,10 @@ class MessageHandler:
                 "elapsed": elapsed,
                 "video_path": video_path_normalized
             }
-            try:
-                future = asyncio.run_coroutine_threadsafe(
-                      self._send_message(websocket,MessageType.TRANSCRIPTION_PROGRESS, progress_data),
-                    loop
-                )
-                result = future.result(timeout=1.0)
-            except Exception as e:
-                logger.warning(f"Failed to send transcription progress {progress_data}: {e}")
-
+            asyncio.run_coroutine_threadsafe(
+                self._send_message(websocket, MessageType.TRANSCRIPTION_PROGRESS, progress_data, job_id=job_id),
+                loop
+            )
         try:
             logger.info(f"Running transcription for {video_path_normalized}")
             result = await loop.run_in_executor(
@@ -558,7 +579,7 @@ class MessageHandler:
                 "video_path": video_path_normalized
             }
             try:
-                await self._send_message(websocket, MessageType.TRANSCRIPTION_COMPLETED, complete_data)
+                await self._send_message(websocket, MessageType.TRANSCRIPTION_COMPLETED, complete_data, job_id=job_id)
                 logger.info(f"Transcription complete for {video_path_normalized} -> {json_file_path}")
             except Exception as e:
                 logger.warning(f"Failed to send transcription complete event: {e}")
@@ -568,100 +589,12 @@ class MessageHandler:
             await self._send_message(
                 websocket,
                 MessageType.TRANSCRIPTION_ERROR,
-                {"message": f"Transcription failed: {str(e)}", "video_path": video_path_normalized}
+                {"message": f"Transcription failed: {str(e)}", "video_path": video_path_normalized},
+                job_id=job_id
             )
         finally:
             self.state.finish_transcription(video_path_normalized)
-
-    async def _handle_reindex_faces(
-        self,
-        websocket: WebSocketServerProtocol,
-        payload: JsonDict
-    ) -> None:
-        """Handle face reindexing request with exclusive locking."""
-        if self.reindex_lock.locked():
-            logger.warning("Reindex request received while another reindex is active.")
-            await self._send_message(
-                websocket,
-                MessageType.REINDEX_ERROR,
-                {"message": "Face reindexing is already in progress. Please wait."}
-            )
-            return
-
-        async with self.reindex_lock:
-            logger.info("Starting face reindexing...")
             
-            faces_dir = payload.get("faces_directory", ".faces")
-            known_faces_f = payload.get("known_faces_file", "known_faces.json")
-            output_json_f = payload.get("output_json_path", ".faces.json")
-            
-            if not isinstance(faces_dir, str):
-                faces_dir = ".faces"
-            if not isinstance(known_faces_f, str):
-                known_faces_f = "known_faces.json"
-            if not isinstance(output_json_f, str):
-                output_json_f = ".faces.json"
-            
-            guard = CallbackGuard(websocket, self.connection_manager)
-            self.active_guards.add(guard)
-            
-            async def reindex_progress_callback(data: Dict[str, Union[str, int]]) -> None:
-                """Progress callback for reindexing with error handling."""
-                if not guard.is_active():
-                    return
-                
-                elapsed = data.get("elapsed", "")
-                progress = data.get("progress", 0)
-                
-                if not isinstance(elapsed, str):
-                    elapsed = str(elapsed)
-                if not isinstance(progress, int):
-                    progress = 0
-                
-                progress_data: JsonDict = {
-                    "elapsed": elapsed,
-                    "progress": progress
-                }
-                
-                try:
-                    await self._send_message(websocket, MessageType.REINDEX_PROGRESS, progress_data)
-                except Exception:
-                    pass
-
-            try:
-                success = await batch_add_faces_from_folder(
-                    faces_directory=faces_dir,
-                    known_faces_file=known_faces_f,
-                    output_json_path=output_json_f,
-                    progress_callback=reindex_progress_callback
-                )
-                
-                if success:
-                    logger.info("Face reindexing completed successfully.")
-                    await self._send_message(
-                        websocket,
-                        MessageType.REINDEX_COMPLETE,
-                        {"status": "done", "message": "Face reindexing completed successfully."}
-                    )
-                else:
-                    logger.error("Face reindexing failed. Check logs for details.")
-                    await self._send_message(
-                        websocket,
-                        MessageType.REINDEX_ERROR,
-                        {"message": "Face reindexing failed. Check service logs."}
-                    )
-            
-            except Exception as e:
-                logger.exception("Face reindexing exception")
-                await self._send_message(
-                    websocket,
-                    MessageType.REINDEX_ERROR,
-                    {"message": f"Reindexing failed: {str(e)}"}
-                )
-            finally:
-                guard.cancel()
-                self.active_guards.discard(guard)
-
     async def _handle_find_matching_faces(
         self,
         websocket: WebSocketServerProtocol,
@@ -689,37 +622,36 @@ class MessageHandler:
             )
             return
         
+        job_id = payload.get("job_id")
+        if not isinstance(job_id, str):
+            logger.error("Missing or invalid 'job_id' in payload")
+            job_id = None
+        
         logger.info(f"Starting face matching for {person_name} with {len(reference_images)} references")
         
         guard = CallbackGuard(websocket, self.connection_manager)
         self.active_guards.add(guard)
         
-        async def progress_callback(data: Dict[str, Union[str, int]]) -> None:
-            """Progress callback for face matching."""
-            if not guard.is_active():
-                return
-            
+        loop = asyncio.get_running_loop()
+        
+        def progress_callback(data: Dict[str, Union[str, int, float]]) -> None:
+            """Thread-safe synchronous progress callback for face matching."""            
             progress_data: JsonDict = {
                 "person_name": person_name,
-                "current": data.get("current", 0),
-                "total": data.get("total", 0),
-                "progress": data.get("progress", 0),
-                "elapsed": data.get("elapsed", 0),
-                "matches_found": data.get("matches_found", 0)
+                **data
             }
-            
-            try:
-                await self._send_message(
-                    websocket,
-                    MessageType.FACE_MATCHING_PROGRESS,
-                    progress_data
-                )
-            except Exception:
-                pass
+       
+            asyncio.run_coroutine_threadsafe(
+                self._send_message(websocket, MessageType.FACE_MATCHING_PROGRESS, progress_data, job_id=job_id),
+                loop
+            )
+            logger.debug(f"Sent face matching progress: {progress_data}")
+          
         
         try:
             from face_matcher import find_and_label_matching_faces
             
+            logger.info(f"Running face matching for {person_name}")
             result = await find_and_label_matching_faces(
                 person_name=person_name,
                 reference_image_paths=reference_images,
@@ -729,17 +661,28 @@ class MessageHandler:
             )
             
             if result["success"]:
-                logger.info(f"Face matching complete: {result['matches_found']} matches found")
-                await self._send_message(
-                    websocket,
-                    MessageType.FACE_MATCHING_COMPLETE,
-                    result
-                )
+                logger.info(f"Face matching complete: {result['matches_found']} matches found for {person_name}")
+                complete_data: JsonDict = {
+                    "person_name": person_name,
+                    "matches_found": result["matches_found"],
+                    "matches": result["matches"],
+                    "reference_images_used": result["reference_images_used"]
+                }
+                try:
+                    await self._send_message(
+                        websocket,
+                        MessageType.FACE_MATCHING_COMPLETE,
+                        complete_data,
+                        job_id=job_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send face matching complete event: {e}")
             else:
                 await self._send_message(
                     websocket,
                     MessageType.FACE_MATCHING_ERROR,
-                    {"message": result.get("error", "Unknown error")}
+                    {"message": result.get("error", "Unknown error")},
+                    job_id=job_id
                 )
         
         except Exception as e:
@@ -747,11 +690,117 @@ class MessageHandler:
             await self._send_message(
                 websocket,
                 MessageType.FACE_MATCHING_ERROR,
-                {"message": f"Face matching failed: {str(e)}"}
+                {"message": f"Face matching failed: {str(e)}"},
+                job_id=job_id
             )
         finally:
             guard.cancel()
             self.active_guards.discard(guard)
+
+
+    async def _handle_reindex_faces(
+        self,
+        websocket: WebSocketServerProtocol,
+        payload: JsonDict
+    ) -> None:
+        """Handle face reindexing request with exclusive locking."""
+        if self.reindex_lock.locked():
+            logger.warning("Reindex request received while another reindex is active.")
+            await self._send_message(
+                websocket,
+                MessageType.REINDEX_ERROR,
+                {"message": "Face reindexing is already in progress. Please wait."}
+            )
+            return
+
+        job_id = payload.get("job_id")
+        specific_faces = payload.get("specific_faces")
+        if not isinstance(job_id, str):
+            logger.error("Missing or invalid 'job_id' in payload")
+            job_id = None
+
+        async with self.reindex_lock:
+            logger.info("Starting face reindexing...")
+            
+            faces_dir = os.getenv("FACES_DIR", ".faces")
+            known_faces_f = os.getenv("KNOWN_FACES_FILE_LOADED", ".known_faces.json")
+            
+            if not isinstance(faces_dir, str):
+                faces_dir = ".faces"
+            if not isinstance(known_faces_f, str):
+                known_faces_f = "known_faces.json"
+            
+            guard = CallbackGuard(websocket, self.connection_manager)
+            self.active_guards.add(guard)
+            
+            loop = asyncio.get_running_loop()
+            
+            def reindex_progress_callback(data: Dict[str, Union[str, int]]) -> None:
+                """Thread-safe synchronous progress callback for reindexing."""
+                if not guard.is_active():
+                    return
+                
+                elapsed = data.get("elapsed", "")
+                progress = data.get("progress", 0)
+                
+                if not isinstance(elapsed, str):
+                    elapsed = str(elapsed)
+                if not isinstance(progress, int):
+                    progress = 0
+                
+                progress_data: JsonDict = {
+                    "elapsed": elapsed,
+                    "progress": progress
+                }
+                
+                asyncio.run_coroutine_threadsafe(
+                    self._send_message(websocket, MessageType.REINDEX_PROGRESS, progress_data, job_id=job_id),
+                    loop
+                    )
+               
+
+            try:
+                logger.info("Running face reindexing")
+                success = await batch_add_faces_from_folder(
+                    progress_callback=reindex_progress_callback,
+                    specific_faces=specific_faces
+                )
+                
+                if success:
+                    logger.info("Face reindexing completed successfully.")
+                    complete_data: JsonDict = {
+                        "status": "done",
+                        "message": "Face reindexing completed successfully."
+                    }
+                    try:
+                        await self._send_message(
+                            websocket,
+                            MessageType.REINDEX_COMPLETE,
+                            complete_data,
+                            job_id=job_id
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to send reindex complete event: {e}")
+                else:
+                    logger.error("Face reindexing failed. Check logs for details.")
+                    await self._send_message(
+                        websocket,
+                        MessageType.REINDEX_ERROR,
+                        {"message": "Face reindexing failed. Check service logs."},
+                        job_id=job_id
+                    )
+            
+            except Exception as e:
+                logger.exception("Face reindexing exception")
+                await self._send_message(
+                    websocket,
+                    MessageType.REINDEX_ERROR,
+                    {"message": f"Reindexing failed: {str(e)}"},
+                    job_id=job_id
+                )
+            finally:
+                guard.cancel()
+                self.active_guards.discard(guard)
 class WebSocketHandler:
     """Coordinates WebSocket connections and message processing."""
     
