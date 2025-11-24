@@ -27,6 +27,26 @@
   "pnpm": {
     "overrides": {
       "esbuild": "^0.21.5"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@ffmpeg-installer/darwin-arm64",
+      "@ffprobe-installer/darwin-arm64",
+      "@prisma/client",
+      "@prisma/engines",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "msgpackr-extract",
+      "node-llama-cpp",
+      "onnxruntime-node",
+      "prisma",
+      "protobufjs"
+    ]
+  },
+  "resolutions": {
+    "sharp": "0.34.5"
+  },
+  "overrides": {
+    "sharp": "0.34.5"
   }
 }
