@@ -2,7 +2,9 @@ import { Queue } from 'bullmq'
 import { config } from './config'
 import IORedis from 'ioredis'
 
-export const connection = new IORedis(config.redisUrl, {
+export const connection = new IORedis({
+  host: config.redisHost,
+  port: config.redisPort,
   maxRetriesPerRequest: null,
 })
 
@@ -38,3 +40,4 @@ export const immichImporterQueue = new Queue('immich-importer', {
     },
   },
 })
+
