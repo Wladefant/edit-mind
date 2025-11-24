@@ -128,10 +128,11 @@ export default function SettingsPage() {
         return 'Idle'
     }
   }
-  const totalSize = folders?.reduce((acc, folder) => {
-    const folderSize = folder.jobs?.reduce((sum, job) => sum + (job.fileSize || 0), 0)
-    return acc + folderSize
-  }, 0)
+  const totalSize =
+    folders?.reduce((acc, folder) => {
+      const folderSize = folder.jobs?.reduce((sum, job) => sum + (job.fileSize || 0), 0)
+      return acc + folderSize
+    }, 0) || 0
 
   const totalSizeStr = (totalSize / 1024 ** 3).toFixed(1)
 
