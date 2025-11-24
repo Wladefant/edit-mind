@@ -25,8 +25,6 @@ export const immichActionSchema = z.discriminatedUnion('intent', [
     intent: z.literal('delete-integration'),
   }),
   z.object({
-    intent: z.literal('test-connection'),
-    apiKey: z.string().min(1),
-    baseUrl: z.string().optional(),
+    intent: z.literal('refresh-import'),
   }),
 ])

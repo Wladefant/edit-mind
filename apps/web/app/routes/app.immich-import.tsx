@@ -1,11 +1,11 @@
-import { CheckCircle2, AlertCircle, Loader2, Key, ExternalLink, Trash2 } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Loader2, Key, ExternalLink, Trash2, RefreshCw } from 'lucide-react'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { Sidebar } from '~/features/shared/components/Sidebar'
 import { useLoaderData, useActionData, Form, useNavigation, type MetaFunction } from 'react-router'
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router'
-import { getImmichConfig, saveImmichIntegration, deleteImmichIntegration } from '../services/immich.server'
+import { getImmichConfig, saveImmichIntegration, deleteImmichIntegration } from '../services/immich.server';
 import { getUser } from '~/services/user.sever'
 import { immichActionSchema, immichConfigFormSchema } from '@shared/schemas/immich'
 import { addImmichImporterJob } from '@background-jobs/src/services/immichImporter'
@@ -62,10 +62,20 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         }
 
-        await saveImmichIntegration(user.id, configResult.data.apiKey, configResult.data.baseUrl)
-        await addImmichImporterJob(user.id)
+        const integration = await saveImmichIntegration(user.id, configResult.data.apiKey, configResult.data.baseUrl)
+        await addImmichImporterJob(integration.id)
 
         return { success: true, message: 'Import started successfully' }
+      }
+
+      case 'refresh-import': {
+        const config = await getImmichConfig(user.id)
+        if (!config) {
+          return { success: false, error: 'No integration found' }
+        }
+        const integration = await getImmichConfig(user.id)
+        if (integration) await addImmichImporterJob(integration?.id)
+        return { success: true, message: 'Face labeling refresh triggered successfully' }
       }
 
       case 'delete-integration': {
@@ -92,6 +102,7 @@ export default function ImmichIntegrationPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const isSubmitting = navigation.state === 'submitting'
+  const isRefreshing = navigation.formData?.get('intent') === 'refresh-import'
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     const formData = new FormData(e.currentTarget)
@@ -115,22 +126,24 @@ export default function ImmichIntegrationPage() {
 
   return (
     <DashboardLayout sidebar={<Sidebar />}>
-      <main className="max-w-7xl px-6 py-12">
-        <header className="mb-10">
-          <h1 className="text-4xl font-semibold text-black dark:text-white tracking-tight mb-2">Immich</h1>
-          <p className="text-base text-gray-600 dark:text-gray-400">Import face labels to enhance video labeling</p>
+      <main className="max-w-7xl  px-6 py-12">
+        <header className="mb-8">
+          <h1 className="text-3xl font-semibold text-black dark:text-white tracking-tight mb-2">Immich Integration</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Import face labels from Immich to enhance your video labeling workflow
+          </p>
         </header>
 
         <AnimatePresence>
           {actionData && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={`mb-6 p-4 rounded-2xl ${
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`mb-6 p-4 rounded-xl border ${
                 actionData.success
-                  ? 'bg-green-50 dark:bg-green-900/10 text-green-800 dark:text-green-200'
-                  : 'bg-red-50 dark:bg-red-900/10 text-red-800 dark:text-red-200'
+                  ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/30 text-green-800 dark:text-green-200'
+                  : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30 text-red-800 dark:text-red-200'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -145,15 +158,26 @@ export default function ImmichIntegrationPage() {
           )}
         </AnimatePresence>
 
-        <section className="bg-white/20 dark:bg-transparent backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-gray-800/50 overflow-hidden">
+        <div className="bg-white dark:bg-transparent rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
           {showApiKeyForm ? (
             <div className="p-8">
-              <Form method="post" onSubmit={handleSubmit} className="space-y-6">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-black dark:text-white mb-1">
+                  {data?.hasIntegration ? 'Update Integration' : 'Connect Immich'}
+                </h2>
+                <p className="text-md text-gray-600 dark:text-gray-400">
+                  {data?.hasIntegration
+                    ? 'Update your API key or base URL'
+                    : 'Enter your Immich credentials to get started'}
+                </p>
+              </div>
+
+              <Form method="post" onSubmit={handleSubmit} className="space-y-5">
                 <input type="hidden" name="intent" value="start-import" />
 
                 <div>
                   <label htmlFor="apiKey" className="block text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                    API Key
+                    API Key <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="password"
@@ -161,14 +185,15 @@ export default function ImmichIntegrationPage() {
                     name="apiKey"
                     placeholder="Enter your Immich API key"
                     required
-                    className={`w-full px-4 py-3 bg-white dark:bg-gray-900 border rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                    className={`w-full px-4 py-2.5 bg-white dark:bg-gray-950 border rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
                       errors.apiKey || actionData?.fieldErrors?.apiKey
                         ? 'border-red-300 dark:border-red-800 focus:ring-red-500/20'
-                        : 'border-gray-200 dark:border-gray-800 focus:ring-purple-500/20 focus:border-purple-500 dark:focus:border-purple-500'
+                        : 'border-gray-300 dark:border-gray-700 focus:ring-purple-500/20 focus:border-purple-500'
                     }`}
                   />
                   {(errors.apiKey || actionData?.fieldErrors?.apiKey) && (
-                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                    <p className="mt-1.5 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
                       {errors.apiKey || actionData?.fieldErrors?.apiKey?.[0]}
                     </p>
                   )}
@@ -184,24 +209,28 @@ export default function ImmichIntegrationPage() {
                     name="baseUrl"
                     placeholder="http://host.docker.internal:2283"
                     defaultValue={data?.baseUrl || 'http://host.docker.internal:2283'}
-                    className={`w-full px-4 py-3 bg-white dark:bg-gray-900 border rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                    className={`w-full px-4 py-2.5 bg-white dark:bg-gray-950 border rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
                       errors.baseUrl || actionData?.fieldErrors?.baseUrl
                         ? 'border-red-300 dark:border-red-800 focus:ring-red-500/20'
-                        : 'border-gray-200 dark:border-gray-800 focus:ring-purple-500/20 focus:border-purple-500 dark:focus:border-purple-500'
+                        : 'border-gray-300 dark:border-gray-700 focus:ring-purple-500/20 focus:border-purple-500'
                     }`}
                   />
                   {(errors.baseUrl || actionData?.fieldErrors?.baseUrl) && (
-                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                    <p className="mt-1.5 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
                       {errors.baseUrl || actionData?.fieldErrors?.baseUrl?.[0]}
                     </p>
                   )}
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
+                    The URL where your Immich instance is hosted
+                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-2">
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-purple-900 hover:bg-purple-700 text-white rounded-xl font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                   >
                     {isSubmitting ? (
                       <>
@@ -211,7 +240,7 @@ export default function ImmichIntegrationPage() {
                     ) : (
                       <>
                         <CheckCircle2 className="w-4 h-4" />
-                        Save & Start Import
+                        {data?.hasIntegration ? 'Update & Restart Import' : 'Connect & Start Import'}
                       </>
                     )}
                   </button>
@@ -220,7 +249,7 @@ export default function ImmichIntegrationPage() {
                     <button
                       type="button"
                       onClick={() => setShowApiKeyForm(false)}
-                      className="px-6 py-3 text-gray-700 dark:text-gray-300 rounded-xl font-medium text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
+                      className="px-6 py-2.5 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
                     >
                       Cancel
                     </button>
@@ -228,39 +257,76 @@ export default function ImmichIntegrationPage() {
                 </div>
               </Form>
 
-              <div className="mt-8 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl">
+              <div className="mt-8 p-5 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/30 rounded-xl">
                 <div className="flex gap-3">
-                  <ExternalLink className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">How to get your API Key</p>
-                    <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5">
-                      <li>1. Open your Immich instance</li>
-                      <li>2. Go to Account Settings</li>
-                      <li>3. Navigate to API Keys section</li>
-                      <li>4. Create and copy your API key</li>
+                  <ExternalLink className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
+                      How to Get Your API Key
+                    </h3>
+                    <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1.5 mb-4">
+                      <li className="flex items-start gap-2">
+                        <span className="font-medium min-w-5">1.</span>
+                        <span>Open your Immich instance</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-medium min-w-5">2.</span>
+                        <span>Go to Account Settings</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-medium min-w-5">3.</span>
+                        <span>Navigate to API Keys section</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-medium min-w-5">4.</span>
+                        <span>Create a new API key with the required scopes (see below)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-medium min-w-5">5.</span>
+                        <span>Copy and paste the key above</span>
+                      </li>
                     </ol>
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-4 mb-2">
-                      Required API Scopes for Face Labeling
+
+                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">Required API Scopes</h3>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                      Your API key must have these permissions to enable face labeling:
                     </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      To pull faces from Immich and use them for labeling your videos, your API key needs the following
-                      permissions:
-                    </p>
-                    <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5 mt-2 list-disc list-inside">
-                      <li>
-                        <strong>face.read</strong> – access face metadata for labeling
+                    <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          people.read
+                        </code>
+                        <span>Access people and face data</span>
                       </li>
-                      <li>
-                        <strong>asset.read</strong> – read asset information (photos)
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          face.read
+                        </code>
+                        <span>Read face metadata for labeling</span>
                       </li>
-                      <li>
-                        <strong>asset.download</strong> – download assets for processing
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          asset.read
+                        </code>
+                        <span>Read asset information (photos)</span>
                       </li>
-                      <li>
-                        <strong>asset.share</strong> – allow sharing or referencing assets in workflows
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          asset.download
+                        </code>
+                        <span>Download assets for processing</span>
                       </li>
-                      <li>
-                        <strong>timeline.read</strong> – read timeline data to associate faces with events
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          asset.share
+                        </code>
+                        <span>Reference assets in workflows</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <code className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-xs font-mono text-blue-900 dark:text-blue-100 shrink-0">
+                          timeline.read
+                        </code>
+                        <span>Associate faces with timeline events</span>
                       </li>
                     </ul>
                   </div>
@@ -269,36 +335,65 @@ export default function ImmichIntegrationPage() {
             </div>
           ) : (
             <div className="p-8">
-              <div className="text-center py-6">
+              <div className="text-center py-8">
                 <div className="w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-500" />
                 </div>
-                <h2 className="text-xl font-semibold text-black dark:text-white mb-2">Connected</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-8">Face labels are syncing automatically</p>
+                <h2 className="text-xl font-semibold text-black dark:text-white mb-2">Integration Active</h2>
+                <p className="text-base text-gray-600 dark:text-gray-400 mb-2">
+                  Face labels are syncing automatically from Immich
+                </p>
+                {data?.baseUrl && (
+                  <p className="text-base text-gray-500 dark:text-gray-500 mb-8">
+                    Connected to: <span className="font-mono">{data.baseUrl}</span>
+                  </p>
+                )}
 
-                <div className="flex justify-center gap-3">
+                <div className="flex flex-wrap justify-center gap-3 mt-8">
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="refresh-import" />
+                    <button
+                      type="submit"
+                      disabled={isRefreshing}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      {isRefreshing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Refreshing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          Refresh Face Labels
+                        </>
+                      )}
+                    </button>
+                  </Form>
+
                   <button
                     onClick={() => setShowApiKeyForm(true)}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl font-medium text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-[0.98]"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[0.98]"
                   >
                     <Key className="w-4 h-4" />
                     Update Settings
                   </button>
+
                   <Form method="post">
                     <input type="hidden" name="intent" value="delete-integration" />
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-medium text-sm hover:bg-red-100 dark:hover:bg-red-900/30 transition-all active:scale-[0.98]"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 border border-red-300 dark:border-red-800/30 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-lg font-medium text-sm hover:bg-red-100 dark:hover:bg-red-900/20 transition-all active:scale-[0.98]"
                     >
                       <Trash2 className="w-4 h-4" />
-                      Remove
+                      Remove Integration
                     </button>
                   </Form>
                 </div>
               </div>
             </div>
           )}
-        </section>
+        </div>
       </main>
     </DashboardLayout>
   )
