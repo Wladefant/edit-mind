@@ -7,6 +7,8 @@ import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
 import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME } from '../constants'
 import { getEmbeddings } from '../services/embedding'
 import { suggestionCache } from './suggestion'
+import { getCache, setCache } from './cache'
+import { logger } from './logger'
 
 export const createVectorDbClient = async (): Promise<{
   collection: Collection | null
@@ -21,9 +23,7 @@ export const createVectorDbClient = async (): Promise<{
       collection,
     }
 
-  console.debug(`http://${CHROMA_HOST}:${CHROMA_PORT}`)
-  client = new ChromaClient({ path: `http://${CHROMA_HOST}:${CHROMA_PORT}` })
-  console.debug(COLLECTION_NAME)
+  client = new ChromaClient({ host: CHROMA_HOST, port: parseInt(CHROMA_PORT) })
   collection = await client.getOrCreateCollection({ name: COLLECTION_NAME })
 
   return {
@@ -35,13 +35,29 @@ export const createVectorDbClient = async (): Promise<{
 async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
   try {
     const { collection } = await createVectorDbClient()
-
     if (!collection) throw new Error('Collection not initialized')
 
-    const ids = documents.map((d) => d.id)
-    const metadatas = documents.map((d) => d.metadata || {})
-    const documentTexts = documents.map((d) => d.text)
+    const validDocuments = documents.filter((d) => d.text && d.text.trim().length > 0 && d.id && d.metadata)
+
+    if (validDocuments.length === 0) {
+      logger.warn('No valid documents to embed')
+      return
+    }
+
+    const ids = validDocuments.map((d) => d.id)
+    const metadatas = validDocuments.map((d) => d.metadata || {})
+    const documentTexts = validDocuments.map((d) => d.text)
+
     const embeddings = await getEmbeddings(documentTexts)
+
+    if (!embeddings || embeddings.length !== documentTexts.length) {
+      throw new Error('Embedding count mismatch')
+    }
+
+    const dimensions = new Set(embeddings.map((e) => e.length))
+    if (dimensions.size > 1) {
+      throw new Error(`Inconsistent embedding dimensions: ${Array.from(dimensions).join(', ')}`)
+    }
 
     await collection.add({
       ids,
@@ -50,10 +66,9 @@ async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
       embeddings,
     })
 
-    // Refresh suggestions cache after adding new videos
     await suggestionCache.refresh()
   } catch (error) {
-    console.error('Error embedding documents:', error)
+    logger.error('Error embedding documents:' + error)
     throw error
   }
 }
@@ -92,7 +107,7 @@ async function getStatistics(): Promise<CollectionStatistics> {
 
     return statistics
   } catch (error) {
-    console.error('Error getting statistics:', error)
+    logger.error('Error getting statistics: ' + error)
     throw error
   }
 }
@@ -110,7 +125,7 @@ async function getAllDocs(): Promise<GetResult<Metadata>> {
 
     return allDocs
   } catch (error) {
-    console.error('Error getting statistics:', error)
+    logger.error('Error getting docs: ' + error)
     throw error
   }
 }
@@ -141,7 +156,7 @@ const getAllVideos = async (): Promise<Video[]> => {
             aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
             camera: metadata.camera?.toString() || 'N/A',
             category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || 'N/A',
+            createdAt: parseInt(metadata.createdAt?.toString() || '0'),
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
             faces: [],
             emotions: [],
@@ -154,7 +169,7 @@ const getAllVideos = async (): Promise<Video[]> => {
 
     return Object.values(uniqueVideos)
   } catch (error) {
-    console.error('Error getting all videos:', error)
+    logger.error('Error getting all videos:' + error)
     throw error
   }
 }
@@ -164,16 +179,25 @@ const getAllVideosWithScenes = async (
   searchFilters?: Partial<Filters>
 ): Promise<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }> => {
   try {
+    const cacheKey = `videos:paginated:${offset}:${limit}:${JSON.stringify(searchFilters || {})}`
+
+    // Try to get from cache first
+    const cached = await getCache<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }>(cacheKey)
+    if (cached) {
+      logger.debug('Cache hit for videos:' + cacheKey)
+      return cached
+    }
+
     const { collection } = await createVectorDbClient()
 
     if (!collection) throw new Error('Collection not initialized')
 
     const allSources = await getUniqueVideoSources()
     const paginatedSources = allSources.slice(offset, offset + limit)
-    let whereClause: Where | WhereDocument = {}
 
     if (searchFilters) {
-      whereClause = applyFilters(searchFilters)
+      const { where: whereClause } = applyFilters(searchFilters)
+
       const allDocs = await collection?.get({
         where:
           Object.keys(whereClause).length > 0
@@ -196,10 +220,7 @@ const getAllVideosWithScenes = async (
         const metadata = allDocs.metadatas[i]
         if (!metadata) continue
 
-        const source = metadata.source
-          ?.toString()
-          .trim()
-          .replace(/^\.?\//, '')
+        const source = metadata.source?.toString()
         if (!source) continue
 
         if (!videosDict[source]) {
@@ -209,7 +230,7 @@ const getAllVideosWithScenes = async (
             aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
             camera: metadata.camera?.toString() || 'N/A',
             category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || new Date().toISOString(),
+            createdAt: parseInt(metadata.createdAt?.toString() || '0'),
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
@@ -221,7 +242,6 @@ const getAllVideosWithScenes = async (
         }
 
         const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
-        videosDict[source].scenes.push(scene)
 
         // Collect per-video faces, emotions, objects, shot types
         if (scene.faces)
@@ -275,14 +295,24 @@ const getAllVideosWithScenes = async (
         shotTypes: Array.from(shotTypes),
         emotions: Array.from(emotions),
       }
+      const result = {
+        videos: uniqueVideos,
+        allSources,
+        filters,
+      }
+      logger.debug('Setup the video cache')
+      await setCache(cacheKey, result, 300)
 
-      return { videos: uniqueVideos, allSources, filters }
+      return result
     }
-    return {
+    const emptyResult = {
       videos: [],
       allSources: [],
       filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [], emotions: [] },
     }
+
+    await setCache(cacheKey, emptyResult, 300)
+    return emptyResult
   } catch {
     return {
       videos: [],
@@ -298,7 +328,7 @@ const queryCollection = async (query: SearchQuery, nResults = 500): Promise<Vide
 
     if (!collection) throw new Error('Collection not initialized')
 
-    const whereClause = applyFilters(query)
+    const { where: whereClause } = applyFilters(query)
 
     const result = await collection?.get({
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
@@ -325,7 +355,7 @@ const queryCollection = async (query: SearchQuery, nResults = 500): Promise<Vide
             aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
             camera: metadata.camera?.toString() || 'N/A',
             category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || 'N/A',
+            createdAt: parseInt(metadata.createdAt?.toString() || '0'),
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
@@ -364,14 +394,14 @@ const queryCollection = async (query: SearchQuery, nResults = 500): Promise<Vide
     }
 
     videosList.sort((a, b) => {
-      const timeA = isNaN(Date.parse(a.createdAt)) ? 0 : new Date(a.createdAt).getTime()
-      const timeB = isNaN(Date.parse(b.createdAt)) ? 0 : new Date(b.createdAt).getTime()
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
 
       return timeB - timeA
     })
     return videosList
   } catch (error) {
-    console.error('Error querying collection:', error)
+    logger.error('Error querying collection: ' + error)
     throw error
   }
 }
@@ -399,7 +429,7 @@ async function filterExistingVideos(videoSources: string[]): Promise<string[]> {
     const existingSources = new Set(results.metadatas.map((m) => m!.source))
     return videoSources.filter((source) => !existingSources.has(source))
   } catch (error) {
-    console.error('Error filtering existing videos:', error)
+    logger.error('Error filtering existing videos: ' + error)
     return videoSources
   }
 }
@@ -415,7 +445,7 @@ async function getByVideoSource(videoSource: string): Promise<Scene[]> {
     const result = await collection?.get({
       where: {
         source: {
-          $eq: videoSource,
+          $in: [videoSource],
         },
       },
       include: ['metadatas'],
@@ -425,7 +455,7 @@ async function getByVideoSource(videoSource: string): Promise<Scene[]> {
     )
     return filteredScenes
   } catch (error) {
-    console.error('Error filtering existing videos:', error)
+    logger.error('Error filtering existing videos: ' + error)
     return []
   }
 }
@@ -446,7 +476,7 @@ async function updateDocuments(scene: Scene): Promise<void> {
     })
 
     if (!existing.ids || existing.ids.length === 0) {
-      console.warn(`Document ${scene.id} not found, skipping`)
+      logger.warn(`Document ${scene.id} not found, skipping`)
       return
     }
 
@@ -462,7 +492,7 @@ async function updateDocuments(scene: Scene): Promise<void> {
     // Refresh suggestions cache after update exciting videos
     await suggestionCache.refresh()
   } catch (error) {
-    console.error('Error updating documents:', error)
+    logger.error('Error updating documents: ' + error)
     throw error
   }
 }
@@ -537,7 +567,7 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       cameras: getTop(cameraCount),
     }
   } catch (error) {
-    console.error('Error aggregating metadata from DB:', error)
+    logger.error('Error aggregating metadata from DB: ' + error)
     throw error
   }
 }
@@ -575,7 +605,7 @@ async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<Scene[]
 
     return scenes
   } catch (error) {
-    console.error('Error getting videos with scenes by scene IDs:', error)
+    logger.error('Error getting videos with scenes by scene IDs: ' + error)
     throw error
   }
 }
@@ -622,7 +652,7 @@ async function updateScenesSource(oldSource: string, newSource: string): Promise
   })
 
   if (!result.ids || result.ids.length === 0) {
-    console.warn(`No scenes found for source: ${oldSource}`)
+    logger.warn(`No scenes found for source: ${oldSource}`)
     return
   }
 
@@ -646,19 +676,18 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
       throw new Error('Collection not initialized')
     }
 
-    const whereClause = applyFilters(query)
+    const { where: whereClause, whereDocument } = applyFilters(query)
 
     let finalScenes: { metadatas: (Metadata | null)[]; ids: string[] } | null = null
 
     if (query.semanticQuery) {
-      console.debug('Performing hybrid search...')
+      logger.debug('Performing hybrid search...')
 
       const queryEmbeddings = await getEmbeddings([query.semanticQuery])
 
       const vectorQuery = await collection.query({
         queryEmbeddings: queryEmbeddings,
         nResults: nResults,
-        where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         include: ['metadatas'],
       })
 
@@ -666,11 +695,12 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
         finalScenes = { metadatas: vectorQuery.metadatas[0], ids: vectorQuery.ids[0] }
       }
     } else {
-      console.debug('Performing metadata-only search...')
+      logger.debug('Performing metadata-only search...')
       const result = await collection?.get({
         where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+        whereDocument: whereDocument,
+        include: ['metadatas', 'documents', 'embeddings'],
         limit: nResults,
-        include: ['metadatas'],
       })
       finalScenes = { metadatas: result.metadatas, ids: result.ids }
     }
@@ -698,7 +728,7 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
             aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
             camera: metadata.camera?.toString() || 'N/A',
             category: metadata.category?.toString() || 'Uncategorized',
-            createdAt: metadata.createdAt?.toString() || 'N/A',
+            createdAt: parseInt(metadata.createdAt?.toString() || '0'),
             scenes: [],
             sceneCount: 0,
             thumbnailUrl: metadata.thumbnailUrl?.toString(),
@@ -738,21 +768,25 @@ const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWi
     }
 
     videosList.sort((a, b) => {
-      const timeA = isNaN(Date.parse(a.createdAt)) ? 0 : new Date(a.createdAt).getTime()
-      const timeB = isNaN(Date.parse(b.createdAt)) ? 0 : new Date(b.createdAt).getTime()
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
 
       return timeB - timeA
     })
 
     return videosList
   } catch (error) {
-    console.error('Error querying collection:', error)
+    logger.error('Error querying collection: ' + error)
     throw error
   }
 }
 
-function applyFilters(query: SearchQuery): Where | WhereDocument {
+function applyFilters(query: SearchQuery): {
+  where: Where | WhereDocument
+  whereDocument: WhereDocument | undefined
+} {
   const conditions: Where[] = []
+  let whereDocument: WhereDocument | undefined = undefined
 
   if (query.aspect_ratio) {
     conditions.push({
@@ -782,21 +816,172 @@ function applyFilters(query: SearchQuery): Where | WhereDocument {
     query.emotions.forEach((emotion) => conditions.push({ emotions: emotion }))
   }
 
+  // Handle transcription as document search
   if (query.transcriptionQuery) {
-    conditions.push({ transcription: { $in: [query.transcriptionQuery] } })
+    whereDocument = { $contains: query.transcriptionQuery }
   }
 
   if (query.detectedText) {
-    conditions.push({ detectedText: { $in: [query.detectedText] } })
+    // If you also want to search detected text in documents
+    if (whereDocument) {
+      // Combine with existing document filter using $and
+      whereDocument = {
+        $and: [whereDocument, { $contains: query.detectedText }],
+      }
+    } else {
+      whereDocument = { $contains: query.detectedText }
+    }
   }
 
   if (query.locations?.length) {
     query.locations.forEach((location) => conditions.push({ environment: location }))
   }
 
-  if (conditions.length === 1) return conditions[0]
-  if (conditions.length > 1) return { $and: conditions }
-  return {}
+  const where = conditions.length === 1 ? conditions[0] : conditions.length > 1 ? { $and: conditions } : {}
+
+  return { where, whereDocument }
+}
+async function getVideosNotEmbedded(videoSources: string[]): Promise<string[]> {
+  try {
+    const { collection } = await createVectorDbClient()
+
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+    if (videoSources.length === 0) {
+      return []
+    }
+
+    const results = await collection?.get({
+      where: {
+        source: {
+          $in: videoSources,
+        },
+      },
+      include: ['metadatas'],
+    })
+
+    const embeddedCount: Record<string, number> = {}
+    results.metadatas.forEach((metadata) => {
+      if (metadata && metadata.source) {
+        const source = metadata.source.toString()
+        embeddedCount[source] = (embeddedCount[source] || 0) + 1
+      }
+    })
+
+    const embedded = Object.keys(embeddedCount)
+    const notEmbedded = videoSources.filter((source) => !embedded.includes(source))
+
+    return notEmbedded
+  } catch (error) {
+    logger.error('Error checking embedded videos: ' + error)
+    throw error
+  }
+}
+
+async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos: VideoWithScenes[] }> {
+  try {
+    const { collection } = await createVectorDbClient()
+
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    const start = new Date(`${year}-01-01T00:00:00.000Z`).getTime()
+    const end = new Date(`${year}-01-31T23:59:59.999Z`).getTime()
+
+    const allDocs = await collection.get({
+      include: ['metadatas'],
+      where: {
+        $and: [{ createdAt: { $gte: start } }, { createdAt: { $lte: end } }],
+      },
+    })
+
+    const scenesInYear: Scene[] = []
+    const videosDict: Record<string, VideoWithScenes> = {}
+
+    if (allDocs && allDocs.metadatas && allDocs.ids) {
+      for (let i = 0; i < allDocs.metadatas.length; i++) {
+        const metadata = allDocs.metadatas[i]
+        if (!metadata) continue
+
+        const createdAt = metadata.createdAt
+        if (!createdAt) continue
+
+        const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
+        scenesInYear.push(scene)
+
+        // Build videos dictionary
+        const source = metadata.source?.toString()
+        if (source) {
+          if (!videosDict[source]) {
+            videosDict[source] = {
+              source,
+              duration: parseFloat(metadata.duration?.toString() || '0.00'),
+              aspect_ratio: metadata.aspect_ratio?.toString() || 'N/A',
+              camera: metadata.camera?.toString() || 'N/A',
+              category: metadata.category?.toString() || 'Uncategorized',
+              createdAt: parseInt(metadata.createdAt?.toString() || '0'),
+              scenes: [],
+              sceneCount: 0,
+              thumbnailUrl: metadata.thumbnailUrl?.toString(),
+              faces: [],
+              emotions: [],
+              objects: [],
+              shotTypes: [],
+            }
+          }
+
+          videosDict[source].scenes.push(scene)
+
+          // Collect per-video faces, emotions, objects, shot types
+          if (scene.faces)
+            scene.faces.forEach((f) => {
+              if (!videosDict[source].faces?.includes(f)) videosDict[source].faces.push(f)
+            })
+          if (scene.emotions)
+            scene.emotions.forEach((e) => {
+              if (!videosDict[source].emotions?.includes(e.emotion)) videosDict[source].emotions.push(e.emotion)
+            })
+          if (scene.objects)
+            scene.objects.forEach((o) => {
+              if (!videosDict[source].objects?.includes(o)) videosDict[source].objects.push(o)
+            })
+          if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
+            videosDict[source].shotTypes.push(scene.shot_type)
+        }
+      }
+    }
+
+    // Sort scenes by timestamp
+    scenesInYear.sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime()
+      const timeB = new Date(b.createdAt || 0).getTime()
+      return timeA - timeB
+    })
+
+    // Finalize videos
+    const videosList = Object.values(videosDict).map((video) => {
+      video.scenes.sort((a, b) => a.startTime - b.startTime)
+      video.sceneCount = video.scenes.length
+      return video
+    })
+
+    // Sort videos by date
+    videosList.sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
+      return timeA - timeB
+    })
+
+    return {
+      scenes: scenesInYear,
+      videos: videosList,
+    }
+  } catch (error) {
+    logger.error('Error getting scenes by year: ' + error)
+    throw error
+  }
 }
 
 export {
@@ -816,4 +1001,6 @@ export {
   updateScenesSource,
   queryCollection,
   getAllDocs,
+  getVideosNotEmbedded,
+  getScenesByYear,
 }
