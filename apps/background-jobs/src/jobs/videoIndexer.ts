@@ -5,7 +5,6 @@ import path from 'path'
 import { existsSync, mkdirSync, promises as fs } from 'fs'
 import { PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
 import { Scene } from '@shared/types/scene'
-import { Analysis } from '@shared/types/analysis'
 import { generateThumbnail } from '@shared/utils/videos'
 import { createScenes } from '@shared/utils/scenes'
 import { embedScenes } from '@shared/utils/embed'
@@ -13,6 +12,7 @@ import { analyzeVideo } from '@shared/utils/frameAnalyze'
 import { transcribeAudio } from '@shared/utils/transcribe'
 import { pythonService } from '@shared/services/pythonService'
 import { JobStatus, JobStage } from '@prisma/client'
+import { logger } from '@shared/services/logger'
 
 async function ensureDir(dir: string) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -29,30 +29,35 @@ async function updateJob(
     fileSize?: bigint
   }>
 ) {
+  logger.info({ jobId, stage: data.stage, overallProgress: data.overallProgress }, '📊 Job progress update')
   await prisma.job.updateMany({
     where: { id: jobId },
     data: { ...data, updatedAt: new Date() },
   })
 }
 
-async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
-  const { videoPath, jobId } = job.data
+async function processVideo(job: Job<{ videoPath: string; jobId: string; forceReIndexing?: boolean }>) {
+  const { videoPath, jobId, forceReIndexing = false } = job.data
+
+  logger.info({ jobId, videoPath }, '📥 Starting video indexing job')
+
   const videoDir = path.join(PROCESSED_VIDEOS_DIR, path.basename(videoPath))
   const transcriptionPath = path.join(videoDir, 'transcription.json')
   const analysisPath = path.join(videoDir, 'analysis.json')
   const scenesPath = path.join(videoDir, 'scenes.json')
 
-  // Start Python service if not running
-  if (!pythonService.isServiceRunning()) await pythonService.start()
+  if (!pythonService.isServiceRunning()) {
+    logger.info({ jobId }, '🐍 Starting Python service')
+    await pythonService.start()
+  } else {
+    logger.debug({ jobId }, '🐍 Python service already running')
+  }
 
-  // Ensure directories
-  await ensureDir(PROCESSED_VIDEOS_DIR)
-  await ensureDir(THUMBNAILS_DIR)
-  await ensureDir(videoDir)
+  await Promise.all([ensureDir(PROCESSED_VIDEOS_DIR), ensureDir(THUMBNAILS_DIR), ensureDir(videoDir)])
 
   const fileStats = await fs.stat(videoPath)
+  logger.debug({ jobId, fileSize: fileStats.size, videoPath }, '📄 Video file stats')
 
-  // Initial job update
   await updateJob(jobId, {
     status: JobStatus.processing,
     stage: JobStage.starting,
@@ -63,74 +68,152 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string }>) {
   await job.updateProgress(0)
 
   try {
-    // Step 0: Thumbnail (0-10%)
+    const jobStart = new Date().getTime()
     const thumbnailPath = path.join(THUMBNAILS_DIR, `${path.basename(videoPath)}.jpg`)
     try {
+      logger.debug({ jobId, thumbnailPath }, '🎞 Generating thumbnail')
       await generateThumbnail(videoPath, thumbnailPath, 1)
-    } catch (e) {
-      console.error('Thumbnail error:', e)
+      logger.debug({ jobId, thumbnailPath }, '✅ Thumbnail generated')
+
+      await prisma.job.updateMany({
+        where: { id: jobId },
+        data: { thumbnailPath, updatedAt: new Date() },
+      })
+      logger.debug({ jobId, thumbnailPath }, '🎞 Updating job thumbnail')
+    } catch (error) {
+      logger.error({ jobId, error, thumbnailPath }, '❌ Thumbnail generation failed')
     }
     await job.updateProgress(10)
 
-    // Step 1: Transcription (10-40%)
     await updateJob(jobId, { stage: JobStage.transcribing, overallProgress: 10 })
-    if (!existsSync(transcriptionPath)) {
-      await transcribeAudio(videoPath, transcriptionPath, async ({ progress }) => {
-        const overallProgress = 10 + progress * 0.3
-        await job.updateProgress(overallProgress)
-        await updateJob(jobId, {
-          stage: JobStage.transcribing,
-          progress: Math.round(progress),
-          overallProgress: Math.round(overallProgress),
-        })
-      })
-    }
-    await job.updateProgress(40)
-    await updateJob(jobId, { stage: JobStage.frame_analysis, overallProgress: 40 })
 
-    // Step 2: Frame Analysis (40-70%)
-    let analysis: Analysis, category: string
-    if (!existsSync(analysisPath)) {
-      const result = await analyzeVideo(videoPath, async ({ progress, frames_analyzed, total_frames }) => {
-        const overallProgress = 40 + progress * 0.3
-        await job.updateProgress(overallProgress)
-        await updateJob(jobId, {
-          stage: JobStage.frame_analysis,
-          progress: Math.round(progress),
-          overallProgress: Math.round(overallProgress),
-        })
+    const transcriptionExists = existsSync(transcriptionPath)
+    const analysisExists = existsSync(analysisPath)
+    const scenesExists = existsSync(scenesPath)
+
+    logger.info(
+      {
+        jobId,
+        transcriptionExists,
+        analysisExists,
+        scenesExists,
+        willSkipTranscription: transcriptionExists,
+        willSkipAnalysis: analysisExists,
+        willSkipScenes: scenesExists,
+      },
+      '🔍 Checking existing processed files'
+    )
+
+    logger.info({ jobId }, '⏱ Starting transcription and frame analysis sequentially')
+    const transcriptionStart = Date.now()
+
+    if (!transcriptionExists) {
+      logger.info({ jobId, transcriptionPath }, '🎤 Starting audio transcription')
+      await transcribeAudio(videoPath, transcriptionPath, jobId, async ({ progress, job_id }) => {
+        logger.debug({ jobId, progress, job_id }, '🎤 Transcription progress')
+        const overallProgress = 10 + progress * 0.3
+
+        await updateJob(jobId, { stage: JobStage.transcribing, progress, overallProgress })
       })
-      analysis = result.analysis
-      category = result.category
-      await fs.writeFile(analysisPath, JSON.stringify({ analysis, category }, null, 2))
+      logger.info({ jobId }, '✅ Transcription completed')
     } else {
-      const data = await fs.readFile(analysisPath, 'utf-8').then(JSON.parse)
-      analysis = data.analysis
-      category = data.category
+      logger.info({ jobId, transcriptionPath }, '⏭️ Skipping transcription - using cached file')
     }
+
+    const transcriptionData = await fs.readFile(transcriptionPath, 'utf-8').then(JSON.parse)
+    await job.updateProgress(40)
+    const transcriptionDuration = (Date.now() - transcriptionStart) / 1000
+    logger.info({ jobId, transcriptionDuration }, '🎤 Transcription done')
+
+    const analysisStart = Date.now()
+
+    let analysisData
+    if (forceReIndexing || !analysisExists) {
+      logger.info({ jobId, videoPath }, '🎥 Starting frame analysis')
+      const result = await analyzeVideo(videoPath, jobId, async ({ progress, job_id }) => {
+        const overallProgress = 40 + progress * 0.3
+
+        logger.debug({ jobId, progress, job_id }, '🎥 Frame analysis progress')
+        await updateJob(jobId, { stage: JobStage.frame_analysis, progress: progress, overallProgress })
+      })
+      await fs.writeFile(
+        analysisPath,
+        JSON.stringify({ analysis: result.analysis, category: result.category }, null, 2)
+      )
+      logger.info({ jobId, category: result.category }, '✅ Frame analysis completed')
+      analysisData = result
+    } else {
+      logger.info({ jobId, analysisPath }, '⏭️ Skipping frame analysis - using cached file')
+      const data = await fs.readFile(analysisPath, 'utf-8').then(JSON.parse)
+      analysisData = { analysis: data.analysis, category: data.category }
+    }
+    const analysisDuration = (Date.now() - analysisStart) / 1000
+    logger.info({ jobId, analysisDuration }, '🎥 Frame analysis done')
+    const { analysis, category } = analysisData
+
+    logger.info({ jobId, category }, '✅ Parallel processing completed')
+
     await job.updateProgress(70)
     await updateJob(jobId, { stage: JobStage.creating_scenes, overallProgress: 70 })
 
-    // Step 3: Scene Creation (70-80%)
+    const scenesStart = Date.now()
+
     let scenes: Scene[]
-    if (!existsSync(scenesPath)) {
-      const transcriptionData = await fs.readFile(transcriptionPath, 'utf-8').then(JSON.parse)
+    if (forceReIndexing || !scenesExists) {
+      logger.info({ jobId, scenesPath }, '🎬 Creating scenes')
       scenes = await createScenes(analysis, transcriptionData, videoPath)
       await fs.writeFile(scenesPath, JSON.stringify(scenes, null, 2))
+      logger.info({ jobId, sceneCount: scenes.length }, '✅ Scenes created and saved')
     } else {
+      logger.info({ jobId, scenesPath }, '⏭️ Skipping scene creation - using cached file')
       scenes = await fs.readFile(scenesPath, 'utf-8').then(JSON.parse)
     }
+
+    logger.info({ jobId, sceneCount: scenes.length }, '📊 Scene data loaded')
+    const scenesDuration = (Date.now() - scenesStart) / 1000
+    logger.info({ jobId, scenesDuration, sceneCount: scenes.length }, '🎬 Scene creation done')
+
     await job.updateProgress(80)
     await updateJob(jobId, { stage: JobStage.embedding, overallProgress: 80 })
 
-    // Step 4: Scene Embedding (80-100%)
-    await embedScenes(scenes, videoPath, category)
+    logger.info({ jobId, videoPath, category, sceneCount: scenes.length }, '🔗 Starting scene embedding')
+    const embeddingStart = Date.now()
+    await embedScenes(scenes, videoPath, analysisData.category)
+    const embeddingDuration = (Date.now() - embeddingStart) / 1000
+    logger.info({ jobId, embeddingDuration }, '🔗 Embedding done')
+    logger.info({ jobId }, '✅ Scene embedding completed')
+
     await job.updateProgress(100)
-    await updateJob(jobId, { stage: JobStage.embedding, status: JobStatus.done, overallProgress: 100, progress: 100 })
+    await updateJob(jobId, {
+      stage: JobStage.embedding,
+      status: JobStatus.done,
+      overallProgress: 100,
+      progress: 100,
+    })
+
+    logger.info({ jobId, videoPath, totalScenes: scenes.length }, '🏁 Video indexing completed successfully')
+    const totalDuration = (Date.now() - jobStart) / 1000
+    logger.info({ jobId, totalDuration }, '🏁 Video indexing completed')
+    logger.info(
+      {
+        jobId,
+        videoPath,
+        totalScenes: scenes.length,
+        transcription: transcriptionDuration.toFixed(2) + 's',
+        frameAnalysis: analysisDuration.toFixed(2) + 's',
+        sceneCreation: scenesDuration.toFixed(2) + 's',
+        embedding: embeddingDuration.toFixed(2) + 's',
+        total: totalDuration.toFixed(2) + 's',
+      },
+      '🏁 Video indexing summary'
+    )
 
     return { video: videoPath }
   } catch (error) {
-    console.error('❌ Error processing video:', videoPath, error)
+    logger.error(
+      { jobId, videoPath, error, stack: error instanceof Error ? error.stack : undefined },
+      '❌ Error processing video'
+    )
     await updateJob(jobId, { status: JobStatus.error })
     await job.updateProgress(0)
     throw error
@@ -146,6 +229,22 @@ export const videoIndexerWorker = new Worker('video-indexing', processVideo, {
 })
 
 videoIndexerWorker.on('failed', async (job, err) => {
-  console.error('❌ Job failed:', job?.data, err)
+  logger.error(
+    {
+      jobId: job?.data?.jobId,
+      videoPath: job?.data?.videoPath,
+      error: err,
+      stack: err.stack,
+    },
+    '❌ Job failed'
+  )
   if (job?.data?.jobId) await updateJob(job.data.jobId, { status: JobStatus.error })
+})
+
+videoIndexerWorker.on('closing', async () => {
+  logger.info('🔄 Worker closing, shutting down Python service...')
+  if (pythonService.isServiceRunning()) {
+    await pythonService.stop()
+    logger.info('✅ Python service stopped')
+  }
 })
