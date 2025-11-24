@@ -6,6 +6,7 @@ import { Dimensions, FFmpegProcessResult } from '../types/video'
 import { spawnFFmpeg, validateBinaries } from './ffmpeg'
 import os from 'os'
 import { cleanupFiles, ensureDirectoryExists } from './file'
+import { logger } from '../services/logger'
 
 const DEFAULT_ASPECT_RATIO = '16:9'
 const DEFAULT_FPS = 30
@@ -101,7 +102,7 @@ const handleFFmpegProcess = (process: ChildProcess, operationName: string): Prom
     process.stderr?.on('data', (data) => {
       const message = data.toString()
       stderrOutput += message
-      console.warn(`FFmpeg ${operationName} (warning): ${message}`)
+      logger.warn(`FFmpeg ${operationName} (warning): ${message}`)
     })
 
     process.on('close', (code) => {
@@ -179,7 +180,7 @@ const processClip = async (
     return
   }
 
-  console.warn(`Initial processing failed for ${scene.source}, retrying with silent audio`)
+  logger.warn(`Initial processing failed for ${scene.source}, retrying with silent audio`)
 
   const argsWithSilentAudio = [
     ...baseArgs.slice(0, 8),
@@ -272,7 +273,7 @@ export async function stitchVideos(
 
     return outputPath
   } catch (error) {
-    console.error('Error during video stitching:', error instanceof Error ? error.message : 'Unknown error')
+    logger.error(`Error during video stitching: ${error instanceof Error ? error.message : 'Unknown error'}`)
     throw error
   } finally {
     cleanupFiles([fileListPath, ...clipPaths])
