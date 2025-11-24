@@ -1,17 +1,22 @@
+import { logger } from '../services/logger'
 import { pythonService } from '../services/pythonService'
-import { FaceIndexProgress } from '../types/face'
+import { FaceIndexProgress, FaceMatchingProgress, FindMatchingFacesResponse } from '../types/face'
 
 type ProgressCallback = (progress: FaceIndexProgress) => Promise<void>
 
-export function reindexFaces(onProgress?: ProgressCallback): Promise<any> {
+export function reindexFaces(
+  specificFaces: { name: string; image_path: string }[],
+  onProgress?: ProgressCallback
+): Promise<any> {
   return new Promise((resolve, reject) => {
     pythonService.reindexFaces(
+      specificFaces,
       async (progress) => {
         if (onProgress) {
           try {
             await onProgress(progress)
           } catch (error) {
-            console.error('❌ Error in progress callback:', error)
+            logger.error('❌ Error in progress callback:' + error)
           }
         }
       },
@@ -28,20 +33,16 @@ export function findMatchingFaces(
   personName: string,
   referenceImages: string[],
   unknownFacesDir: string,
-  onProgress?: ProgressCallback
-): Promise<any> {
+  onProgress?: (progress: FaceMatchingProgress) => void
+): Promise<FindMatchingFacesResponse> {
   return new Promise((resolve, reject) => {
     pythonService.findMatchingFaces(
       personName,
       referenceImages,
       unknownFacesDir,
-      async (progress) => {
+      (progress) => {
         if (onProgress) {
-          try {
-            await onProgress(progress)
-          } catch (error) {
-            console.error('❌ Error in progress callback:', error)
-          }
+          onProgress(progress)
         }
       },
       (result) => {
