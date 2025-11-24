@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  const filePath = params['*'] || ''
+  const filePath = params['*']
 
   if (!filePath) {
     throw new Response('No file path provided', { status: 400 })
@@ -13,7 +13,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     const decodedPath = decodeURIComponent(filePath)
 
     if (!fs.existsSync(decodedPath)) {
-      console.error('File does not exist:', decodedPath)
       throw new Response('File not found', { status: 404 })
     }
 
@@ -64,9 +63,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         'Cache-Control': 'no-cache',
       },
     })
-  } catch (error) {
-    console.error('Error loading media:', error)
-    throw new Response(`File not found or error loading media: ${error}`, { status: 404 })
+  } catch {
+    throw new Response('File not found or error loading media', { status: 404 })
   }
 }
 
