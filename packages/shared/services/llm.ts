@@ -3,6 +3,7 @@ import { LlamaModel, LlamaContext } from 'node-llama-cpp'
 import { z } from 'zod'
 import { getVideoAnalytics } from '../utils/analytics'
 import { CACHE_TTL, SEARCH_AI_MODEL } from '../constants'
+import { logger } from './logger'
 
 export const VideoSearchParamsSchema = z.object({
   action: z.string().nullable(),
@@ -203,7 +204,7 @@ Your response:`
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
-    console.error('Error generating assistant message:', error)
+    logger.error('Error generating assistant message: ' + error)
     return `I found ${resultsCount} scenes matching your request. Ready to create your compilation!`
   }
 }
@@ -244,7 +245,7 @@ Your response:`
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
-    console.error('Error generating general response:', error)
+    logger.error('Error generating general response: ' + error)
     return "I'm your video library assistant! I can help you create compilations, analyze your videos, or just chat. What would you like to do?"
   }
 }
@@ -293,7 +294,7 @@ Your JSON response:`
       return result
     }
   } catch (error) {
-    console.error('Error classifying intent:', error)
+    logger.error('Error classifying intent: ' + error)
   }
 
   return { type: 'compilation', needsVideoData: true }
@@ -338,7 +339,7 @@ Your response:`
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
-    console.error('Error generating analytics response:', error)
+    logger.error('Error generating analytics response: ' + error)
     return `I found ${analytics.uniqueVideos} videos (${analytics.totalScenes} scenes) with a total duration of ${analytics.totalDurationFormatted}.`
   }
 }
