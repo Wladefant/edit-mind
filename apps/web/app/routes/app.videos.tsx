@@ -18,7 +18,7 @@ export async function loader({ request }: { request: Request }) {
     throw new Response('Video not found', { status: 404 })
   }
 
-  const scenes = await getByVideoSource(source)
+  const scenes = await getByVideoSource(decodeURIComponent(source))
   const videoExist = existsSync(source)
 
   if (!scenes || scenes.length === 0) {
