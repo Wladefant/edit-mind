@@ -2,25 +2,30 @@ import goproTelemetry from 'gopro-telemetry'
 import gpmfExtract from 'gpmf-extract'
 import { readFileSync } from 'node:fs'
 import { GoProMetadata } from '../types/gopro'
+import { logger } from '../services/logger'
 
 export async function getGoProVideoMetadata(videoFullPath: string): Promise<GoProMetadata | null> {
   return new Promise((res, _rej) => {
-    const file = readFileSync(videoFullPath)
-    gpmfExtract(file)
-      .then((extracted) => {
-        try {
-          goproTelemetry(extracted, {}, (telemetry) => {
-            res(telemetry)
-          })
-        } catch (err) {
-          console.error(`Failed to extract GPMF from ${videoFullPath}`, err)
+    try {
+      const file = readFileSync(videoFullPath)
+      gpmfExtract(file)
+        .then((extracted) => {
+          try {
+            goproTelemetry(extracted, {}, (telemetry) => {
+              res(telemetry)
+            })
+          } catch (err) {
+            logger.error(`Failed to extract GPMF from ${videoFullPath} ${err} `)
+            res(null)
+          }
+        })
+        .catch((err) => {
+          logger.error(`Failed to extract GPMF from ${videoFullPath} ${err} `)
           res(null)
-        }
-      })
-      .catch((err) => {
-        console.error(`Failed to extract GPMF from ${videoFullPath}`, err)
-        res(null)
-      })
+        })
+    } catch {
+      res(null)
+    }
   })
 }
 
