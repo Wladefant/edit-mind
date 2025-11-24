@@ -46,6 +46,7 @@ export function VideoCard({
 
   const PREVIEW_DURATION = 5
   const fileName = source.split('/')[source.split('/').length - 1]
+  const [videoSrc, setVideoSrc] = useState<string | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
@@ -67,6 +68,9 @@ export function VideoCard({
     }
 
     if (isHovered && !imageError) {
+      if (!videoSrc) {
+        setVideoSrc(`/media/${source}`)
+      }
       hoverTimeoutRef.current = setTimeout(() => {
         video
           .play()
@@ -92,7 +96,7 @@ export function VideoCard({
       video.removeEventListener('timeupdate', handleTimeUpdate)
       video.removeEventListener('error', handleError)
     }
-  }, [isHovered, videoError, imageError])
+  }, [isHovered, videoError, imageError, videoSrc, source])
 
   const hasMetadata =
     metadata &&
@@ -202,11 +206,9 @@ export function VideoCard({
               {!videoError && (
                 <video
                   ref={videoRef}
-                  src={'/media/' + source}
-                  muted
-                  loop
-                  preload="metadata"
-                  playsInline
+                  src={videoSrc ?? undefined}
+                  preload="none"
+                  controls={false}
                   onError={() => setVideoError(true)}
                   className={`
                     absolute inset-0 object-cover w-full h-full rounded-2xl transition-opacity duration-300
@@ -361,7 +363,9 @@ export function VideoCard({
             <span className="font-medium text-base leading-tight truncate drop-shadow-sm">
               {fileName || 'Untitled Video'}
             </span>
-            <span className="text-sm text-gray-200 drop-shadow-sm">{formatDate(createdAt, 'MMMM d, yyyy HH:mm:ss')}</span>
+            <span className="text-sm text-gray-200 drop-shadow-sm">
+              {formatDate(createdAt, 'MMMM d, yyyy HH:mm:ss')}
+            </span>
           </div>
           <span className="bg-black/50 backdrop-blur-md text-sm font-medium px-2.5 py-1 rounded-md whitespace-nowrap shadow-sm">
             {formatVideoDuration(duration)}
