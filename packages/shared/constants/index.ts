@@ -5,12 +5,12 @@ import 'dotenv/config'
 export const IS_WIN = process.platform === 'win32'
 
 // Directories
-export const THUMBNAILS_DIR = path.resolve('.thumbnails')
+export const THUMBNAILS_DIR = process.env.THUMBNAILS_PATH || '.thumbnails'
 export const FACES_DIR = process.env.FACES_DIR || '.faces'
-export const PROCESSED_VIDEOS_DIR = path.resolve('.results')
+export const PROCESSED_VIDEOS_DIR = process.env.PROCESSED_VIDEOS_DIR || path.resolve('.results')
 export const DATA_DIR = path.resolve('data')
 export const UNKNOWN_FACES_DIR = process.env.UNKNOWN_FACES_DIR || '.unknown_faces'
-export const KNOWN_FACES_DIR = process.env.KNOWN_FACES_DIR || '.faces.json'
+export const KNOWN_FACES_FILE = process.env.KNOWN_FACES_FILE || '.faces.json'
 export const BACKGROUND_JOBS_DIR = process.env.BACKGROUND_JOBS_DIR || '/apps/background-jobs'
 
 export const CACHE_FILE = '.locations.json'
@@ -48,4 +48,4 @@ export const BATCH_THUMBNAIL_QUALITY = '3'
 export const PYTHON_SCRIPT = path.resolve(process.env.PYTHON_SCRIPT || "./python")
 export const VENV_PATH = path.resolve(process.env.VENV_PATH || "./venv")
 
-export const MEDIA_BASE_PATH = process.env.HOST_MEDIA_PATH || '/media/videos'
+export const MEDIA_BASE_PATH = '/media/videos'
