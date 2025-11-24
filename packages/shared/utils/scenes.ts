@@ -90,16 +90,16 @@ export const createScenes = async (
       emotions: [],
       source: videoPath,
       camera: '',
-      createdAt: '',
-      dominantColorHex: frame.dominant_color.hex,
-      dominantColorName: frame.dominant_color.name,
+      createdAt: 0,
+      dominantColorHex: frame.dominant_color?.hex || '',
+      dominantColorName: frame.dominant_color?.name || '',
       detectedText: frame.detected_text?.map((item) => item.text) || [],
       location: '',
       duration: 0,
       facesData: frame.faces?.map((face) => ({
-        name: face.name,
-        bbox: face.bbox,
-        confidence: face.confidence,
+        name: face?.name,
+        bbox: face?.bbox,
+        confidence: face?.confidence,
       })),
       transcriptionWords: transcription?.segments
         .filter((segment) => segment.end >= startTime && segment.start <= endTime)
