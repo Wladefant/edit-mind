@@ -21,26 +21,32 @@ COPY apps/web/package.json ./apps/web/
 COPY apps/background-jobs/package.json ./apps/background-jobs/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/prisma/ ./packages/prisma/
+COPY scripts/ ./scripts
 RUN pnpm install --frozen-lockfile
+
+
+# Copy only Python requirements
+COPY python/requirements.txt /app/python/requirements.txt
+
+# Create venv and install Python dependencies
+RUN python3 -m venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+RUN pip install --upgrade pip && pip install -r /app/python/requirements.txt
 
 # Copy Node/TS code
 COPY apps ./apps
 COPY packages ./packages
 COPY tsconfig.json ./
-RUN pnpm rebuild @tailwindcss/oxide && pnpm rebuild rollup
+RUN pnpm rebuild @tailwindcss/oxide && pnpm rebuild rollup && pnpm rebuild sharp
 
-# Copy Python code
+# Copy the rest of Python code
 COPY python /app/python
-
-# Create venv outside source folder
-RUN python3 -m venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Install Python dependencies
-RUN pip install --upgrade pip && pip install -r /app/python/requirements.txt
 
 WORKDIR /app/apps/background-jobs
 EXPOSE 4000 8765
+
+# Create cache directory for models
+RUN mkdir -p /app/models
 
 # Dev CMD
 CMD ["sh", "-c", "pnpm --filter background-jobs build && pnpm --filter background-jobs dev"]

@@ -22,3 +22,5 @@ internal
 apps/background-jobs/known_faces.json
 .faces.json
 *.gguf
+data/
+models/

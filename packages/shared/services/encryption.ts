@@ -6,7 +6,7 @@ const SALT_LENGTH = 64
 const TAG_LENGTH = 16
 
 const getEncryptionKey = (): Buffer => {
-  const key = process.env.ENCRYPTION_KEY || "testing"
+  const key = process.env.ENCRYPTION_KEY
   if (!key) {
     throw new Error('ENCRYPTION_KEY environment variable is not set')
   }

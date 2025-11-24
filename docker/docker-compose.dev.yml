@@ -14,10 +14,14 @@ services:
         condition: service_started
     env_file:
       - ../.env
-    volumes:
-      - background_jobs_node_modules:/app/node_modules
     networks:
       - app-network
+    volumes:
+      - ${HOST_MEDIA_PATH}:/media/videos
+      - ../data:/app/data
+      - whisper-models:/app/models
+      - yolo-models:/app/models/yolo 
+      - background_jobs_node_modules:/app/node_modules
 
   web:
     build:
@@ -36,7 +40,8 @@ services:
     volumes:
       - ..:/app
       - web_node_modules:/app/node_modules
-      - ../.thumbnails:/.thumbnails
+      - ../data:/app/data
+      - ${HOST_MEDIA_PATH}:/media/videos
     networks:
       - app-network
 
@@ -59,6 +64,8 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+    - redis_data:/data
     networks:
       - app-network
 
@@ -84,6 +91,10 @@ volumes:
   pgdata:
   web_node_modules:
   background_jobs_node_modules:
-
+  redis_data: 
+  whisper-models:
+    driver: local
+  yolo-models: 
+    driver: local
 networks:
   app-network:
