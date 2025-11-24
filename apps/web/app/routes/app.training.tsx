@@ -40,6 +40,8 @@ const Training: React.FC = () => {
     handleDeleteUnknownFace,
     dismissSuccess,
     dismissError,
+    unknownPagination,
+    handleUnknownPageChange,
   } = useTraining()
 
   if (loading) {
@@ -137,6 +139,8 @@ const Training: React.FC = () => {
                       selectedFaces={selectedFaces}
                       handleSelectFace={handleSelectFace}
                       handleDeleteUnknownFace={handleDeleteUnknownFace}
+                      pagination={unknownPagination}
+                      onPageChange={handleUnknownPageChange}
                     />
                   </>
                 )}
