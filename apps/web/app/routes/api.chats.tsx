@@ -6,7 +6,7 @@ import {
   generateCompilationResponse,
   generateGeneralResponse,
 } from '@shared/services/gemini'
-import { hybridSearch } from '@shared/services/vectorDb';
+import { hybridSearch } from '@shared/services/vectorDb'
 import { prisma } from '~/services/database'
 import { getVideoAnalytics } from '@shared/utils/analytics'
 import { getUser } from '~/services/user.sever'
@@ -55,9 +55,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     case 'compilation': {
       // User wants to create a video compilation
-      const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
-      const { shot_type, emotions, description, aspect_ratio, objects, camera, transcriptionQuery } =
-        await generateActionFromPrompt(prompt)
+      const {
+        shot_type,
+        emotions,
+        description,
+        aspect_ratio,
+        objects,
+        camera,
+        transcriptionQuery,
+        faces,
+        semanticQuery,
+      } = await generateActionFromPrompt(prompt)
 
       const results = await hybridSearch({
         faces,
@@ -68,6 +76,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         objects,
         camera,
         transcriptionQuery,
+        semanticQuery,
       })
 
       outputSceneIds = results.flatMap((result) => result.scenes.map((scene) => scene.id))

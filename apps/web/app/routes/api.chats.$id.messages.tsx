@@ -76,11 +76,20 @@ export const action: ActionFunction = async ({ request, params }) => {
 
     case 'compilation': {
       // User wants to create a video compilation
-      const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
-      const { shot_type, emotions, description, aspect_ratio, objects, camera, transcriptionQuery } =
-        await generateActionFromPrompt(prompt)
+      const {
+        shot_type,
+        emotions,
+        description,
+        aspect_ratio,
+        objects,
+        camera,
+        transcriptionQuery,
+        faces,
+        semanticQuery,
+      } = await generateActionFromPrompt(prompt)
 
       const results = await hybridSearch({
+        semanticQuery,
         faces,
         shot_type,
         emotions,
@@ -92,7 +101,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       })
 
       outputSceneIds = results.flatMap((result) => result.scenes.map((scene) => scene.id))
-      assistantText = await generateCompilationResponse(prompt, outputSceneIds.length)
+      assistantText = await generateCompilationResponse(prompt, results.length)
       break
     }
 
