@@ -1,10 +1,13 @@
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { Sidebar } from '~/features/shared/components/Sidebar'
-import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
-import { useLoaderData, useRevalidator } from 'react-router'
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from 'react-router'
+import { useLoaderData, useRevalidator, useFetcher } from 'react-router'
 import { prisma } from '~/services/database'
 import { useEffect } from 'react'
 import { JobsGrid } from '~/features/settings/components/JobsGrid'
+import { findVideoFiles } from '@shared/utils/videos'
+import { videoQueue } from '@background-jobs/src/queue'
+import { getVideosNotEmbedded } from '@shared/services/vectorDb'
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const { id } = params
@@ -27,13 +30,55 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { folder }
 }
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { id } = params
+  if (!id) throw new Response('Folder not found', { status: 404 })
+
+  const formData = await request.formData()
+  const intent = formData.get('intent')
+
+  if (intent === 'rescan') {
+    const folder = await prisma.folder.findUnique({
+      where: { id },
+    })
+
+    if (!folder) throw new Response('Folder not found', { status: 404 })
+    const videos = await findVideoFiles(folder.path)
+    const uniqueVideos = await getVideosNotEmbedded(videos.map((video) => video.path))
+
+    await prisma.folder.update({
+      where: { id },
+      data: {
+        videoCount: (folder.videoCount || 0) + uniqueVideos.length,
+        lastScanned: new Date(),
+      },
+    })
+
+    for (const video of uniqueVideos) {
+      const job = await prisma.job.upsert({
+        where: { videoPath: video, id: '' },
+        create: {
+          videoPath: video,
+          userId: folder?.userId,
+          folderId: folder.id,
+        },
+        update: { folderId: folder.id },
+      })
+      await videoQueue.add('index-video', { videoPath: video, jobId: job.id, folderId: folder.id })
+    }
+
+    return { success: true, message: 'Folder scan initiated' }
+  }
+
+  return { success: false, message: 'Invalid action' }
+}
+
+export const meta: MetaFunction = ({ data }) => {
   if (!data?.folder) {
     return [{ title: 'Folder not found | Edit Mind' }]
   }
 
   const folderName = data.folder.path.split('/').pop() || 'Folder'
-
   return [
     {
       title: `${folderName} Status | Edit Mind`,
@@ -42,8 +87,11 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
 }
 
 export default function FolderStatusPage() {
-  const { folder } = useLoaderData<typeof loader>()
+  const { folder } = useLoaderData()
   const revalidator = useRevalidator()
+  const fetcher = useFetcher()
+
+  const isScanning = fetcher.state !== 'idle'
 
   // Revalidate every 5 seconds
   useEffect(() => {
@@ -55,7 +103,11 @@ export default function FolderStatusPage() {
 
     return () => clearInterval(interval)
   }, [revalidator])
-  
+
+  const handleRescan = () => {
+    fetcher.submit({ intent: 'rescan' }, { method: 'post' })
+  }
+
   return (
     <DashboardLayout sidebar={<Sidebar />}>
       <main className="w-full px-12 py-16">
@@ -65,8 +117,38 @@ export default function FolderStatusPage() {
           </h1>
           <p className="text-lg text-gray-500 dark:text-gray-400 font-mono">{folder.path}</p>
         </header>
-
+        <div className="my-4">
+          <button
+            onClick={handleRescan}
+            disabled={isScanning}
+            className="inline-flex items-center gap-2 rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg
+              className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`}
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {isScanning ? 'Scanning...' : 'Rescan Folder'}
+          </button>
+        </div>
         <section>
+          {fetcher.data?.message && (
+            <div
+              className={`rounded-md p-4 ${fetcher.data.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}
+            >
+              {fetcher.data.message}
+            </div>
+          )}
+
           {folder.jobs.length > 0 ? (
             <>
               <h2 className="text-2xl font-semibold text-black dark:text-white mb-6">
