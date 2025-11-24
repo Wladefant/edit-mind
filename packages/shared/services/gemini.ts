@@ -3,6 +3,7 @@ import 'dotenv/config'
 import { VideoSearchParams } from '../types/search'
 import { CACHE_TTL, GEMINI_API_KEY } from '../constants'
 import { getVideoAnalytics } from '../utils/analytics'
+import { logger } from './logger'
 
 if (!GEMINI_API_KEY) {
   throw new Error('GEMINI_API_KEY is not defined')
@@ -36,7 +37,7 @@ export async function generateActionFromPrompt(query: string, useCache = true): 
 
 
 export async function generateActionFromPromptInternal(query: string): Promise<VideoSearchParams> {
-const prompt = `You are a video search parameter extraction assistant. Extract structured data from user queries.
+  const prompt = `You are a video search parameter extraction assistant. Extract structured data from user queries.
 
 STRICT REQUIREMENTS:
 1. Return ONLY valid JSON, no markdown formatting
@@ -131,7 +132,7 @@ Respond with ONLY the JSON object:`
 
     return parsed
   } catch (error) {
-    console.error('Error generating search query:', error)
+    logger.error('Error generating search query: ' + error)
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     return {
       action: query,
@@ -147,7 +148,6 @@ Respond with ONLY the JSON object:`
   }
 }
 export async function generateAssistantMessage(userPrompt: string, resultsCount: number): Promise<string> {
-
   const prompt = `You are a helpful video compilation assistant. The user requested: "${userPrompt}"
 
 You found ${resultsCount} video scenes matching their request.
@@ -165,7 +165,7 @@ Your response:`
     const result = await model.generateContent(prompt)
     return result.response.text().trim()
   } catch (error) {
-    console.error('Error generating assistant message:', error)
+    logger.error('Error generating assistant message: ' + error)
     return `I found ${resultsCount} scenes matching your request. Ready to create your compilation!`
   }
 }
@@ -190,7 +190,7 @@ Your response:`
     const result = await model.generateContent(prompt)
     return result.response.text().trim()
   } catch (error) {
-    console.error('Error generating compilation message:', error)
+    logger.error('Error generating compilation message: ' + error)
     return `I found ${resultsCount} scenes matching your request. Ready to create your compilation!`
   }
 }
@@ -224,7 +224,7 @@ Your response:`
     const result = await model.generateContent(prompt)
     return result.response.text().trim()
   } catch (error) {
-    console.error('Error generating general response:', error)
+    logger.error('Error generating general response: ' + error)
     return "I'm your video library assistant! I can help you create compilations, analyze your videos, or just chat. What would you like to do?"
   }
 }
@@ -268,7 +268,7 @@ Your response:`
       .trim()
     return JSON.parse(text)
   } catch (error) {
-    console.error('Error classifying intent:', error)
+    logger.error('Error classifying intent: ' + error)
     // Default to compilation for backward compatibility
     return { type: 'compilation', needsVideoData: true }
   }
@@ -315,7 +315,7 @@ Your response:`
     const result = await model.generateContent(analyticsPrompt)
     return result.response.text().trim()
   } catch (error) {
-    console.error('Error generating analytics response:', error)
+    logger.error('Error generating analytics response: ' + error)
     return `I found ${analytics.uniqueVideos} videos (${analytics.totalScenes} scenes) with a total duration of ${analytics.totalDurationFormatted}.`
   }
 }
