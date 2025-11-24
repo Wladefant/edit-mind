@@ -1,24 +1,47 @@
 import pathModule from 'path'
 import fs from 'fs/promises'
-import { prisma } from '~/services/database'
+import { MEDIA_BASE_PATH } from '@shared/constants'
 import { getUser } from '~/services/user.sever'
+import { prisma } from '~/services/database'
 import { triggerFolderQueue } from '~/utils/folder.server'
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url)
   const path = url.searchParams.get('path') || '/'
+  const sort = url.searchParams.get('sort') || 'recent' // 'recent' or 'older'
+  const search = url.searchParams.get('search')?.toLowerCase() || ''
 
   try {
-    const fullPath = pathModule.resolve(path)
+    const fullPath = pathModule.resolve(MEDIA_BASE_PATH, path.replace(/^\//, ''))
+    if (!fullPath.startsWith(pathModule.resolve(MEDIA_BASE_PATH))) {
+      return { error: 'Access denied' }
+    }
+
     const entries = await fs.readdir(fullPath, { withFileTypes: true })
 
-    const folders = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => ({
-        path: pathModule.join(fullPath, entry.name),
-        name: entry.name,
-        isDirectory: true,
-      }))
+    let folders = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const stats = await fs.stat(pathModule.join(fullPath, entry.name))
+          return {
+            path: pathModule.join(path, entry.name),
+            name: entry.name,
+            isDirectory: true,
+            mtime: stats.mtime.getTime(),
+          }
+        })
+    )
+
+    if (search) {
+      folders = folders.filter((f) => f.name.toLowerCase().includes(search))
+    }
+
+    if (sort === 'recent') {
+      folders.sort((a, b) => b.mtime - a.mtime)
+    } else if (sort === 'older') {
+      folders.sort((a, b) => a.mtime - b.mtime)
+    }
 
     return { folders }
   } catch (error) {
@@ -26,6 +49,7 @@ export async function loader({ request }: { request: Request }) {
     return { error: 'Failed to read directory' }
   }
 }
+
 
 export async function action({ request }: { request: Request }) {
   try {
@@ -41,18 +65,21 @@ export async function action({ request }: { request: Request }) {
       return { success: false, error: 'No path provided' }
     }
 
-    const fullPath = pathModule.resolve(folderPath)
-
+    const fullPath = pathModule.resolve(MEDIA_BASE_PATH, folderPath.replace(/^\//, ''))
     
+    if (!fullPath.startsWith(pathModule.resolve(MEDIA_BASE_PATH))) {
+      return { success: false, error: 'Access denied: path outside allowed directory' }
+    }
+
     try {
       await fs.access(fullPath)
       const folder = await prisma.folder.create({
         data: {
-          path: folderPath,
+          path: fullPath,
           userId: user?.id,
         },
       })
-      await triggerFolderQueue(folderPath)
+      await triggerFolderQueue(fullPath)
       return { success: true, folder }
     } catch {
       return { success: false, error: 'Failed to create folder' }
