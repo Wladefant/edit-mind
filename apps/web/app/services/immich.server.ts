@@ -22,7 +22,7 @@ export async function saveImmichIntegration(userId: string, apiKey: string, base
 export async function getImmichApiKey(userId: string): Promise<string | null> {
   const integration = await prisma.integration.findUnique({
     where: { userId },
-    select: { immichApiKey: true },
+    select: { immichApiKey: true, id: true },
   })
 
   if (!integration?.immichApiKey) {
@@ -44,6 +44,7 @@ export async function getImmichConfig(userId: string) {
   return {
     apiKey: decryptApiKey(integration.immichApiKey),
     baseUrl: integration.immichBaseUrl || 'http://host.docker.internal:2283',
+    id: integration.id
   }
 }
 
