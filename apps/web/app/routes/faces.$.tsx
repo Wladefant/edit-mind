@@ -1,29 +1,24 @@
 import type { LoaderFunctionArgs } from 'react-router'
 import fs from 'fs'
 import path from 'path'
-import { BACKGROUND_JOBS_DIR } from '@shared/constants';
+import { FACES_DIR } from '@shared/constants'
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const filePath = params['*'] || ''
   if (!filePath) throw new Response('No file path provided', { status: 400 })
 
   try {
-    const decodedPath = decodeURIComponent(filePath)
+    const decodedPath = path.join(FACES_DIR, decodeURIComponent(filePath))
 
-    const thumbnailsDir = BACKGROUND_JOBS_DIR
-
-    const safePath = path.normalize(decodedPath).replace(/^(\.\.(\/|\\|$))+/, '')
-    const thumbnailPath = path.join(thumbnailsDir, safePath)
-
-    if (!fs.existsSync(thumbnailPath)) {
+    if (!fs.existsSync(decodedPath)) {
       throw new Response('File not found', { status: 404 })
     }
 
-    const stats = fs.statSync(thumbnailPath)
+    const stats = fs.statSync(decodedPath)
     if (!stats.isFile()) throw new Response('Not a file', { status: 400 })
 
-    const contentType = getContentType(thumbnailPath)
-    const fileBuffer = fs.readFileSync(thumbnailPath)
+    const contentType = getContentType(decodedPath)
+    const fileBuffer = fs.readFileSync(decodedPath)
 
     const uint8Array = new Uint8Array(fileBuffer)
 
@@ -36,8 +31,8 @@ export async function loader({ params }: LoaderFunctionArgs) {
         'Cache-Control': 'no-cache',
       },
     })
-  } catch (error) {
-    throw new Response(`File not found or error loading media: ${error}`, { status: 404 })
+  } catch {
+    throw new Response('File not found or error loading media', { status: 404 })
   }
 }
 
@@ -48,7 +43,6 @@ function getContentType(filePath: string): string {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.webp': 'image/webp',
-    '.webm': 'video/webm',
   }
   return types[ext] || 'application/octet-stream'
 }
