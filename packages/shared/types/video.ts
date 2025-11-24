@@ -1,7 +1,6 @@
-import z from "zod"
-import { Scene } from "./scene"
-import { videoSchema } from "../schemas"
-
+import z from 'zod'
+import { Scene } from './scene'
+import { videoSchema } from '../schemas'
 
 export type Video = z.infer<typeof videoSchema>
 
@@ -15,8 +14,9 @@ export interface VideoMetadata {
   width: number
   height: number
   totalFrames: number
+  rotation?: number
+  displayAspectRatio?: string
 }
-
 export interface VideoFile {
   path: string
   mtime: Date
@@ -49,13 +49,13 @@ export interface FFmpegProcessResult {
 }
 
 export interface VideoMetadataMap {
-  faces: Map<string, number>;
-  objects: Map<string, number>;
-  emotions: Map<string, number>;
-  shotTypes: Map<string, number>;
-  aspectRatios: Map<string, number>;
-  cameras: Map<string, number>;
-  descriptions: string[];
-  totalScenes: number;
-  colors: Map<string, number>;
+  faces: Map<string, number>
+  objects: Map<string, number>
+  emotions: Map<string, number>
+  shotTypes: Map<string, number>
+  aspectRatios: Map<string, number>
+  cameras: Map<string, number>
+  descriptions: string[]
+  totalScenes: number
+  colors: Map<string, number>
 }
