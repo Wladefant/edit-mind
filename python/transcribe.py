@@ -4,14 +4,17 @@ import json
 import logging
 import re
 import time
+import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, TextIO
 from dataclasses import dataclass
 from faster_whisper import WhisperModel
 import os
 import torch
+from huggingface_hub import snapshot_download
 
 logger = logging.getLogger(__name__)
+
 @dataclass
 class TranscriptionResult:
     text: str
@@ -24,6 +27,20 @@ class TranscriptionResult:
             "segments": self.segments,
             "language": self.language
         }
+
+
+class ModelDownloadProgress:
+    """Tracks model download progress"""
+    def __init__(self, callback: Optional[Callable[[int, str], None]] = None):
+        self.callback = callback
+        self.total_size = 0
+        self.downloaded = 0
+        
+    def update(self, chunk_size: int):
+        self.downloaded += chunk_size
+        if self.total_size > 0 and self.callback:
+            progress = int((self.downloaded / self.total_size) * 100)
+            self.callback(progress, f"Downloading model: {self.downloaded / (1024**3):.2f}GB / {self.total_size / (1024**3):.2f}GB")
 
 
 class StderrInterceptor(io.TextIOBase):
@@ -45,7 +62,6 @@ class StderrInterceptor(io.TextIOBase):
     def _handle_text(self, data: str):
         self._buffer += data
 
-        # Split by carriage return first, then newline.
         parts = self._buffer.split('\r')
         if len(parts) > 1:
             for part in parts[:-1]:
@@ -70,6 +86,7 @@ class StderrInterceptor(io.TextIOBase):
             self._buffer = ""
         self.original_stderr.flush()
 
+
 class ProgressTracker:
     PROGRESS_PATTERN = re.compile(r"(\d+)%")
     ELAPSED_PATTERN = re.compile(r"\[(\d+):(\d+)<(\d+):(\d+),")
@@ -79,7 +96,6 @@ class ProgressTracker:
         self.last_progress = -1
 
     def parse_line(self, line: str) -> None:
-
         match = self.PROGRESS_PATTERN.search(line)
         if not match:
             return
@@ -92,7 +108,6 @@ class ProgressTracker:
         self.last_progress = progress
         elapsed_time = self._extract_elapsed_time(line)
 
-
         if self.callback:
             self.callback(progress, elapsed_time)
 
@@ -104,25 +119,146 @@ class ProgressTracker:
             return f"{minutes:02d}:{seconds:02d}"
         return "00:00"
 
+
 class TranscriptionService:
-    def __init__(self, model_name: str = "large-v3", device: str = "auto", compute_type: str = "float16"):
+    def __init__(
+        self, 
+        model_name: str = "medium", 
+        device: str = "auto", 
+        compute_type: str = "float16",
+        cache_dir: Optional[str] = None,
+        download_callback: Optional[Callable[[int, str], None]] = None
+    ):
         self.model_name = model_name
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.compute_type = "float16" if self.device == "cuda" else "float32"
+        self.compute_type = "int8"  
+        self.cache_dir = cache_dir or os.getenv("WHISPER_CACHE_DIR", "/app/models")
+        self.download_callback = download_callback
         self._model: Optional[WhisperModel] = None
+        self._model_loading = False
+        self._model_loaded = False
+        self._download_thread: Optional[threading.Thread] = None
+
+    def _get_model_path(self) -> str:
+        """Get the HuggingFace model repository path"""
+        model_map = {
+            "large-v3": "Systran/faster-whisper-large-v3",
+            "large-v2": "Systran/faster-whisper-large-v2",
+            "medium": "Systran/faster-whisper-medium",
+            "small": "Systran/faster-whisper-small",
+            "base": "Systran/faster-whisper-base",
+            "tiny": "Systran/faster-whisper-tiny",
+        }
+        return model_map.get(self.model_name, f"Systran/faster-whisper-{self.model_name}")
+
+    def is_model_cached(self) -> bool:
+        """Check if model is already downloaded"""
+        model_repo = self._get_model_path()
+        cache_path = Path(self.cache_dir) / model_repo.replace("/", "--")
+        return cache_path.exists() and any(cache_path.iterdir())
+
+    def download_model_async(self) -> None:
+        """Download model in background thread"""
+        if self._download_thread and self._download_thread.is_alive():
+            logger.info("Model download already in progress")
+            return
+            
+        if self.is_model_cached():
+            logger.info("Model already cached")
+            return
+
+        def _download():
+            try:
+                self._download_model_sync()
+            except Exception as e:
+                logger.error(f"Background model download failed: {e}")
+
+        self._download_thread = threading.Thread(target=_download, daemon=True)
+        self._download_thread.start()
+        logger.info("Started background model download")
+
+    def _download_model_sync(self) -> None:
+        """Download model with progress tracking"""
+        if self.is_model_cached():
+            logger.info(f"Model {self.model_name} already cached")
+            if self.download_callback:
+                self.download_callback(100, "Model cached")
+            return
+
+        logger.info(f"Downloading model {self.model_name} to {self.cache_dir}")
+        
+        model_repo = self._get_model_path()
+        
+        # Set environment variables for better download experience
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+        os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+        
+        try:
+            if self.download_callback:
+                self.download_callback(0, "Starting download...")
+            
+            # Download model using huggingface_hub
+            snapshot_download(
+                repo_id=model_repo,
+                cache_dir=self.cache_dir,
+                local_dir=os.path.join(self.cache_dir, model_repo.replace("/", "--")),
+                local_dir_use_symlinks=False,
+            )
+            
+            if self.download_callback:
+                self.download_callback(100, "Download complete")
+                
+            logger.info(f"Model {self.model_name} downloaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to download model: {e}")
+            if self.download_callback:
+                self.download_callback(-1, f"Download failed: {str(e)}")
+            raise
 
     @property
     def model(self) -> WhisperModel:
         if self._model is None:
+            if self._model_loading:
+                raise RuntimeError("Model is currently being loaded")
+                
+            self._model_loading = True
+            
+            # Ensure model is downloaded
+            if not self.is_model_cached():
+                logger.info("Model not cached, downloading...")
+                self._download_model_sync()
+            
+            # Set environment variables
             os.environ["HF_HUB_VERBOSITY"] = "info"
-            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "0"
+            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
             os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+            
             logging.getLogger("httpx").setLevel(logging.INFO)
             logging.getLogger("huggingface_hub").setLevel(logging.INFO)
+            
             logger.info(f"Loading Faster-Whisper model: {self.model_name}")
-            self._model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+            
+            # Load model from cache
+            self._model = WhisperModel(
+                self.model_name, 
+                device=self.device, 
+                compute_type=self.compute_type,
+                download_root=self.cache_dir
+            )
+            
             logger.info("Model loaded successfully")
+            self._model_loading = False
+            self._model_loaded = True
+            
         return self._model
+
+    def wait_for_download(self, timeout: Optional[float] = None) -> bool:
+        """Wait for background download to complete"""
+        if self._download_thread:
+            self._download_thread.join(timeout=timeout)
+            return not self._download_thread.is_alive()
+        return True
 
     def transcribe(
         self,
@@ -139,6 +275,7 @@ class TranscriptionService:
 
         if progress_callback:
             progress_callback(1, "00:00")
+            
         progress_tracker = ProgressTracker(progress_callback)
         original_stderr = sys.stderr
         sys.stderr = StderrInterceptor(original_stderr, progress_tracker.parse_line)
@@ -146,12 +283,17 @@ class TranscriptionService:
         try:
             segments, info = self.model.transcribe(
                 str(video_path),
-                beam_size=5,
+                beam_size=1,
                 word_timestamps=True,
                 vad_filter=True,
                 log_progress=True,
-                batch_size=16,  # Process multiple segments at once
+                vad_parameters={
+                    "threshold": 0.5,  
+                    "min_speech_duration_ms": 250,
+                    "min_silence_duration_ms": 2000
+                },
             )
+
             total_duration = round(info.duration, 2) if info else 0.0
             processed_duration = 0.0
         
@@ -184,7 +326,6 @@ class TranscriptionService:
                     progress_callback(int(percent_done), elapsed_str)
 
         except RuntimeError as e:
-            # Handle known "no audio" errors
             if "no audio streams" in str(e).lower() or "failed to load audio" in str(e).lower():
                 logger.warning(f"No audio stream found in {video_path}. Returning empty transcription.")
                 result = TranscriptionResult(text='', segments=[], language='N/A')
@@ -195,15 +336,15 @@ class TranscriptionService:
             raise
 
         except IndexError as e:
-            # Handle PyAV stream access errors
             if "tuple index out of range" in str(e).lower():
-                logger.warning(f"No valid audio streams found in {video_path} (tuple index out of range). Returning empty transcription.")
+                logger.warning(f"No valid audio streams found in {video_path}. Returning empty transcription.")
                 result = TranscriptionResult(text='', segments=[], language='N/A')
                 self._save_result(result.to_dict(), output_path)
                 if progress_callback:
                     progress_callback(100, "00:00")
                 return result
             raise
+            
         finally:
             sys.stderr = original_stderr
             
