@@ -1,9 +1,6 @@
-import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import fs from 'fs'
 import path from 'path'
 import { ChildProcess } from 'child_process'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import {
   BATCH_THUMBNAIL_QUALITY,
   DEFAULT_FPS,
@@ -15,11 +12,9 @@ import {
 } from '../constants'
 import { exiftool } from 'exiftool-vendored'
 import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '../types/video'
-import {  spawnFFmpeg, validateBinaries } from './ffmpeg'
+import { spawnFFmpeg, spawnFFprobe } from './ffmpeg'
 import { validateFile } from './file'
-import ffmpeg from 'fluent-ffmpeg'
-
-const execFileAsync = promisify(execFile)
+import { logger } from '../services/logger'
 
 const initializeThumbnailsDir = (): void => {
   if (!fs.existsSync(THUMBNAILS_DIR)) {
@@ -118,6 +113,7 @@ export async function generateAllThumbnails(
   })
 
   args.push('-y')
+  logger.debug(`Batch thumbnail generated for ${videoPath}`)
 
   const ffmpegProcess = await spawnFFmpeg(args)
   return handleFFmpegProcess(ffmpegProcess, 'batch thumbnail generation')
@@ -147,13 +143,15 @@ export async function findVideoFiles(
           results.push([{ path: fullPath, mtime: stats.mtime }])
         }
       } catch (error) {
-        console.warn(`Warning: Could not access ${fullPath}:`, error instanceof Error ? error.message : 'Unknown error')
+        logger.warn(
+          `Warning: Could not access ${fullPath}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
       }
     }
 
     return results.flat().sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
   } catch (error) {
-    console.error(`Error reading directory ${dirPath}:`, error instanceof Error ? error.message : 'Unknown error')
+    logger.error(`Error reading directory ${dirPath}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return []
   }
 }
@@ -183,28 +181,52 @@ const extractCameraInfo = (tags: Record<string, any>, videoPath: string): string
 export async function getCameraNameAndDate(videoFullPath: string): Promise<CameraInfo> {
   try {
     await validateFile(videoFullPath)
-    validateBinaries()
 
-    const { stdout } = await execFileAsync(ffprobeInstaller.path!, [
-      '-v',
-      'quiet',
-      '-print_format',
-      'json',
-      '-show_format',
-      '-show_streams',
-      videoFullPath,
-    ])
+    const args = ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', videoFullPath]
+
+    const ffprobeProcess = await spawnFFprobe(args)
+
+    let stdout = ''
+    let stderr = ''
+
+    ffprobeProcess.stdout?.on('data', (data) => {
+      stdout += data.toString()
+    })
+
+    ffprobeProcess.stderr?.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      ffprobeProcess.on('close', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`FFprobe failed with code ${code}: ${stderr || 'Unknown error'}`))
+        }
+      })
+
+      ffprobeProcess.on('error', (err) => {
+        reject(new Error(`Failed to spawn FFprobe: ${err.message}`))
+      })
+    })
 
     const metadata = JSON.parse(stdout)
     const tags = metadata.format?.tags || {}
 
-    const createdAt = tags.creation_time || tags['com.apple.quicktime.creationdate'] || 'Unknown'
+    let createdAt = tags.creation_time || tags['com.apple.quicktime.creationdate'] || 'Unknown'
 
     const camera = extractCameraInfo(tags, videoFullPath)
 
+    // Fallback to file creation date if metadata doesn't contain creation time
+    if (!createdAt || createdAt === 'Unknown') {
+      const stats = await fs.promises.stat(videoFullPath)
+      createdAt = stats.birthtime.toISOString()
+    }
+
     return { camera, createdAt }
   } catch (error) {
-    console.error('Error extracting camera metadata:', error instanceof Error ? error.message : 'Unknown error')
+    logger.error(`Error extracting camera metadata: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return { camera: 'Unknown', createdAt: 'Unknown' }
   }
 }
@@ -223,50 +245,76 @@ const parseFPS = (frameRate: string | undefined): number => {
     return DEFAULT_FPS
   }
 }
-
 export async function getVideoMetadata(videoFilePath: string): Promise<VideoMetadata> {
   await validateFile(videoFilePath)
-  validateBinaries()
 
-  return new Promise((resolve, reject) => {
-    ffmpeg.setFfprobePath(ffprobeInstaller.path!)
+  try {
+    const args = ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', videoFilePath]
 
-    ffmpeg.ffprobe(videoFilePath, (err, metadata) => {
-      if (err) {
-        const errorMsg = err.message.includes('ENOENT')
-          ? 'FFprobe binary not found or not executable'
-          : `FFprobe error: ${err.message}`
-        reject(new Error(errorMsg))
-        return
-      }
+    const ffprobeProcess = await spawnFFprobe(args)
 
-      try {
-        const videoStream = metadata.streams.find((s) => s.codec_type === 'video')
-        if (!videoStream) {
-          reject(new Error('No video stream found in file'))
-          return
-        }
+    let stdout = ''
+    let stderr = ''
 
-        const duration = metadata.format.duration || 0
-        const fps = parseFPS(videoStream.r_frame_rate)
-        const width = videoStream.width || 0
-        const height = videoStream.height || 0
-        const totalFrames = Math.floor(duration * fps)
-
-        resolve({
-          duration,
-          fps,
-          width,
-          height,
-          totalFrames,
-        })
-      } catch (error) {
-        reject(new Error(`Failed to parse video metadata: ${error instanceof Error ? error.message : 'Unknown error'}`))
-      }
+    ffprobeProcess.stdout?.on('data', (data) => {
+      stdout += data.toString()
     })
-  })
-}
 
+    ffprobeProcess.stderr?.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      ffprobeProcess.on('close', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`FFprobe failed with code ${code}: ${stderr || 'Unknown error'}`))
+        }
+      })
+
+      ffprobeProcess.on('error', (err) => {
+        reject(new Error(`Failed to spawn FFprobe: ${err.message}`))
+      })
+    })
+
+    const metadata = JSON.parse(stdout)
+    const videoStream = metadata.streams.find((s: any) => s.codec_type === 'video')
+
+    if (!videoStream) {
+      throw new Error('No video stream found in file')
+    }
+
+    const duration = metadata.format.duration || 0
+    const fps = parseFPS(videoStream.r_frame_rate)
+    let width = videoStream.width || 0
+    let height = videoStream.height || 0
+
+    // Handle rotation metadata
+    const rotation = videoStream.tags?.rotate || metadata.format.tags?.rotate || 0
+    if (rotation === 90 || rotation === 270 || rotation === -90 || rotation === -270) {
+      // Swap width and height for rotated videos
+      ;[width, height] = [height, width]
+    }
+
+    // Handle display aspect ratio if available
+    const displayAspectRatio = videoStream.display_aspect_ratio
+
+    const totalFrames = Math.floor(duration * fps)
+
+    return {
+      duration,
+      fps,
+      width,
+      height,
+      totalFrames,
+      rotation,
+      displayAspectRatio,
+    }
+  } catch (error) {
+    throw new Error(`Failed to get video metadata: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return '0s'
@@ -305,12 +353,12 @@ export async function getLocationFromVideo(videoFullPath: string): Promise<GeoLo
     const altitude = parseCoordinate(tags.GPSAltitude)
 
     if (latitude === undefined && longitude === undefined && altitude === undefined) {
-      console.warn(`No GPS data found in video: ${videoFullPath}`)
+      logger.warn(`No GPS data found in video: ${videoFullPath}`)
     }
 
     return { latitude, longitude, altitude }
   } catch (error) {
-    console.error('Error extracting GPS data:', error instanceof Error ? error.message : 'Unknown error')
+    logger.error(`Error extracting GPS data:  ${error instanceof Error ? error.message : 'Unknown error'}`)
     return {
       latitude: undefined,
       longitude: undefined,
