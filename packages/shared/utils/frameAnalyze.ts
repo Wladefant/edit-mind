@@ -1,5 +1,6 @@
 import { Analysis, AnalysisProgress } from '../types/analysis'
 import { pythonService } from '../services/pythonService'
+import { logger } from '../services/logger'
 
 /**
  * Analyzes a video file using the persistent Python analysis service.
@@ -8,17 +9,19 @@ import { pythonService } from '../services/pythonService'
  */
 export function analyzeVideo(
   videoPath: string,
+  jobId: string,
   onProgress: (progress: AnalysisProgress) => void
 ): Promise<{ analysis: Analysis; category: string }> {
   return new Promise((resolve, reject) => {
     pythonService.analyzeVideo(
       videoPath,
+      jobId,
       (progress) => {
         if (onProgress) {
           try {
             onProgress(progress)
           } catch (error) {
-            console.error('Error in progress callback:', error)
+            logger.error('Error in progress callback: ' + error)
           }
         }
       },
@@ -31,7 +34,7 @@ export function analyzeVideo(
         resolve({ analysis: result, category })
       },
       (error) => {
-        console.error('❌ ERROR CALLBACK EXECUTED:', error)
+        logger.error('❌ ERROR CALLBACK EXECUTED: ' + error)
         reject(error)
       }
     )
