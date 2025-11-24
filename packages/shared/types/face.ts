@@ -35,7 +35,35 @@ export interface MatchResult {
   face_id: string
   face_data: {
     video_path: string
-    frame_start_time_ms: number
-    frame_end_time_ms: number
+    timestamp_seconds: number
   }
+}
+
+export interface FaceMatchingProgress {
+  current: number
+  total: number
+  progress: number
+  elapsed: number
+  match: FaceMatchingResult
+}
+
+interface FaceData {
+  video_path: string
+  timestamp_seconds: number
+}
+
+interface FaceMatchingResult {
+  json_file: string
+  image_file: string
+  confidence: number
+  face_id: string
+  face_data: FaceData
+}
+
+export interface FindMatchingFacesResponse {
+  success: boolean
+  person_name: string
+  matches_found: number
+  matches: FaceMatchingResult[]
+  reference_images_used: number
 }
