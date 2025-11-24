@@ -3,16 +3,22 @@ import os
 import json
 import asyncio
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Dict
 import time 
+import os
+from dotenv import load_dotenv
 
-async def create_faces_data_from_folder_async(faces_directory=".faces", output_json_path=".faces.json"):
+load_dotenv()
+
+async def create_faces_data_from_folder_async():
     """
     Asynchronously scans the specified faces directory, expecting subfolders named after individuals,
     collects image paths, and optionally saves this data to a JSON file.
     """
     faces_data = {}
-    
+    faces_directory= os.getenv("FACES_DIR", ".faces")
+
+    output_json_path = os.getenv("KNOWN_FACES_FILE", ".known_faces.json")
     def _sync_scan():
         if not os.path.exists(faces_directory):
             print(f"ERROR(create_faces): .faces directory not found at {faces_directory}", file=sys.stderr)
@@ -52,19 +58,19 @@ async def create_faces_data_from_folder_async(faces_directory=".faces", output_j
         print(f"No faces data found in '{faces_directory}' to save to '{output_json_path}'.", file=sys.stderr)
 
     return faces_data
-
 async def batch_add_faces_from_folder(
-    faces_directory=".faces",
-    known_faces_file="known_faces.json",
-    output_json_path=".faces.json",
-    progress_callback: Optional[Callable[[dict], None]] = None
+    progress_callback: Optional[Callable[[dict], None]] = None,
+    specific_faces: Optional[List[Dict[str, str]]] = None
 ):
     """
-    Scans the specified faces directory, collects image paths, saves data,
-    and then adds each face using the add_face.py script.
-    Reports progress via the optional progress_callback, including elapsed time and percentage.
+    If specific_faces is provided, only processes those specific images.
+    specific_faces format: 
+      [{"name": "John", "image_path": "photo1.jpg"}, ...]  # just filename
     """
-
+    
+    faces_directory = os.getenv("FACES_DIR", ".faces")
+    known_faces_file = os.getenv("KNOWN_FACES_FILE_LOADED", ".known_faces.json")
+    
     start_time = time.monotonic() 
 
     async def report_progress(message: str, current: int = 0, total: int = 0):
@@ -77,7 +83,7 @@ async def batch_add_faces_from_folder(
 
         if progress_callback:
             try:
-                await progress_callback({
+                progress_callback({
                     "current_item": current,
                     "total_items": total,
                     "progress": round(progress_percent, 1),
@@ -88,79 +94,89 @@ async def batch_add_faces_from_folder(
 
         print(f"[{elapsed_str} | {progress_percent:.1f}%] {message}", file=sys.stderr)
 
-    await report_progress("Scanning faces directory...", current=0, total=1) 
-
-    faces_data = await create_faces_data_from_folder_async(faces_directory, output_json_path)
-
-    if not faces_data:
-        await report_progress("No faces data found. Exiting reindexing.", current=1, total=1)
-        return False
+    if specific_faces is not None:
+        await report_progress("Using provided face list...", current=0, total=1)
+        
+        images_to_process = []
+        for face_info in specific_faces:
+            name = face_info['name']
+            image_path = face_info['image_path']
+            
+            image_path = os.path.join(faces_directory, name, image_path)
+            
+            images_to_process.append({
+                'name': name,
+                'image_path': image_path
+            })
 
     script_dir = Path(__file__).parent
     add_face_script = script_dir / "add_face.py"
     
     project_root = Path(os.getcwd())
     
-    total_images = sum(len(paths) for paths in faces_data.values())
+    total_images = len(images_to_process)
     processed_images = 0
 
     if total_images == 0:
         await report_progress("No images found to process.", current=0, total=0)
         return True
 
-    for name, image_paths in faces_data.items():
-        await report_progress(f"Processing faces for: {name}", processed_images, total_images)
+    for image_info in images_to_process:
+        name = image_info['name']
+        image_path_relative = image_info['image_path']
         
-        for image_path_relative in image_paths:
-            processed_images += 1
-            
-            message_prefix = f"Processing image: {image_path_relative}"
-            await report_progress(message_prefix, processed_images, total_images)
-            
+        processed_images += 1
+        
+        message_prefix = f"Processing image: {image_path_relative} (person: {name})"
+        await report_progress(message_prefix, processed_images, total_images)
+        
+        # Handle both relative and absolute paths
+        if os.path.isabs(image_path_relative):
+            absolute_image_path = Path(image_path_relative)
+        else:
             absolute_image_path = project_root / image_path_relative
-            
-            if not absolute_image_path.exists():
-                warning_msg = f"Image not found at {absolute_image_path}. Skipping."
-                await report_progress(warning_msg, processed_images, total_images)
-                continue
+        
+        if not absolute_image_path.exists():
+            warning_msg = f"Image not found at {absolute_image_path}. Skipping."
+            await report_progress(warning_msg, processed_images, total_images)
+            continue
 
-            command = [
-                sys.executable,
-                str(add_face_script),
-                name,
-                str(absolute_image_path),
-                str(project_root / known_faces_file)
-            ]
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+        command = [
+            sys.executable,
+            str(add_face_script),
+            name,
+            str(absolute_image_path),
+            str(project_root / known_faces_file)
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout_data = await process.communicate()
+        return_code = process.returncode 
+        
+        stdout_str = stdout_data.decode().strip()
+        if return_code == 0:
+            status_message = "Success"
+            if stdout_str:
+                try:
+                    print(stdout_str)
+                    json_output = json.loads(stdout_str)
+                    if json_output.get("status") == "warning":
+                        status_message = f"Warning: {json_output.get('message', 'Multiple faces found.')}"
+                    elif json_output.get("status") == "error":
+                        status_message = f"Error (despite code 0): {json_output.get('message', 'Unknown error')}"
+                except json.JSONDecodeError:
+                    status_message = f"Success (non-JSON output: {stdout_str[:50]}...)"
             
-            stdout_data, stderr_data = await process.communicate()
-            return_code = process.returncode 
-            
-            stdout_str = stdout_data.decode().strip()
-            stderr_str = stderr_data.decode().strip()   
-            if return_code == 0:
-                status_message = "Success"
-                if stdout_str:
-                    try:
-                        print(stdout_str)
-                        json_output = json.loads(stdout_str)
-                        if json_output.get("status") == "warning":
-                            status_message = f"Warning: {json_output.get('message', 'Multiple faces found.')}"
-                        elif json_output.get("status") == "error":
-                            status_message = f"Error (despite code 0): {json_output.get('message', 'Unknown error')}"
-                    except json.JSONDecodeError:
-                        status_message = f"Success (non-JSON output: {stdout_str[:50]}...)"
-                
-                await report_progress(status_message, processed_images, total_images)
-            else:
-                error_msg = f"add_face.py failed for {image_path_relative}. Return code: {process.returncode}"
-                print(error_msg, file=sys.stderr)
-                await report_progress(error_msg, processed_images, total_images)
-                return False
+            await report_progress(status_message, processed_images, total_images)
+        else:
+            error_msg = f"add_face.py failed for {image_path_relative}. Return code: {process.returncode}"
+            print(error_msg, file=sys.stderr)
+            await report_progress(error_msg, processed_images, total_images)
+            return False
 
     await report_progress("All faces processed.", total_images, total_images)
     return True
