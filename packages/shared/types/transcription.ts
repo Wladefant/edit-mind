@@ -27,4 +27,5 @@ export interface Transcription {
 export type TranscriptionProgress = {
   progress: number
   elapsed: string
+  job_id: string
 }

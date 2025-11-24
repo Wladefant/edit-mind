@@ -28,7 +28,7 @@ export interface FrameAnalysis {
   end_time_ms: number
   scene_description: string
   shot_type: string
-  dominant_color: {
+  dominant_color?: {
     name: string
     hex: string
     percentage: number
@@ -91,4 +91,5 @@ export interface AnalysisProgress {
   elapsed: string
   frames_analyzed: number
   total_frames: number
+  job_id: string
 }
