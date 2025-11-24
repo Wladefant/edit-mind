@@ -6,6 +6,9 @@ import numpy as np
 from typing import List, Dict, Optional, Callable
 import time
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class MatchResult:
@@ -54,6 +57,22 @@ class FaceMatcher:
         
         return encodings
     
+    def remove_json_file(self, json_path: str, reason: str):
+        """
+        Remove a JSON file and log the reason.
+        
+        Args:
+            json_path: Path to the JSON file to remove
+            reason: Reason for removal
+        """
+        try:
+            os.remove(json_path)
+            print(f"Removed JSON file: {json_path} - Reason: {reason}", file=sys.stderr)
+            logger.info(f"Removed JSON file: {json_path} - Reason: {reason}")
+        except Exception as e:
+            print(f"Error removing {json_path}: {e}", file=sys.stderr)
+            logger.error(f"Error removing {json_path}: {e}")
+    
     def find_matches(
         self,
         reference_encodings: List[np.ndarray],
@@ -88,20 +107,25 @@ class FaceMatcher:
                 
                 image_file = face_data.get('image_file')
                 if not image_file:
+                    self.remove_json_file(json_path, "No image_file field in JSON")
                     continue
                 
                 image_path = os.path.join(unknown_faces_dir, image_file)
                 
+                # Check if image file exists
                 if not os.path.exists(image_path):
                     print(f"Image not found: {image_path}", file=sys.stderr)
+                    self.remove_json_file(json_path, f"Image file not found: {image_file}")
                     continue
                 
                 # Load and encode the unknown face
                 unknown_image = face_recognition.load_image_file(image_path)
                 unknown_encodings = face_recognition.face_encodings(unknown_image)
                 
+                # Check if face was detected
                 if not unknown_encodings:
                     print(f"No face found in {image_file}", file=sys.stderr)
+                    self.remove_json_file(json_path, f"No face detected in image: {image_file}")
                     continue
                 
                 unknown_encoding = unknown_encodings[0]
@@ -118,25 +142,28 @@ class FaceMatcher:
                         confidence=float(confidence),
                         face_data=face_data
                     ))
-                    print(f"Match found: {image_file} (confidence: {confidence:.2%})", file=sys.stderr)
-                
-            except Exception as e:
-                print(f"Error processing {json_file}: {e}", file=sys.stderr)
-            
-            # Report progress
-            if progress_callback and idx % 10 == 0:
-                elapsed = time.monotonic() - start_time
-                progress_percent = (idx / total_files) * 100
-                try:
+                    logger.info(f"Face match found: {image_file} (confidence: {confidence:.2%})")
+                    face_id = self.get_face_id_from_json(json_file, unknown_faces_dir)
+                    elapsed = time.monotonic() - start_time
+                    progress_percent = (idx / total_files) * 100
                     progress_callback({
                         "current": idx,
                         "total": total_files,
                         "progress": round(progress_percent, 1),
                         "elapsed": int(elapsed),
-                        "matches_found": len(matches)
+                        "match": {
+                            "json_file": json_file,
+                            "image_file": image_file,
+                            "confidence": float(confidence),
+                            "face_id": face_id,
+                            "face_data": face_data
+                        }
                     })
-                except Exception as e:
-                    print(f"Error sending progress: {e}", file=sys.stderr)
+                    logger.info(f"Face match found and progress callback sent")
+                
+            except Exception as e:
+                print(f"Error processing {json_file}: {e}", file=sys.stderr)
+                logger.error(f"Error processing {json_file}: {e}")
         
         return matches
     
