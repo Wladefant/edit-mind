@@ -5,7 +5,7 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import path from 'path'
 
 export default defineConfig({
-  plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+  plugins: [tailwindcss(), reactRouter(), tsconfigPaths({ ignoreConfigErrors: true })],
   resolve: {
     alias: {
       '~': path.resolve(__dirname, 'app'),
@@ -13,6 +13,21 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../../packages/shared'),
       '@ui': path.resolve(__dirname, '../../packages/ui'),
       '@/app': path.resolve(__dirname, './app'),
+    },
+  },
+  build: {
+    rollupOptions: {
+      external: [
+        'chromadb',
+        '@shared',
+        'onnxruntime-node',
+        '@ffmpeg-installer/ffmpeg',
+        '@ffprobe-installer/ffprobe',
+        'sharp',
+        'egm96-universal',
+        '@xenova/transformers',
+        'pino',
+      ],
     },
   },
 })
