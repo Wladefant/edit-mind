@@ -11,21 +11,28 @@ import './jobs/faceMatcher'
 import './jobs/ImmichImporter'
 
 import { pythonService } from '@shared/services/pythonService'
+import { initializeWatchers } from './watcher'
 
 const app = express()
 
 app.use(cors())
 app.use(express.json())
 
-const serverAdapter = new ExpressAdapter()
-serverAdapter.setBasePath('/')
+if (process.env.NODE_ENV === 'development') {
+  const serverAdapter = new ExpressAdapter()
+  serverAdapter.setBasePath('/')
 
-createBullBoard({
-  queues: [new BullMQAdapter(videoQueue), new BullMQAdapter(faceMatcherQueue), new BullMQAdapter(immichImporterQueue)],
-  serverAdapter: serverAdapter,
-})
+  createBullBoard({
+    queues: [
+      new BullMQAdapter(videoQueue),
+      new BullMQAdapter(faceMatcherQueue),
+      new BullMQAdapter(immichImporterQueue),
+    ],
+    serverAdapter,
+  })
 
-app.use('/', serverAdapter.getRouter())
+  app.use('/', serverAdapter.getRouter())
+}
 
 app.use('/folders', foldersRoute)
 
@@ -33,6 +40,9 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }))
 
 app.listen(config.port, async () => {
   await pythonService.start()
+  await initializeWatchers()
   console.warn(`Server running on port ${config.port}`)
-  console.warn(`Bull Board UI available at http://localhost:${config.port}`)
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(`Bull Board UI available at http://localhost:${config.port}`)
+  }
 })
