@@ -1,5 +1,6 @@
 import { prisma } from '~/services/database'
 import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router'
+import { findJobsByFolderId } from '@background-jobs/src/utils/jobs'
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const { id } = params
@@ -23,6 +24,16 @@ export async function action({ params }: ActionFunctionArgs) {
   if (!id) return { success: false, error: 'No folder id provided' }
 
   try {
+    const jobsToDelete = await findJobsByFolderId(id)
+
+    for (const job of jobsToDelete) {
+      try {
+        await job.remove()
+      } catch (error) {
+        console.error(error)
+      }
+    }
+
     const folder = await prisma.folder.delete({
       where: { id },
     })
