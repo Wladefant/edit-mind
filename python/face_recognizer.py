@@ -2,9 +2,12 @@ import face_recognition
 import numpy as np
 import json
 from collections import defaultdict
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 class FaceRecognizer:
-    def __init__(self, known_faces_file='.faces.json', tolerance=0.5, model='cnn'):
+    def __init__(self, known_faces_file='.faces.json', tolerance=0.40, model='cnn'):
         """
         Initialize the face recognizer.
         
@@ -22,36 +25,75 @@ class FaceRecognizer:
         self.unknown_face_counter = 0
         self.load_known_faces()
 
-    def reload_known_faces(self):
-        """Explicitly reloads known faces from the file."""
+
+                
+    def load_known_faces(self):
+        """Load known faces from JSON ensuring float arrays."""
         self.known_face_encodings = []
         self.known_face_names = []
-        self.unknown_face_encodings = defaultdict(list)
-        self.unknown_face_counter = 0
-        self.load_known_faces()
-            
-    def load_known_faces(self):
-        with open(self.known_faces_file, 'r') as f:
-            known_faces_data = json.load(f)
-            
-            if isinstance(known_faces_data, dict):
-                for name, encodings in known_faces_data.items():
-                    for encoding in encodings:
-                        self.known_face_encodings.append(np.array(encoding))
-                        self.known_face_names.append(name)
-            elif isinstance(known_faces_data, list):
-                for entry in known_faces_data:
-                    name = entry.get("name")
-                    enc = entry.get("encoding") or entry.get("encodings")
-                    if name and enc:
-                        if isinstance(enc[0], list):
-                            for e in enc:
-                                self.known_face_encodings.append(np.array(e))
-                                self.known_face_names.append(name)
-                        else:
-                            self.known_face_encodings.append(np.array(enc))
-                            self.known_face_names.append(name)
 
+        try:
+            with open(self.known_faces_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            # File doesn't exist yet, start with empty lists
+            return
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in {self.known_faces_file}: {e}")
+
+        if isinstance(data, dict):
+            for name, enc_list in data.items():
+                # Skip if enc_list is not a list
+                if not isinstance(enc_list, list):
+                    continue
+                    
+                for enc in enc_list:
+                    # Skip if enc is not a list/array (e.g., if it's a string path)
+                    if not isinstance(enc, (list, np.ndarray)):
+                        continue
+                    
+                    # Skip if enc is empty or doesn't look like an encoding (should be 128 floats)
+                    if not enc or len(enc) != 128:
+                        continue
+                    
+                    try:
+                        # Ensure numeric array
+                        encoding_array = np.array(enc, dtype=np.float64)
+                        self.known_face_encodings.append(encoding_array)
+                        self.known_face_names.append(name)
+                    except (ValueError, TypeError) as e:
+                        # Skip invalid encodings
+                        print(f"Warning: Skipping invalid encoding for {name}: {e}")
+                        continue
+
+        elif isinstance(data, list):
+            for entry in data:
+                if not isinstance(entry, dict):
+                    continue
+                    
+                name = entry.get("name")
+                enc = entry.get("encoding") or entry.get("encodings")
+                
+                if not name or not enc:
+                    continue
+                
+                # Handle multiple encodings per person
+                if isinstance(enc[0], list):
+                    for e in enc:
+                        if len(e) != 128:
+                            continue
+                        try:
+                            self.known_face_encodings.append(np.array(e, dtype=np.float64))
+                            self.known_face_names.append(name)
+                        except (ValueError, TypeError):
+                            continue
+                else:
+                    if len(enc) == 128:
+                        try:
+                            self.known_face_encodings.append(np.array(enc, dtype=np.float64))
+                            self.known_face_names.append(name)
+                        except (ValueError, TypeError):
+                            continue
 
 
     def recognize_faces(self, frame, upsample=1):
@@ -84,7 +126,8 @@ class FaceRecognizer:
             if face_distance > tolerance:
                 return 0.0
             # Smooth mapping: closer distance -> higher confidence
-            return round((1.0 - face_distance / tolerance) ** 2, 2)
+            confidence = 1 / (1 + np.exp(15 * (face_distance - tolerance)))
+            return confidence
         
         recognized_faces = []
         for face_location, face_encoding in zip(face_locations, face_encodings):
