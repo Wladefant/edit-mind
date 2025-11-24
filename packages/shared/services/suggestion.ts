@@ -3,6 +3,7 @@ import type { RedisClientType } from 'redis'
 import { ShotType } from '../types'
 import { SearchQuery } from '../types/search'
 import { getAllDocs } from './vectorDb'
+import { logger } from './logger'
 
 export interface Suggestion {
   text: string
@@ -79,16 +80,16 @@ class SearchSuggestionCache {
         },
       })
 
-      this.redisClient.on('error', (err) => console.error('Redis Client Error:', err))
+      this.redisClient.on('error', (err) => logger.error('Redis Client Error:', err))
       await this.redisClient.connect()
     }
 
     const stats = await this.getStats()
     if (!stats.isInitialized || stats.totalPrefixes === 0) {
-      console.debug('Building search suggestion cache...')
+      logger.debug('Building search suggestion cache...')
       await this.buildCache()
     } else {
-      console.debug('Search suggestion cache already initialized')
+      logger.debug('Search suggestion cache already initialized')
     }
 
     this.isInitialized = true
@@ -163,7 +164,7 @@ class SearchSuggestionCache {
       })
     )
 
-    console.debug('Search suggestion cache built successfully')
+    logger.debug('Search suggestion cache built successfully')
   }
 
   private extractArray(value: any, counts: Map<string, number>): void {
@@ -270,7 +271,7 @@ class SearchSuggestionCache {
           if (suggestions.length >= limit) break
         }
       } catch (err) {
-        console.error('Error parsing suggestion:', err)
+        logger.error('Error parsing suggestion: ' + err)
       }
     }
 
@@ -335,7 +336,7 @@ class SearchSuggestionCache {
   async refresh(): Promise<void> {
     if (!this.redisClient) return
 
-    console.debug('Refreshing search suggestion cache...')
+    logger.debug('Refreshing search suggestion cache...')
 
     // Clear Redis cache
     const keys = await this.redisClient.keys(`${this.CACHE_PREFIX}*`)

@@ -3,7 +3,8 @@ import path from 'path'
 import fetch from 'node-fetch'
 import { FACES_DIR } from '../constants'
 import { AssetsBucketResponse, Face, ImmichConfig, PeopleResponse, Person, TimeBucket } from '../types/immich'
-import Jimp from 'jimp'
+import * as Jimp from 'jimp'
+import { logger } from './logger'
 
 const PAGE_SIZE = 100
 
@@ -82,32 +83,35 @@ class ImmichClient {
   }
 }
 
-export async function getAllImmichFaces(config: ImmichConfig): Promise<boolean> {
+export async function getAllImmichFaces(config: ImmichConfig): Promise<{ name: string; image_path: string }[]> {
   const client = new ImmichClient(config)
+  const newFaceFiles: { name: string; image_path: string }[] = []
 
   try {
     const [people, buckets] = await Promise.all([client.getAllPeople(), client.getTimeBuckets()])
 
     for (const person of people) {
-      await processPerson(client, person, buckets)
+      const personFaces = await processPerson(client, person, buckets)
+
+      newFaceFiles.push(...personFaces.map((face) => ({ name: person.name, image_path: face })))
     }
 
-    return true
+    return newFaceFiles
   } catch (error) {
-    console.error('Failed to import Immich faces:', error)
-    return false
+    logger.error('Failed to import Immich faces:' + error)
+    throw error
   }
 }
 
-async function processPerson(client: ImmichClient, person: Person, buckets: TimeBucket[]) {
+async function processPerson(client: ImmichClient, person: Person, buckets: TimeBucket[]): Promise<string[]> {
   const personDir = await createPersonDirectory(person)
 
   const assetIds = await collectAssetIds(client, person.id, buckets)
 
-  await Promise.all([
-    processAssets(client, person, assetIds, personDir),
-    savePersonThumbnail(client, person.id, personDir),
-  ])
+  const newFaceFiles = await processAssets(client, person, assetIds, personDir)
+  await savePersonThumbnail(client, person.id, personDir)
+
+  return newFaceFiles
 }
 
 async function createPersonDirectory(person: Person): Promise<string> {
@@ -125,38 +129,70 @@ async function collectAssetIds(client: ImmichClient, personId: string, buckets: 
   return assetIdArrays.flat()
 }
 
-async function processAssets(client: ImmichClient, person: Person, assetIds: string[], personDir: string) {
+async function processAssets(
+  client: ImmichClient,
+  person: Person,
+  assetIds: string[],
+  personDir: string
+): Promise<string[]> {
+  const newFaceFiles: string[] = []
+
   for (const assetId of assetIds) {
     try {
-      await processAssetForPerson(client, person, assetId, personDir)
+      const assetFaces = await processAssetForPerson(client, person, assetId, personDir)
+      newFaceFiles.push(...assetFaces)
     } catch (error) {
-      console.error(`Failed to process asset ${assetId} for person ${person.id}:`, error)
+      logger.error(`Failed to process asset ${assetId} for person ${person.id}: ${error}`)
     }
   }
+
+  return newFaceFiles
 }
 
-async function processAssetForPerson(client: ImmichClient, person: Person, assetId: string, personDir: string) {
+async function processAssetForPerson(
+  client: ImmichClient,
+  person: Person,
+  assetId: string,
+  personDir: string
+): Promise<string[]> {
   const faces = await client.getFacesByAsset(assetId)
   const matchedFaces = faces.filter((face) => face.person?.id === person.id)
 
-  if (!matchedFaces.length) return
+  if (!matchedFaces.length) return []
 
   const imageBuffer = await client.getAssetImage(assetId)
 
-  await Promise.all(matchedFaces.map((face) => extractAndSaveFace(imageBuffer, face, assetId, personDir)))
+  const faceFiles = await Promise.all(
+    matchedFaces.map((face) => extractAndSaveFace(imageBuffer, face, assetId, personDir))
+  )
+
+  return faceFiles.filter((file): file is string => file !== null)
 }
 
-async function extractAndSaveFace(imageBuffer: Buffer, face: Face, assetId: string, personDir: string) {
-  const { boundingBoxX1, boundingBoxY1, boundingBoxX2, boundingBoxY2 } = face
+async function extractAndSaveFace(
+  imageBuffer: Buffer,
+  face: Face,
+  assetId: string,
+  personDir: string
+): Promise<string | null> {
+  try {
+    const { boundingBoxX1, boundingBoxY1, boundingBoxX2, boundingBoxY2 } = face
 
- const faceImage = await Jimp.read(imageBuffer)
-  const width = boundingBoxX2 - boundingBoxX1
-  const height = boundingBoxY2 - boundingBoxY1
+    const faceImage = await Jimp.Jimp.read(imageBuffer)
+    const width = boundingBoxX2 - boundingBoxX1
+    const height = boundingBoxY2 - boundingBoxY1
 
-  faceImage.crop(boundingBoxX1, boundingBoxY1, width, height)
+    faceImage.crop({ w: width, h: height, x: boundingBoxX1, y: boundingBoxY1 })
 
-  const facePath = path.join(personDir, `${assetId}-${face.id}.jpg`)
-  await faceImage.writeAsync(facePath)
+    const fileName = `${face.id}.jpg`
+    const filePath = path.join(personDir, fileName)
+    await faceImage.write(`${personDir}/${face.id}.jpg`)
+
+    return filePath
+  } catch (error) {
+    logger.error(`Failed to extract face ${face.id}: ${error}`)
+    return null
+  }
 }
 
 async function savePersonThumbnail(client: ImmichClient, personId: string, personDir: string) {
@@ -165,7 +201,7 @@ async function savePersonThumbnail(client: ImmichClient, personId: string, perso
     const filePath = path.join(personDir, `${personId}-thumb.jpg`)
     await fs.writeFile(filePath, thumbnail)
   } catch (error) {
-    console.error(`Failed to save thumbnail for person ${personId}:`, error)
+    logger.error(`Failed to save thumbnail for person ${personId}: ${error}`)
   }
 }
 

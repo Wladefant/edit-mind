@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import { spawn, ChildProcess } from 'child_process'
+import { logger } from '../services/logger'
 
 const ensureBinaryPermissions = async (binaryPath: string): Promise<void> => {
   try {
@@ -10,7 +11,7 @@ const ensureBinaryPermissions = async (binaryPath: string): Promise<void> => {
       await chmod(binaryPath, 0o755)
     }
   } catch (error) {
-    console.warn(`Failed to set permissions for ${binaryPath}:`, error)
+    logger.warn(`Failed to set permissions for ${binaryPath}:` + error)
   }
 }
 
@@ -21,11 +22,11 @@ export const validateBinaries = async (): Promise<void> => {
   if (!ffprobeInstaller.path) {
     throw new Error('FFprobe binary not found.')
   }
-  
+
   // Ensure binaries have execute permissions
   await ensureBinaryPermissions(ffmpegInstaller.path)
   await ensureBinaryPermissions(ffprobeInstaller.path)
-  
+
   if (!existsSync(ffmpegInstaller.path)) {
     throw new Error(`FFmpeg binary not found at path: ${ffmpegInstaller.path}`)
   }

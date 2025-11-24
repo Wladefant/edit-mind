@@ -1,6 +1,7 @@
 import fetch from 'node-fetch'
 import * as fs from 'fs/promises'
 import { CACHE_FILE, CACHE_DURATION } from '../constants'
+import { logger } from '../services/logger'
 
 interface LocationCache {
   [key: string]: {
@@ -124,7 +125,7 @@ export async function getLocationName(location: string): Promise<string> {
 
   if (!response.ok) {
     const errorBody = await response.text()
-    console.error('Nominatim error:', errorBody)
+    logger.error('Geocoding failed: ' + errorBody)
     throw new Error(`Geocoding failed: ${response.status} - ${errorBody}`)
   }
 

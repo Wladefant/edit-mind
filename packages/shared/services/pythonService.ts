@@ -4,8 +4,9 @@ import { spawn, ChildProcess } from 'child_process'
 import WebSocket from 'ws'
 import { Analysis, AnalysisProgress } from '../types/analysis'
 import { IS_WIN, MAX_RESTARTS, PYTHON_SCRIPT, RESTART_BACKOFF_MS, VENV_PATH } from '../constants'
-import { FaceIndexingProgress } from '../types/face'
-import { MatchResult } from '../types/face'
+import { FaceIndexingProgress, FaceMatchingProgress, FindMatchingFacesResponse } from '../types/face'
+import { TranscriptionProgress } from '../types/transcription'
+import { logger } from './logger'
 
 class PythonService {
   private static instance: PythonService
@@ -35,12 +36,12 @@ class PythonService {
 
   public async start(): Promise<string> {
     if (this.startPromise) {
-      console.debug('Python service already starting, waiting...')
+      logger.debug('Python service already starting, waiting...')
       return this.startPromise
     }
 
     if (this.isRunning && this.client && this.client.readyState === WebSocket.OPEN) {
-      console.debug('Python service already connected, reusing connection')
+      logger.debug('Python service already connected, reusing connection')
       return this.serviceUrl
     }
 
@@ -55,7 +56,7 @@ class PythonService {
 
   private async _doStart(): Promise<string> {
     try {
-      console.debug('Attempting to connect to existing Python service...')
+      logger.debug('Attempting to connect to existing Python service...')
       if (this.client) {
         this.client.removeAllListeners()
         this.client.close()
@@ -63,10 +64,10 @@ class PythonService {
       }
       await this.connectToWebSocket()
       this.isRunning = true
-      console.debug('✅ Connected to existing Python service')
+      logger.debug('✅ Connected to existing Python service')
       return this.serviceUrl
     } catch {
-      console.debug('No existing service found, spawning new one...')
+      logger.debug('No existing service found, spawning new one...')
     }
 
     const venvPath = VENV_PATH
@@ -76,7 +77,7 @@ class PythonService {
 
     const servicePath = PYTHON_SCRIPT
 
-    console.debug(`Spawning Python service: ${pythonExecutable} ${servicePath}`)
+    logger.debug(`Spawning Python service: ${pythonExecutable} ${servicePath}`)
 
     this.serviceProcess = spawn(pythonExecutable, [servicePath, '--port', this.port, '--host', '0.0.0.0'], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -87,46 +88,46 @@ class PythonService {
       throw new Error('Failed to spawn Python service process')
     }
 
-    console.debug(`Python service spawned with PID: ${this.serviceProcess.pid}`)
+    logger.debug(`Python service spawned with PID: ${this.serviceProcess.pid}`)
 
     this.serviceProcess.stdout?.on('data', (data) => {
-      console.debug(`[PythonService STDOUT]: ${data.toString().trim()}`)
+      logger.debug(`[PythonService STDOUT]: ${data.toString().trim()}`)
     })
 
     this.serviceProcess.stderr?.on('data', (data) => {
-      console.debug(`[PythonService STDERR]: ${data.toString().trim()}`)
+      logger.debug(`[PythonService STDERR]: ${data.toString().trim()}`)
     })
 
     this.serviceProcess.on('error', (error) => {
-      console.error('Python service process error:', error)
+      logger.error('Python service process error: ' + error)
     })
 
     this.serviceProcess.on('exit', (code, signal) => {
-      console.error(`Python service exited with code ${code}, signal ${signal}`)
+      logger.error(`Python service exited with code ${code}, signal ${signal}`)
       this.isRunning = false
       this.serviceProcess = null
       this.handleCrash()
     })
 
-    console.debug('Waiting for Python service to be ready...')
+    logger.debug('Waiting for Python service to be ready...')
     const maxAttempts = 15
     const delayMs = 1000
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.debug(`Connection attempt ${attempt}/${maxAttempts}...`)
+        logger.debug(`Connection attempt ${attempt}/${maxAttempts}...`)
         await this.connectToWebSocket()
         this.isRunning = true
         this.restartCount = 0
-        console.debug('✅ Connected to the Python service')
+        logger.debug('✅ Connected to the Python service')
         return this.serviceUrl
       } catch {
         if (attempt === maxAttempts) {
-          console.error('Failed to connect to Python service after max attempts')
+          logger.error('Failed to connect to Python service after max attempts')
           this.stop()
           throw new Error(`Python service failed to start within ${maxAttempts * delayMs}ms`)
         }
-        console.debug(`Attempt ${attempt} failed, retrying in ${delayMs}ms...`)
+        logger.debug(`Attempt ${attempt} failed, retrying in ${delayMs}ms...`)
         await new Promise((resolve) => setTimeout(resolve, delayMs))
       }
     }
@@ -150,6 +151,7 @@ class PythonService {
 
   public analyzeVideo(
     videoPath: string,
+    job_id: string,
     onProgress: (progress: AnalysisProgress) => void,
     onResult: (result: Analysis) => void,
     onError: (error: Error) => void
@@ -174,7 +176,7 @@ class PythonService {
 
     const message = {
       type: 'analyze',
-      payload: { video_path: videoPath },
+      payload: { video_path: videoPath, job_id },
     }
 
     this.client.send(JSON.stringify(message))
@@ -183,7 +185,8 @@ class PythonService {
   public async transcribe(
     videoPath: string,
     jsonFilePath: string,
-    onProgress: (progress: any) => void,
+    job_id: string,
+    onProgress: (progress: TranscriptionProgress) => void,
     onComplete: (result: any) => void,
     onError: (error: Error) => void
   ): Promise<void> {
@@ -211,13 +214,14 @@ class PythonService {
 
     const message = {
       type: 'transcribe',
-      payload: { video_path: videoPath, json_file_path: jsonFilePath },
+      payload: { video_path: videoPath, json_file_path: jsonFilePath, job_id },
     }
 
     this.client.send(JSON.stringify(message))
   }
 
   public reindexFaces(
+    specificFaces: { name: string; image_path: string }[],
     onProgress: (progress: FaceIndexingProgress) => void,
     onComplete: (result: any) => void,
     onError: (error: Error) => void
@@ -233,6 +237,7 @@ class PythonService {
 
     const message = {
       type: 'reindex_faces',
+      specific_faces: specificFaces,
     }
 
     this.client.send(JSON.stringify(message))
@@ -241,8 +246,8 @@ class PythonService {
     personName: string,
     referenceImages: string[],
     unknownFacesDir: string,
-    onProgress: (progress: any) => void,
-    onComplete: (result: { matches: MatchResult[]; matches_found: number }) => void,
+    onProgress: (progress: FaceMatchingProgress) => void,
+    onComplete: (result: FindMatchingFacesResponse) => void,
     onError: (error: Error) => void
   ): void {
     if (!this.isRunning || !this.client) {
@@ -269,7 +274,7 @@ class PythonService {
         person_name: personName,
         reference_images: referenceImages,
         unknown_faces_dir: unknownFacesDir,
-        tolerance: 0.6,
+        tolerance: 0.4,
       },
     }
 
@@ -297,24 +302,24 @@ class PythonService {
 
       this.client.on('open', () => {
         clearTimeout(timeout)
-        console.debug('✅ WebSocket connection established.')
+        logger.debug('✅ WebSocket connection established.')
         resolve()
       })
 
       this.client.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString())
-          const { type, payload } = message
+          const { type, payload, job_id } = message
 
           const callback = this.messageCallbacks.get(type)
 
           if (callback) {
-            callback(payload)
+            callback({ ...payload, job_id })
           } else {
-            console.warn(`⚠️ No callback registered for message type: ${type}`)
+            logger.warn(`⚠️ No callback registered for message type: ${type}`)
           }
         } catch (error) {
-          console.error('❌ Error processing message:', error)
+          logger.error('❌ Error processing message: ' + error)
         }
       })
 
@@ -336,9 +341,9 @@ class PythonService {
     if (this.restartCount < MAX_RESTARTS) {
       this.restartCount++
       const delay = this.restartCount * RESTART_BACKOFF_MS
-      setTimeout(() => this.start().catch((err) => console.error('Restart failed:', err)), delay)
+      setTimeout(() => this.start().catch((err) => logger.error('Restart failed:', err)), delay)
     } else {
-      console.error('Python service has crashed too many times. Will not restart.')
+      logger.error('Python service has crashed too many times. Will not restart.')
     }
   }
 }

@@ -1,4 +1,5 @@
 import fs from 'fs'
+import { logger } from '../services/logger'
 
 export const validateFile = async (filePath: string): Promise<void> => {
   try {
@@ -15,11 +16,10 @@ export const cleanupFiles = (files: string[]): void => {
         fs.unlinkSync(file)
       }
     } catch (error) {
-      console.warn(`Failed to delete file ${file}:`, error instanceof Error ? error.message : 'Unknown error')
+      logger.warn(`Failed to delete file ${file}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   })
 }
-
 
 export const ensureDirectoryExists = (dirPath: string): void => {
   if (!fs.existsSync(dirPath)) {
