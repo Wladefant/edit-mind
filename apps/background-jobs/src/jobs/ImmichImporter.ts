@@ -11,12 +11,12 @@ async function processImmichImporterJob(job: Job<ImmichImporterJobData>) {
   try {
     const integration = await prisma.integration.findUnique({
       where: { id: job.data.integrationId },
-      select: { immichApiKey: true },
     })
+    if (!integration) throw new Error('Integration not found')
     const apiKey = decryptApiKey(integration.immichApiKey)
-    await getAllImmichFaces({ baseUrl: integration.immichBaseUrl, apiKey })
+    const facesFiles = await getAllImmichFaces({ baseUrl: integration.immichBaseUrl, apiKey })
     if (!pythonService.isServiceRunning) await pythonService.start()
-    await reindexFaces()
+    await reindexFaces(facesFiles)
   } catch (error) {
     console.error(error)
   }
