@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useMemo } from 'react';
 import { VideoResults } from './VideoResults'
 import type { Scene } from '@shared/schemas'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -7,9 +7,10 @@ import { Film } from 'lucide-react'
 interface StitcherProps {
   selectedScenes: Set<string>
   toggleSceneSelection: (sceneId: string) => void
-  stitchSelectedScenes: (messageId: string) => Promise<void>
+  stitchSelectedScenes: (messageId: string) => void
   outputScenes: Scene[]
   messageId: string
+  isStitching: boolean
 }
 
 export const Stitcher: React.FC<StitcherProps> = ({
@@ -18,23 +19,16 @@ export const Stitcher: React.FC<StitcherProps> = ({
   stitchSelectedScenes,
   outputScenes,
   messageId,
+  isStitching
 }) => {
-  const [isStitching, setIsStitching] = useState(false)
-
   const selectedScenesData = useMemo(() => {
     return outputScenes.filter((scene) => selectedScenes.has(scene.id))
   }, [outputScenes, selectedScenes])
 
   const handleStitch = async () => {
     if (selectedScenes.size === 0) return
-    setIsStitching(true)
-    try {
-      await stitchSelectedScenes(messageId)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsStitching(false)
-    }
+
+    stitchSelectedScenes(messageId)
   }
 
   return (
@@ -60,7 +54,7 @@ export const Stitcher: React.FC<StitcherProps> = ({
               <div className="flex items-end gap-1">
                 {selectedScenesData.slice(0, 5).map((scene, i) => {
                   const stitchDelay = i * 1.2 // Each scene takes 1.2s to stitch
-                  
+
                   return (
                     <React.Fragment key={scene.id}>
                       <motion.div
@@ -112,7 +106,7 @@ export const Stitcher: React.FC<StitcherProps> = ({
                           <motion.div
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-linear-to-b from-transparent via-blue-500 to-transparent"
                             initial={{ opacity: 0, scaleY: 0 }}
-                            animate={{ 
+                            animate={{
                               opacity: [0, 1, 0],
                               scaleY: [0, 1, 1],
                             }}
@@ -190,9 +184,7 @@ export const Stitcher: React.FC<StitcherProps> = ({
                 >
                   <Film className="w-10 h-10 text-gray-400 dark:text-neutral-500" />
                   <div className="text-center">
-                    <div className="text-xs font-medium text-gray-900 dark:text-white mb-1">
-                      Final Video
-                    </div>
+                    <div className="text-xs font-medium text-gray-900 dark:text-white mb-1">Final Video</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                       {selectedScenesData.length} scene{selectedScenesData.length !== 1 ? 's' : ''}
                     </div>
@@ -232,7 +224,12 @@ export const Stitcher: React.FC<StitcherProps> = ({
                 className="text-sm text-gray-500 dark:text-gray-400"
                 key={Math.floor(Date.now() / 1200) % (selectedScenesData.length + 1)}
               >
-                Processing scene {Math.min((Math.floor(Date.now() / 1200) % (selectedScenesData.length + 1)) + 1, selectedScenesData.length)} of {selectedScenesData.length}
+                Processing scene{' '}
+                {Math.min(
+                  (Math.floor(Date.now() / 1200) % (selectedScenesData.length + 1)) + 1,
+                  selectedScenesData.length
+                )}{' '}
+                of {selectedScenesData.length}
               </motion.p>
 
               <div className="flex items-center justify-center gap-1.5 pt-2">

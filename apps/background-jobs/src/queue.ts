@@ -41,3 +41,14 @@ export const immichImporterQueue = new Queue('immich-importer', {
   },
 })
 
+export const videoStitcherQueue = new Queue('video-stitcher', {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+  },
+})
+

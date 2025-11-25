@@ -1,7 +1,5 @@
 import type { ActionFunction } from 'react-router'
 import { prisma } from '~/services/database'
-import { stitchVideos } from '@shared/utils/sticher'
-import { getVideoWithScenesBySceneIds } from '@shared/services/vectorDb'
 
 export const action: ActionFunction = async ({ request, params }) => {
   const messageId = params.id
@@ -29,25 +27,31 @@ export const action: ActionFunction = async ({ request, params }) => {
     return new Response('selectedSceneIds must be a non-empty array', { status: 400 })
   }
   try {
-    const outputScenes = await getVideoWithScenesBySceneIds(selectedSceneIds)
-    if (!outputScenes || outputScenes.length === 0) {
-      return new Response('No scenes found for the provided IDs', { status: 404 })
-    }
+    const backgroundJobsUrl = process.env.BACKGROUND_JOBS_URL || 'http://localhost:4000'
 
-    const stitchedVideoPath = await stitchVideos(outputScenes, `${messageId}.mp4`)
+    await fetch(`${backgroundJobsUrl}/stitcher`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        selectedSceneIds,
+        messageId,
+        chatId: message.chatId,
+      }),
+    })
 
     const messageAssistant = await prisma.chatMessage.create({
       data: {
         chatId: message.chatId,
         sender: 'assistant',
-        text: 'Here’s your stitched video!',
-        stitchedVideoPath,
+        text: 'I’m creating your video, I’ll let you know when it’s ready!',
       },
     })
 
     return messageAssistant
   } catch (error) {
     console.error(error)
-    return { error: 'Error creating your stitched video' }
+    return { error: 'Error queuing your video for stitching' }
   }
 }
