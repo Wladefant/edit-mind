@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react'
 import { useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
 import { CustomVideoPlayer } from '~/features/customVideoPlayer/components'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
-import { getByVideoSource, updateScenesSource } from '@shared/services/vectorDb'
+import { getByVideoSource, updateMetadata, updateScenesSource } from '@shared/services/vectorDb'
 import { Sidebar } from '~/features/shared/components/Sidebar'
 import { existsSync } from 'fs'
 import { RelinkVideo } from '~/features/videos/components/RelinkVideo'
 import { getUser } from '~/services/user.sever'
 import { prisma } from '~/services/database'
 import fs from 'fs/promises'
+import { videoActionSchema } from '~/features/videos/schemas'
+import { Check, AlertCircle, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url)
@@ -31,31 +34,57 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   try {
     const user = await getUser(request)
-    const data = await request.formData()
-    const oldSource = data.get('oldSource')?.toString()
-    const newSource = data.get('newSource')?.toString()
-
     if (!user) return { success: false, error: 'No user authenticated' }
-    if (!newSource || !oldSource) return { success: false, error: 'No path provided' }
 
-    try {
-      await fs.access(newSource)
+    const form = await request.formData()
+    const parsed = videoActionSchema.safeParse(Object.fromEntries(form))
+    if (!parsed.success) {
+      console.error(parsed.error)
+      return { success: false, error: 'Invalid action payload' }
+    }
+    const action = parsed.data
 
-      await prisma.job.updateMany({
-        where: { videoPath: oldSource },
-        data: { videoPath: newSource },
-      })
+    if (action.intent === 'update-aspect-ratio') {
+      try {
+        const scenes = await getByVideoSource(action.source)
+        const modifiedScenes = scenes.map((scene) => ({
+          ...scene,
+          aspect_ratio: action.newRatio,
+        }))
 
-      await updateScenesSource(oldSource, newSource)
-      return { success: true, redirectLink: `/app/videos?source=${newSource}` }
-    } catch {
-      return { success: false, error: 'Failed to access or create folder/video' }
+        for (const scene of modifiedScenes) {
+          await updateMetadata(scene)
+        }
+        return { success: true, message: 'Aspect ratio updated successfully', newRatio: action.newRatio }
+      } catch (error) {
+        console.error(error)
+        return { success: false, error: 'Failed to update video aspect ratio' }
+      }
+    }
+
+    if (action.intent === 'relink-video') {
+      const { oldSource, newSource } = action
+
+      try {
+        await fs.access(newSource)
+
+        await prisma.job.updateMany({
+          where: { videoPath: oldSource },
+          data: { videoPath: newSource },
+        })
+
+        await updateScenesSource(oldSource, newSource)
+        return { success: true, redirectLink: `/app/videos?source=${newSource}` }
+      } catch {
+        return { success: false, error: 'Failed to access or create folder/video' }
+      }
     }
   } catch (error) {
     console.error(error)
-    return { success: false, error: 'Failed to relink video' }
+    return { success: false, error: 'Failed to update video' }
   }
 }
+
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   if (!data?.source) {
     return [{ title: 'Video not found | Edit Mind' }]
@@ -69,9 +98,12 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
     },
   ]
 }
+
 export default function Video() {
   const data = useLoaderData<typeof loader>()
   const relinkFetcher = useFetcher()
+  const aspectFetcher = useFetcher()
+
   const navigate = useNavigate()
 
   const [defaultStartTime, setDefaultStartTime] = useState(0)
@@ -80,9 +112,12 @@ export default function Video() {
   const [relinkModalOpen, setRelinkModalOpen] = useState(false)
   const [relinkSuccess, setRelinkSuccess] = useState(false)
 
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState(activeScene?.aspect_ratio || '16:9')
+
   const onRelink = (oldSource: string, newSource: string) => {
-    relinkFetcher.submit({ oldSource, newSource }, { method: 'post', action: '/app/videos' })
+    relinkFetcher.submit({ oldSource, newSource, intent: 'relink-video' }, { method: 'post', action: '/app/videos' })
   }
+
   useEffect(() => {
     if (relinkFetcher.data) {
       if ('redirectLink' in relinkFetcher.data) {
@@ -94,15 +129,27 @@ export default function Video() {
         alert(relinkFetcher.data.error)
       }
     }
-  }, [navigate, relinkFetcher])
+  }, [navigate, relinkFetcher.data])
+
+  useEffect(() => {
+    if (aspectFetcher.data) {
+      if (aspectFetcher.data.success) {
+        if (aspectFetcher.data.newRatio) {
+          setSelectedAspectRatio(aspectFetcher.data.newRatio)
+        }
+      }
+    }
+  }, [aspectFetcher.data])
+
   useEffect(() => {
     const time = Math.round(currentTime * 100) / 100
     const scene = data.scenes.find((scene) => time >= scene.startTime && time < scene.endTime)
 
     if (scene && scene.id !== activeScene?.id) {
       setActiveScene(scene)
+      setSelectedAspectRatio(scene.aspect_ratio || '16:9')
     }
-  }, [currentTime, data.scenes, activeScene])
+  }, [currentTime, data.scenes, activeScene?.id])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -110,6 +157,10 @@ export default function Video() {
 
       const videoEl = document.querySelector('video')
       if (!videoEl) return
+
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+        return
+      }
 
       switch (e.code) {
         case 'Space':
@@ -122,23 +173,27 @@ export default function Video() {
           break
         case 'ArrowRight':
           {
+            e.preventDefault()
             const currentIndex = data.scenes.findIndex((s) => s.id === activeScene.id)
             if (currentIndex < data.scenes.length - 1) {
               const nextScene = data.scenes[currentIndex + 1]
               videoEl.currentTime = nextScene.startTime
               setActiveScene(nextScene)
               setDefaultStartTime(nextScene.startTime)
+              setSelectedAspectRatio(nextScene.aspect_ratio || '16:9')
             }
           }
           break
         case 'ArrowLeft':
           {
+            e.preventDefault()
             const currentIndex = data.scenes.findIndex((s) => s.id === activeScene.id)
             if (currentIndex > 0) {
               const prevScene = data.scenes[currentIndex - 1]
               videoEl.currentTime = prevScene.startTime
               setActiveScene(prevScene)
               setDefaultStartTime(prevScene.startTime)
+              setSelectedAspectRatio(prevScene.aspect_ratio || '16:9')
             }
           }
           break
@@ -148,6 +203,18 @@ export default function Video() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [activeScene, data.scenes])
+
+  const onUpdateAspectRatio = () => {
+    if (!selectedAspectRatio) return
+
+    aspectFetcher.submit(
+      { newRatio: selectedAspectRatio, intent: 'update-aspect-ratio', source: data.source },
+      { method: 'post', action: '/app/videos' }
+    )
+  }
+
+  const isUpdatingAspectRatio = aspectFetcher.state !== 'idle'
+  const hasAspectRatioChanged = selectedAspectRatio !== activeScene?.aspect_ratio
 
   return (
     <DashboardLayout sidebar={<Sidebar />}>
@@ -163,14 +230,23 @@ export default function Video() {
               onClose={() => setRelinkModalOpen(false)}
               onRelink={onRelink}
             />
-            {relinkSuccess && (
-              <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-lg text-green-800 dark:text-green-200">
-                Video has been successfully relinked!
-              </div>
-            )}
+
+            <AnimatePresence>
+              {relinkSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-lg flex items-center gap-2"
+                >
+                  <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <span className="text-green-800 dark:text-green-200">Video has been successfully relinked!</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {!data.videoExist ? (
-              <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <span className="text-yellow-800 dark:text-yellow-200">Video file is missing. Please relink.</span>
                 <button
                   onClick={() => setRelinkModalOpen(true)}
@@ -188,6 +264,79 @@ export default function Video() {
                 onTimeUpdate={setCurrentTime}
               />
             )}
+
+            <div className="p-4 rounded-xl border border-gray-300 dark:border-gray-800 bg-white dark:bg-gray-900/60 backdrop-blur-md shadow-sm">
+              <h5 className="text-sm font-semibold text-gray-800 dark:text-gray-300 mb-3">Update Aspect Ratio</h5>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <select
+                  name="newRatio"
+                  value={selectedAspectRatio}
+                  onChange={(e) => {
+                    setSelectedAspectRatio(e.target.value)
+                  }}
+                  disabled={isUpdatingAspectRatio}
+                  className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select ratio</option>
+                  <option value="16:9">16:9 (Landscape)</option>
+                  <option value="9:16">9:16 (Portrait)</option>
+                  <option value="1:1">1:1 (Square)</option>
+                  <option value="4:5">4:5 (Portrait)</option>
+                  <option value="21:9">21:9 (Ultrawide)</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={onUpdateAspectRatio}
+                  disabled={isUpdatingAspectRatio || !hasAspectRatioChanged || !selectedAspectRatio}
+                  className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black rounded-full text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]"
+                >
+                  {isUpdatingAspectRatio ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update'
+                  )}
+                </button>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {aspectFetcher.data?.success && (
+                  <motion.div
+                    key="success"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 flex items-center gap-2 text-green-600 dark:text-green-400 text-sm"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Aspect ratio updated successfully!</span>
+                  </motion.div>
+                )}
+
+                {aspectFetcher.data?.error && (
+                  <motion.div
+                    key="error"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 flex items-center gap-2 text-red-600 dark:text-red-400 text-sm"
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{aspectFetcher.data?.error || 'Failed to update aspect ratio'}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {hasAspectRatioChanged && !isUpdatingAspectRatio && (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Current: {activeScene?.aspect_ratio || 'Not set'} → New: {selectedAspectRatio}
+                </p>
+              )}
+            </div>
 
             {activeScene && (
               <div className="rounded-xl border border-gray-300 dark:border-gray-800 bg-white/80 dark:bg-gray-900/60 backdrop-blur-md p-6 shadow-sm transition">
@@ -228,8 +377,9 @@ export default function Video() {
                       <p>
                         <span className="font-semibold">Aspect Ratio:</span> {activeScene.aspect_ratio || 'N/A'}
                       </p>
-                      <p>
-                        <span className="font-semibold">Source:</span> {activeScene.source}
+                      <p className="col-span-2 sm:col-span-1">
+                        <span className="font-semibold">Source:</span>{' '}
+                        <span className="text-xs truncate">{activeScene.source.split('/').pop()}</span>
                       </p>
                     </div>
                   </div>
@@ -269,7 +419,7 @@ export default function Video() {
                   </div>
                 )}
 
-                {activeScene.detectedText?.length > 0 && (
+                {activeScene.detectedText && activeScene.detectedText.length > 0 && (
                   <div className="mt-6">
                     <h5 className="text-sm font-semibold text-gray-800 dark:text-gray-300 mb-2">Detected Text:</h5>
                     <div className="flex flex-wrap gap-2">
@@ -289,16 +439,20 @@ export default function Video() {
           </div>
 
           <div>
-            <h2 className="text-2xl font-semibold text-black dark:text-white mb-4">Scenes</h2>
+            <h2 className="text-2xl font-semibold text-black dark:text-white mb-4">Scenes ({data.scenes.length})</h2>
             <div className="space-y-4">
-              {data.scenes.map((scene) => {
-                const isActive = scene.id === activeScene.id
+              {data.scenes.map((scene, index) => {
+                const isActive = scene.id === activeScene?.id
                 return (
-                  <div
+                  <motion.div
                     key={`${scene.startTime}_${scene.endTime}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.02 }}
                     onClick={() => {
                       setActiveScene(scene)
                       setDefaultStartTime(scene.startTime + 0.1)
+                      setSelectedAspectRatio(scene.aspect_ratio || '16:9')
                     }}
                     className={`flex items-center gap-4 p-2 rounded-lg cursor-pointer transition
                     ${
@@ -309,13 +463,16 @@ export default function Video() {
                   >
                     <img
                       src={'/thumbnails/' + scene.thumbnailUrl}
+                      alt={`Scene ${index + 1}`}
                       className={`w-24 h-16 object-cover rounded-md transition ${
                         isActive ? 'ring-2 ring-gray-400' : ''
                       }`}
                     />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p
-                        className={`font-medium transition ${isActive ? 'text-gray-600 dark:text-gray-300' : 'text-black dark:text-white'}`}
+                        className={`font-medium transition truncate ${
+                          isActive ? 'text-gray-600 dark:text-gray-300' : 'text-black dark:text-white'
+                        }`}
                       >
                         {scene.description}
                       </p>
@@ -323,7 +480,7 @@ export default function Video() {
                         {scene.startTime}s - {scene.endTime}s
                       </p>
                     </div>
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>
