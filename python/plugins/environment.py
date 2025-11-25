@@ -1,13 +1,16 @@
 from collections import Counter
-from typing import List, Dict, Any
+from typing import List, Dict, Optional, Union
 from dataclasses import dataclass, asdict
 import numpy as np
-from plugins.base import AnalyzerPlugin
+from plugins.base import AnalyzerPlugin, FrameAnalysis, PluginResult
+from PIL import Image
+import torch
+from transformers import BlipProcessor, BlipForConditionalGeneration
 
 
 @dataclass
 class SceneContext:
-    """Scene environment analysis"""
+    """Scene environment analysis."""
     environment: str
     environment_confidence: float
     object_distribution: Dict[str, int]
@@ -15,58 +18,56 @@ class SceneContext:
 
 
 class EnvironmentPlugin(AnalyzerPlugin):
-    """
-    A plugin for analyzing the scene environment from detected objects.
-    Depends on object detection data from ObjectDetectionPlugin.
-    """
+    """Zero-shot environment classifier using AI-generated captions (BLIP)."""
 
-    CATEGORIES = {
-        'aquatic': ['boat', 'surfboard', 'person'],  # Swimming/water activities
-        'urban': ['car', 'truck', 'bus', 'traffic light', 'stop sign', 'parking meter'],
-        'indoor': ['chair', 'couch', 'tv', 'laptop', 'keyboard', 'mouse', 'bed', 'dining table'],
-        'outdoor_nature': ['bicycle', 'kite', 'frisbee', 'sports ball', 'bird'],
-        'commercial': ['bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl']
-    }
-
-    MIN_CONFIDENCE_THRESHOLD = 0.05  # Lowered threshold for better classification
     OBJECT_CONFIDENCE_THRESHOLD = 0.4
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Union[str, bool, int, float]]):
         super().__init__(config)
-        self.scene_context = None
+        self.captions: List[str] = []
+        self.detected_objects: List[str] = []
+        self.scene_context: Optional[SceneContext] = None
+        self.processor: Optional[BlipProcessor] = None
+        self.model: Optional[BlipForConditionalGeneration] = None
 
-    def setup(self):
-        """
-        No setup required for this plugin.
-        """
-        pass
+    def setup(self) -> None:
+        """Load BLIP captioning model."""
+        self.processor = BlipProcessor.from_pretrained(
+            "Salesforce/blip-image-captioning-base"
+        )
+        self.model = BlipForConditionalGeneration.from_pretrained(
+            "Salesforce/blip-image-captioning-base"
+        )
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
-        """
-        This plugin does not analyze individual frames.
-        It performs scene-level analysis in analyze_scene().
-        """
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: FrameAnalysis, video_path: str) -> FrameAnalysis:
+        """Caption each frame to understand its environment."""
+        if self.processor is None or self.model is None:
+            return frame_analysis
+            
+        image = Image.fromarray(frame)
+
+        inputs = self.processor(image, return_tensors="pt")
+        with torch.no_grad():
+            out = self.model.generate(**inputs, max_new_tokens=40)
+
+        caption = self.processor.decode(out[0], skip_special_tokens=True)
+        caption = caption.lower()
+
+        self.captions.append(caption)
+        frame_analysis["environment_caption"] = caption
+
+        for obj in frame_analysis.get("objects", []):
+            confidence = obj.get("confidence", 0)
+            if isinstance(confidence, (int, float)) and confidence > self.OBJECT_CONFIDENCE_THRESHOLD:
+                label = obj.get("label")
+                if isinstance(label, str):
+                    self.detected_objects.append(label)
+
         return frame_analysis
 
-    def analyze_scene(self, all_frame_analyses: List[Dict[str, Any]]):
-        """
-        Analyze the environment from all frame objects.
-        """
-        # Collect all detected objects across all frames
-        all_objects = []
-        
-        for frame in all_frame_analyses:
-            # Safely get objects - might not exist if ObjectDetectionPlugin hasn't run
-            objects = frame.get('objects', [])
-            
-            for obj in objects:
-                # Check if object has required fields
-                if isinstance(obj, dict) and 'label' in obj and 'confidence' in obj:
-                    if obj['confidence'] > self.OBJECT_CONFIDENCE_THRESHOLD:
-                        all_objects.append(obj['label'])
-
-        # Handle case with no objects detected
-        if not all_objects:
+    def analyze_scene(self, all_frame_analyses: List[FrameAnalysis]) -> None:
+        """Infer environment from captions and objects."""
+        if not self.captions:
             self.scene_context = SceneContext(
                 environment="unknown",
                 environment_confidence=0.0,
@@ -75,47 +76,80 @@ class EnvironmentPlugin(AnalyzerPlugin):
             )
             return
 
-        # Count object occurrences
-        object_counts = Counter(all_objects)
-        total_objects = sum(object_counts.values())
+        full_text = " ".join(self.captions)
 
-        # Calculate environment scores
-        scores = {}
-        for env, category_objects in self.CATEGORIES.items():
-            score = sum(object_counts.get(obj, 0) for obj in category_objects) / total_objects
-            scores[env] = score
+        environment_keywords: Dict[str, List[str]] = {
+            "beach": ["beach", "ocean", "shore", "sand", "coast", "seaside", "waves"],
+            "forest": ["forest", "woods", "trees", "woodland", "jungle", "rainforest"],
+            "mountain": ["mountain", "hill", "trail", "cliff", "peak", "summit", "alpine"],
+            "desert": ["desert", "sand dunes", "arid", "cactus", "barren"],
+            "snow": ["snow", "ice", "ski", "winter", "frozen", "glacier"],
+            "park": ["park", "grass field", "playground", "garden", "lawn"],
+            "aquatic": ["lake", "river", "sea", "water", "pond", "stream"],
+            "underwater": ["underwater", "coral", "reef", "diving", "submarine"],
+            "urban": ["street", "city", "road", "traffic", "downtown", "building", "sidewalk"],
+            "suburban": ["suburban", "neighborhood", "residential", "driveway", "suburb"],
+            "highway": ["highway", "freeway", "motorway", "expressway"],
+            "parking": ["parking lot", "garage", "parking"],
+            "office": ["office", "desk", "cubicle", "workspace", "conference room"],
+            "home_interior": ["living room", "bedroom", "kitchen", "bathroom", "hallway"],
+            "restaurant": ["restaurant", "cafe", "diner", "dining", "cafeteria"],
+            "store": ["store", "shop", "mall", "retail", "supermarket"],
+            "warehouse": ["warehouse", "storage", "factory", "industrial"],
+            "gym": ["gym", "fitness", "workout", "exercise room"],
+            "hospital": ["hospital", "clinic", "medical", "emergency room"],
+            "school": ["classroom", "school", "university", "library", "campus"],
+            "stadium": ["stadium", "arena", "field", "court", "sports"],
+            "playground": ["playground", "swing", "slide", "playscape"],
+            "airport": ["airport", "terminal", "runway", "hangar"],
+            "train_station": ["train station", "railway", "platform", "subway"],
+            "farm": ["farm", "barn", "field", "crops", "agriculture"],
+            "construction": ["construction", "building site", "scaffolding", "crane"],
+            "tunnel": ["tunnel", "underground passage"],
+            "bridge": ["bridge", "overpass", "viaduct"],
+        }
+        
+        env_scores: Dict[str, int] = {env: 0 for env in environment_keywords}
 
-        # Find primary environment
-        primary_env, confidence = max(scores.items(), key=lambda x: x[1])
+        for env, keywords in environment_keywords.items():
+            for w in keywords:
+                if w in full_text:
+                    env_scores[env] += 1
 
-        # Fallback for low confidence
-        if confidence <= self.MIN_CONFIDENCE_THRESHOLD:
-            primary_env = "general_outdoor"
+        best_env = max(env_scores, key=env_scores.get)
+        best_score = env_scores[best_env]
+
+        total_keywords_found = sum(env_scores.values())
+        confidence = (
+            best_score / total_keywords_found
+            if total_keywords_found > 0 else 0.0
+        )
+
+        if best_score == 0:
+            best_env = "N/A"
             confidence = 0.0
 
+        object_counts = dict(Counter(self.detected_objects))
+
         self.scene_context = SceneContext(
-            environment=primary_env,
+            environment=best_env,
             environment_confidence=float(confidence),
-            object_distribution=dict(object_counts),
+            object_distribution=object_counts,
             total_frames=len(all_frame_analyses)
         )
 
-    def get_results(self) -> Any:
-        """
-        Returns the final scene context analysis.
-        """
+    def get_results(self) -> Optional[Dict[str, Union[str, float, Dict[str, int], int]]]:
         if self.scene_context:
             return asdict(self.scene_context)
         return None
 
-    def get_summary(self) -> Any:
-        """
-        Returns a summary of the environment analysis.
-        """
-        if self.scene_context:
-            return {
-                "primary_environment": self.scene_context.environment,
-                "confidence": self.scene_context.environment_confidence,
-                "top_objects": dict(Counter(self.scene_context.object_distribution).most_common(5))
-            }
-        return None
+    def get_summary(self) -> Optional[Dict[str, Union[str, float, Dict[str, int]]]]:
+        if not self.scene_context:
+            return None
+        return {
+            "primary_environment": self.scene_context.environment,
+            "confidence": self.scene_context.environment_confidence,
+            "top_objects": dict(
+                Counter(self.scene_context.object_distribution).most_common(5)
+            ),
+        }
