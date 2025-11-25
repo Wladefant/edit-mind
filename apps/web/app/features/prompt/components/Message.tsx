@@ -9,7 +9,8 @@ interface MessageProps extends ChatMessage {
   outputScenes: Scene[]
   selectedScenes: Set<string>
   handleSelectScene: (sceneId: string) => void
-  stitchSelectedScenes: (messageId: string) => Promise<void>
+  stitchSelectedScenes: (messageId: string) => void
+  isStitching: boolean
 }
 
 export function Message({
@@ -21,6 +22,7 @@ export function Message({
   handleSelectScene,
   stitchSelectedScenes,
   stitchedVideoPath,
+  isStitching
 }: MessageProps) {
   const isUser = sender === 'user'
 
@@ -76,6 +78,7 @@ export function Message({
             stitchSelectedScenes={stitchSelectedScenes}
             outputScenes={outputScenes}
             messageId={id}
+            isStitching={isStitching}
           />
         </motion.div>
       )}

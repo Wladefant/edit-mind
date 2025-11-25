@@ -7,6 +7,7 @@ import { spawnFFmpeg, validateBinaries } from './ffmpeg'
 import os from 'os'
 import { cleanupFiles, ensureDirectoryExists } from './file'
 import { logger } from '../services/logger'
+import { STITCHED_VIDEOS_DIR } from '../constants'
 
 const DEFAULT_ASPECT_RATIO = '16:9'
 const DEFAULT_FPS = 30
@@ -249,7 +250,7 @@ export async function stitchVideos(
   validateScenes(scenes)
   validateOutputFileName(outputFileName)
 
-  const outputDir = path.resolve(DEFAULT_OUTPUT_DIR)
+  const outputDir = path.resolve(STITCHED_VIDEOS_DIR ||DEFAULT_OUTPUT_DIR)
   ensureDirectoryExists(outputDir)
 
   const outputPath = path.join(outputDir, outputFileName)

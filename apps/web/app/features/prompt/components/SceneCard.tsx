@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import type { Scene } from '@shared/schemas'
 import { Check, Play, Pause } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { humanizeFileName } from '~/features/shared/utils/fileName'
 
 interface SceneCardProps {
   scene: Scene
@@ -142,8 +143,6 @@ export const SceneCard: React.FC<SceneCardProps> = ({
             <video
               ref={videoRef}
               src={scene.source ? `/media/${scene.source}` : undefined}
-              muted
-              loop
               preload="metadata"
               playsInline
               onError={() => setVideoError(true)}
@@ -176,11 +175,8 @@ export const SceneCard: React.FC<SceneCardProps> = ({
 
         <div className="absolute bottom-0 left-0 right-0 p-4 text-white pointer-events-none z-10">
           <span className="font-medium text-base leading-tight truncate drop-shadow-sm block">
-            {scene.source || 'Untitled Scene'}
+            {humanizeFileName(scene.source) || 'Untitled Scene'}
           </span>
-          {scene.description && (
-            <span className="text-sm text-gray-200 drop-shadow-sm line-clamp-1">{scene.description}</span>
-          )}
         </div>
       </div>
     </motion.div>

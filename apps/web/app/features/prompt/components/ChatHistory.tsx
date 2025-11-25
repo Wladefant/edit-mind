@@ -1,9 +1,9 @@
-import { MessageSquare, Home, ChevronLeft, MoreHorizontal, SearchIcon, Users } from 'lucide-react';
+import { MessageSquare, Home, ChevronLeft, MoreHorizontal, SearchIcon, Users } from 'lucide-react'
 import type { Chat } from '@prisma/client'
 import { useState, useMemo } from 'react'
 import { isSameDay } from 'date-fns'
-import { useSession } from '~/features/auth/hooks/useSession';
-import { Link } from '~/features/shared/components/Link';
+import { useSession } from '~/features/auth/hooks/useSession'
+import { Link } from '~/features/shared/components/Link'
 
 interface ChatHistoryProps {
   chats?: Chat[]
@@ -13,7 +13,7 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
   const { session } = useSession()
   const [isCollapsed, setIsCollapsed] = useState(false)
 
-  const { today, yesterday } = useMemo(() => {
+  const { today, yesterday, others } = useMemo(() => {
     const today = new Date()
     const yesterday = new Date()
     yesterday.setDate(today.getDate() - 1)
@@ -21,8 +21,11 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
     const todayChats = chats.filter((chat) => isSameDay(new Date(chat.createdAt), today))
 
     const yesterdayChats = chats.filter((chat) => isSameDay(new Date(chat.createdAt), yesterday))
+    const othersChats = chats.filter(
+      (chat) => !isSameDay(new Date(chat.createdAt), yesterday) && !isSameDay(new Date(chat.createdAt), today)
+    )
 
-    return { today: todayChats, yesterday: yesterdayChats }
+    return { today: todayChats, yesterday: yesterdayChats, others: othersChats }
   }, [chats])
 
   return (
@@ -71,12 +74,7 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
           to="/app/prompt"
           label="New Chat"
         />
-        <Link
-          isCollapsed={isCollapsed}
-          icon={<Users className="w-5 h-5" />}
-          to="/app/training"
-          label="Face Training"
-        />
+        <Link isCollapsed={isCollapsed} icon={<Users className="w-5 h-5" />} to="/app/training" label="Face Training" />
       </nav>
 
       {!isCollapsed && (
@@ -116,7 +114,24 @@ export function ChatHistory({ chats = [] }: ChatHistoryProps) {
               </div>
             )}
 
-            {today.length === 0 && yesterday.length === 0 && (
+            {others.length > 0 && (
+              <div className="border-t mt-4 py-4 dark:border-white/10">
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-300 mb-2 px-3">Previously</h3>
+                <div className="space-y-1">
+                  {others.map((chat) => (
+                    <Link
+                      key={chat.id}
+                      isCollapsed={isCollapsed}
+                      icon={<MessageSquare className="w-5 h-5" />}
+                      to={`/app/prompt/${chat.id}`}
+                      label={chat.title || 'Untitled Chat'}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {today.length === 0 && yesterday.length === 0 && others.length === 0 && (
               <div className="text-center py-8 px-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">No conversations yet</p>
               </div>

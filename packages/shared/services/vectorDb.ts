@@ -1,4 +1,4 @@
-import { ChromaClient, Collection, GetResult, Metadata, Where, WhereDocument } from 'chromadb'
+import { ChromaClient, Collection, Metadata, Where, WhereDocument } from 'chromadb'
 import { EmbeddingInput, CollectionStatistics, Filters } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
@@ -111,7 +111,7 @@ async function getStatistics(): Promise<CollectionStatistics> {
     throw error
   }
 }
-async function getAllDocs(): Promise<GetResult<Metadata>> {
+async function getAllDocs(): Promise<Scene[]> {
   try {
     const { collection } = await createVectorDbClient()
 
@@ -123,7 +123,7 @@ async function getAllDocs(): Promise<GetResult<Metadata>> {
       include: ['metadatas'],
     })
 
-    return allDocs
+    return allDocs.metadatas.map((metadata, index) => metadataToScene(metadata, allDocs.ids[index]))
   } catch (error) {
     logger.error('Error getting docs: ' + error)
     throw error
@@ -181,7 +181,6 @@ const getAllVideosWithScenes = async (
   try {
     const cacheKey = `videos:paginated:${offset}:${limit}:${JSON.stringify(searchFilters || {})}`
 
-    // Try to get from cache first
     const cached = await getCache<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }>(cacheKey)
     if (cached) {
       logger.debug('Cache hit for videos:' + cacheKey)
@@ -469,9 +468,7 @@ async function updateDocuments(scene: Scene): Promise<void> {
     }
 
     const existing = await collection?.get({
-      where: {
-        $and: [{ source: scene?.source }, { startTime: scene?.startTime }, { endTime: scene?.endTime }],
-      },
+      ids: [scene.id],
       include: ['metadatas', 'documents', 'embeddings'],
     })
 
@@ -481,14 +478,17 @@ async function updateDocuments(scene: Scene): Promise<void> {
     }
 
     const vector = await sceneToVectorFormat(scene)
+
+    const embeddings = await getEmbeddings([vector.text])
+
     await collection.update({
       ids: [scene.id],
-      metadatas: [
-        {
-          ...vector.metadata,
-        },
-      ],
+      metadatas: [vector.metadata],
+      documents: [vector.text],
+      embeddings: embeddings,
     })
+
+    logger.debug(scene.id + ' has been updated')
     // Refresh suggestions cache after update exciting videos
     await suggestionCache.refresh()
   } catch (error) {
@@ -498,11 +498,19 @@ async function updateDocuments(scene: Scene): Promise<void> {
 }
 
 async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
-  const { collection } = await createVectorDbClient()
-
-  if (!collection) throw new Error('Collection not initialized')
-
   try {
+    const cacheKey = `videos:metadata`
+
+    const cached = await getCache<VideoMetadataSummary>(cacheKey)
+    if (cached) {
+      logger.debug('Cache hit for metadata:' + cacheKey)
+      return cached
+    }
+
+    const { collection } = await createVectorDbClient()
+
+    if (!collection) throw new Error('Collection not initialized')
+
     const allDocs = await collection?.get({
       include: ['metadatas'],
     })
@@ -521,13 +529,17 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       // Faces
       scene.faces?.forEach((f: string) => {
         const name = f.toLowerCase()
-        facesCount[name] = (facesCount[name] || 0) + 1
+        if (!name.includes('unknown')) {
+          facesCount[name] = (facesCount[name] || 0) + 1
+        }
       })
 
       // Colors
       if (scene.dominantColorName) {
         const name = scene.dominantColorName.toLowerCase()
-        colorsCount[name] = (shotTypesCount[name] || 0) + 1
+        if (!name.includes('n/a')) {
+          colorsCount[name] = (colorsCount[name] || 0) + 1
+        }
       }
 
       // Emotions
@@ -549,7 +561,9 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       // Objects
       scene.objects?.forEach((o: string) => {
         const name = o.toLowerCase()
-        objectsCount[name] = (objectsCount[name] || 0) + 1
+        if (!name.includes('person')) {
+          objectsCount[name] = (objectsCount[name] || 0) + 1
+        }
       })
     })
 
@@ -558,7 +572,7 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
         .sort((a, b) => b[1] - a[1])
         .map(([name]) => ({ name, count: 1 }))
 
-    return {
+    const result = {
       topFaces: getTop(facesCount),
       topColors: getTop(colorsCount),
       topEmotions: getTop(emotionsCount),
@@ -566,6 +580,10 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       topObjects: getTop(objectsCount),
       cameras: getTop(cameraCount),
     }
+
+    await setCache(cacheKey, result, 300)
+
+    return result
   } catch (error) {
     logger.error('Error aggregating metadata from DB: ' + error)
     throw error
@@ -668,7 +686,7 @@ async function updateScenesSource(oldSource: string, newSource: string): Promise
   })
 }
 
-const hybridSearch = async (query: SearchQuery, nResults = 100): Promise<VideoWithScenes[]> => {
+const hybridSearch = async (query: SearchQuery, nResults = undefined): Promise<VideoWithScenes[]> => {
   try {
     const { collection } = await createVectorDbClient()
 

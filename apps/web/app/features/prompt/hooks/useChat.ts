@@ -1,16 +1,24 @@
 import type { ChatMessage } from '@prisma/client'
 import type { Scene } from '@shared/schemas'
-import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useFetcher } from 'react-router-dom'
+
+interface ChatMessageWithScenes extends ChatMessage {
+  outputScenes: Scene[]
+}
 
 export function useChat(chatId?: string) {
-  const [messages, setMessages] = useState<(ChatMessage & { outputScenes: Scene[] })[]>([])
+  const [messages, setMessages] = useState<ChatMessageWithScenes[]>([])
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set())
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const navigate = useNavigate()
+
+  const messagesFetcher = useFetcher<{ messages: ChatMessageWithScenes[] }>()
+  const sendMessageFetcher = useFetcher<{ chatId?: string; message?: ChatMessageWithScenes }>()
+  const stitchFetcher = useFetcher<{ message: ChatMessageWithScenes }>()
+
+  const revalidationIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (!chatId) {
@@ -19,36 +27,38 @@ export function useChat(chatId?: string) {
       return
     }
 
-    async function fetchMessages() {
-      try {
-        const res = await fetch(`/api/chats/${chatId}/messages`)
-        if (!res.ok) throw new Error('Failed to fetch messages')
-        const data = await res.json()
-        setMessages(data)
+    messagesFetcher.load(`/api/chats/${chatId}/messages`)
 
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-        }, 100)
-      } catch (error) {
-        console.error('Error fetching messages:', error)
+    revalidationIntervalRef.current = setInterval(() => {
+      if (messagesFetcher.state === 'idle') {
+        messagesFetcher.load(`/api/chats/${chatId}/messages`)
+      }
+    }, 1000)
+
+    return () => {
+      if (revalidationIntervalRef.current) {
+        clearInterval(revalidationIntervalRef.current)
+        revalidationIntervalRef.current = null
       }
     }
-
-    fetchMessages()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (messagesFetcher.data?.messages) {
+      setMessages(messagesFetcher.data.messages)
+    }
+  }, [messagesFetcher.data])
 
-  const sendMessage = async () => {
+  const isLoading = sendMessageFetcher.state === 'submitting' || sendMessageFetcher.state === 'loading'
+
+  const sendMessage = useCallback(async () => {
     if (!input.trim() || isLoading) return
 
     const prompt = input.trim()
     setInput('')
-    setIsLoading(true)
 
-    const tempUserMessage:(ChatMessage & { outputScenes: Scene[] }) = {
+    const tempUserMessage: ChatMessageWithScenes = {
       id: `temp-${Date.now()}`,
       chatId: chatId || '',
       sender: 'user',
@@ -57,51 +67,44 @@ export function useChat(chatId?: string) {
       createdAt: new Date(),
       updatedAt: new Date(),
       outputScenes: [],
-      stitchedVideoPath: null
+      stitchedVideoPath: null,
     }
 
     setMessages((prev) => [...prev, tempUserMessage])
 
     try {
       if (!chatId) {
-        const res = await fetch(`/api/chats`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt }),
-        })
-
-        if (!res.ok) throw new Error('Failed to create chat')
-
-        const { chatId: newChatId } = await res.json()
-
-        navigate(`/app/prompt/${newChatId}`)
+        sendMessageFetcher.submit(
+          { prompt },
+          {
+            method: 'POST',
+            action: '/api/chats',
+            encType: 'application/json',
+          }
+        )
       } else {
-        const res = await fetch(`/api/chats/${chatId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt }),
-        })
-
-        if (!res.ok) throw new Error('Failed to send message')
-
-        const assistantMessage = await res.json()
-        setMessages((prev) => [...prev, assistantMessage])
+        sendMessageFetcher.submit(
+          { prompt },
+          {
+            method: 'POST',
+            action: `/api/chats/${chatId}/messages`,
+            encType: 'application/json',
+          }
+        )
       }
     } catch (error) {
       console.error('Error sending message:', error)
       setMessages((prev) => prev.filter((m) => m.id !== tempUserMessage.id))
       setInput(prompt)
-    } finally {
-      setIsLoading(false)
     }
-  }
+  }, [input, isLoading, chatId, sendMessageFetcher])
 
-  const handleSuggestionClick = (text: string) => {
+  const handleSuggestionClick = useCallback((text: string) => {
     setInput(text)
     inputRef.current?.focus()
-  }
+  }, [])
 
-  const toggleSceneSelection = (sceneId: string) => {
+  const toggleSceneSelection = useCallback((sceneId: string) => {
     setSelectedScenes((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(sceneId)) {
@@ -111,23 +114,48 @@ export function useChat(chatId?: string) {
       }
       return newSet
     })
-  }
+  }, [])
 
-  const stitchSelectedScenes = async (messageId: string) => {
-    if (selectedScenes.size === 0) return
+  const stitchSelectedScenes = useCallback(
+    async (messageId: string) => {
+      if (selectedScenes.size === 0) return
 
-    const res = await fetch(`/api/messages/${messageId}/stitcher`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selectedSceneIds: Array.from(selectedScenes) }),
-    })
+      stitchFetcher.submit(
+        { selectedSceneIds: Array.from(selectedScenes) },
+        {
+          method: 'POST',
+          action: `/api/messages/${messageId}/stitcher`,
+          encType: 'application/json',
+        }
+      )
+    },
+    [selectedScenes, stitchFetcher]
+  )
 
-    if (!res.ok) throw new Error('Failed to stitch scenes')
-
-    const assistantMessage = await res.json()
-    setMessages((prev) => [...prev, assistantMessage])
+  const clearSelectedScenes = useCallback(() => {
     setSelectedScenes(new Set())
-  }
+  }, [])
+
+  const selectAllScenes = useCallback((sceneIds: string[]) => {
+    setSelectedScenes(new Set(sceneIds))
+  }, [])
+
+  const pauseRevalidation = useCallback(() => {
+    if (revalidationIntervalRef.current) {
+      clearInterval(revalidationIntervalRef.current)
+      revalidationIntervalRef.current = null
+    }
+  }, [])
+
+  const resumeRevalidation = useCallback(() => {
+    if (!chatId || revalidationIntervalRef.current) return
+
+    revalidationIntervalRef.current = setInterval(() => {
+      if (messagesFetcher.state === 'idle') {
+        messagesFetcher.load(`/api/chats/${chatId}/messages`)
+      }
+    }, 1000)
+  }, [chatId, messagesFetcher])
 
   return {
     messages,
@@ -142,5 +170,12 @@ export function useChat(chatId?: string) {
     toggleSceneSelection,
     setSelectedScenes,
     stitchSelectedScenes,
+    clearSelectedScenes,
+    selectAllScenes,
+    pauseRevalidation,
+    resumeRevalidation,
+    isStitching: stitchFetcher.state !== 'idle',
+    isSending: sendMessageFetcher.state !== 'idle',
+    isRefreshing: messagesFetcher.state === 'loading',
   }
 }
