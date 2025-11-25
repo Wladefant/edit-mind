@@ -48,6 +48,7 @@ export default function ChatPage() {
     selectedScenes,
     toggleSceneSelection,
     stitchSelectedScenes,
+    isStitching,
   } = useChat(id)
 
   return (
@@ -64,6 +65,7 @@ export default function ChatPage() {
                   selectedScenes={selectedScenes}
                   handleSelectScene={toggleSceneSelection}
                   stitchSelectedScenes={stitchSelectedScenes}
+                  isStitching={isStitching}
                 />
                 {isLoading && <LoadingIndicator />}
                 <div ref={messagesEndRef} />

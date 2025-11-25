@@ -25,22 +25,27 @@ const ENCODING_SETTINGS = {
   pixelFormat: 'yuv420p',
 } as const
 
-const validateScenes = (scenes: ExportedScene[]): void => {
+const validateScenes = (scenes: ExportedScene[]) => {
   if (scenes.length === 0) {
     throw new Error('At least one scene is required for stitching')
   }
 
-  scenes.forEach((scene, index) => {
-    if (!scene.source) {
-      throw new Error(`Scene ${index}: source path is required`)
-    }
-    if (!fs.existsSync(scene.source)) {
-      throw new Error(`Scene ${index}: source file not found: ${scene.source}`)
-    }
-    if (scene.startTime < 0 || scene.endTime <= scene.startTime) {
-      throw new Error(`Scene ${index}: invalid time range (${scene.startTime}s - ${scene.endTime}s)`)
-    }
-  })
+  scenes
+    .map((scene, index) => {
+      if (!scene.source) {
+        throw new Error(`Scene ${index}: source path is required`)
+      }
+      if (!fs.existsSync(scene.source)) {
+        throw new Error(`Scene ${index}: source file not found: ${scene.source}`)
+      }
+      if (scene.startTime < 0 || scene.endTime <= scene.startTime) {
+        logger.debug(`Scene ${index}: invalid time range (${scene.startTime}s - ${scene.endTime}s)`)
+        return null
+      }
+      return scene
+    })
+    .filter((scene) => scene !== null)
+  return scenes
 }
 
 const validateOutputFileName = (fileName: string): void => {
@@ -247,10 +252,10 @@ export async function stitchVideos(
   targetResolution?: string
 ): Promise<string> {
   validateBinaries()
-  validateScenes(scenes)
+  const validatedScenes = validateScenes(scenes)
   validateOutputFileName(outputFileName)
 
-  const outputDir = path.resolve(STITCHED_VIDEOS_DIR ||DEFAULT_OUTPUT_DIR)
+  const outputDir = path.resolve(STITCHED_VIDEOS_DIR || DEFAULT_OUTPUT_DIR)
   ensureDirectoryExists(outputDir)
 
   const outputPath = path.join(outputDir, outputFileName)
@@ -260,8 +265,8 @@ export async function stitchVideos(
   const dimensions = calculateTargetDimensions(aspectRatio, targetResolution)
 
   try {
-    for (let i = 0; i < scenes.length; i++) {
-      const scene = scenes[i]
+    for (let i = 0; i < validatedScenes.length; i++) {
+      const scene = validatedScenes[i]
       const clipPath = path.join(os.tmpdir(), `clip_${i}_${Date.now()}.mp4`)
       clipPaths.push(clipPath)
 
