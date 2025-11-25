@@ -28,7 +28,7 @@ export interface Filters {
 export interface EmbeddingInput {
   id: string
   text: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, string | number | boolean | undefined>
 }
 
 export interface CollectionStatistics {

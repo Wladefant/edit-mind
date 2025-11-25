@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useFetcher } from 'react-router-dom'
 import lodash from 'lodash'
 import type { VideoWithScenes } from '@shared/types/video'
-import type { SearchStats } from '@shared/types/search'
+import type { SearchStats } from '@shared/types/search';
 import type { Suggestion } from '@shared/services/suggestion'
 
 const { debounce } = lodash
@@ -127,7 +127,6 @@ export function useVideoSearch(): UseVideoSearchResult {
       setShowSuggestions(false)
 
       const newSuggestions = {
-        ...selectedSuggestion,
         [suggestion.type]: suggestion.text,
       }
       setSelectedSuggestion(newSuggestions)
@@ -146,7 +145,7 @@ export function useVideoSearch(): UseVideoSearchResult {
         })
       }, 100)
     },
-    [searchFetcher, selectedSuggestion]
+    [searchFetcher]
   )
 
   const clearSearch = useCallback(() => {

@@ -4,13 +4,14 @@ import { SearchInput } from './SearchInput';
 import { AdvancedSetting } from './AdvancedSetting';
 import { Video } from '@/lib/types/video';
 import { SearchMetadata, VideoConfig } from '@/lib/types/search';
+import { SearchSuggestion } from '@shared/types/search';
 
 interface ChatInputAreaProps {
   prompt: string;
   setPrompt: (prompt: string) => void;
   videos: Video[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  suggestions: any[];
+  suggestions: SearchSuggestion[];
   loadingSuggestions: boolean;
   handleSuggestionClick: (text: string) => void;
   showAdvancedSettings: boolean;

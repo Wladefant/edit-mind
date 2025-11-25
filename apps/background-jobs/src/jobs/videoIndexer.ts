@@ -13,6 +13,7 @@ import { transcribeAudio } from '@shared/utils/transcribe'
 import { pythonService } from '@shared/services/pythonService'
 import { JobStatus, JobStage } from '@prisma/client'
 import { logger } from '@shared/services/logger'
+import { Analysis } from '@shared/types/analysis'
 
 async function ensureDir(dir: string) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -127,7 +128,7 @@ async function processVideo(job: Job<{ videoPath: string; jobId: string; forceRe
 
     const analysisStart = Date.now()
 
-    let analysisData
+    let analysisData: { analysis: Analysis; category: string; }
     if (forceReIndexing || !analysisExists) {
       logger.info({ jobId, videoPath }, '🎥 Starting frame analysis')
       const result = await analyzeVideo(videoPath, jobId, async ({ progress, job_id }) => {
@@ -228,7 +229,7 @@ export const videoIndexerWorker = new Worker('video-indexing', processVideo, {
   maxStalledCount: 2,
 })
 
-videoIndexerWorker.on('failed', async (job, err) => {
+videoIndexerWorker.on('failed', async (job: Job | undefined, err: Error) => {
   logger.error(
     {
       jobId: job?.data?.jobId,

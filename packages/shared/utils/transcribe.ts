@@ -9,7 +9,7 @@ export function transcribeAudio(
   jsonFilePath: string,
   jobId: string,
   onProgress?: ProgressCallback
-): Promise<any> {
+): Promise<void> {
   return new Promise((resolve, reject) => {
     pythonService.transcribe(
       videoPath,

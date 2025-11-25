@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Smile, Frown, Meh, Camera, Package, Play, Pause, ImageOff } from 'lucide-react'
-import { formatDate } from 'date-fns';
+import { formatDate } from 'date-fns'
 import { humanizeSeconds } from '../utils/duration'
 
 interface VideoMetadata {
@@ -19,6 +19,8 @@ interface VideoCardProps {
   createdAt: number
   aspectRatio: string
   metadata?: VideoMetadata
+  initialStartTime?: number
+  forceMetadataLoad?: boolean
 }
 
 const emotionIcons = {
@@ -34,6 +36,8 @@ export function VideoCard({
   createdAt,
   aspectRatio = '16:9',
   metadata,
+  initialStartTime,
+  forceMetadataLoad = false
 }: VideoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -52,12 +56,15 @@ export function VideoCard({
   useEffect(() => {
     const video = videoRef.current
     if (!video || videoError) return
+    const start = initialStartTime ?? 0
 
     const handleTimeUpdate = () => {
-      setProgress((video.currentTime / PREVIEW_DURATION) * 100)
-      if (video.currentTime >= PREVIEW_DURATION) {
+      const relativeTime = video.currentTime - start
+      setProgress((relativeTime / PREVIEW_DURATION) * 100)
+
+      if (relativeTime >= PREVIEW_DURATION) {
         video.pause()
-        video.currentTime = 0
+        video.currentTime = start
         setIsPlaying(false)
         setProgress(0)
       }
@@ -72,7 +79,8 @@ export function VideoCard({
       if (!videoSrc) {
         setVideoSrc(`/media/${source}`)
       }
-      hoverTimeoutRef.current = setTimeout(() => {
+      if (initialStartTime) {
+        video.currentTime = initialStartTime
         video
           .play()
           .then(() => {
@@ -80,7 +88,17 @@ export function VideoCard({
             video.addEventListener('timeupdate', handleTimeUpdate)
           })
           .catch(handleError)
-      }, 500)
+      } else {
+        hoverTimeoutRef.current = setTimeout(() => {
+          video
+            .play()
+            .then(() => {
+              setIsPlaying(true)
+              video.addEventListener('timeupdate', handleTimeUpdate)
+            })
+            .catch(handleError)
+        }, 500)
+      }
     } else {
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
       video.pause()
@@ -97,14 +115,13 @@ export function VideoCard({
       video.removeEventListener('timeupdate', handleTimeUpdate)
       video.removeEventListener('error', handleError)
     }
-  }, [isHovered, videoError, imageError, videoSrc, source])
+  }, [isHovered, videoError, imageError, videoSrc, source, initialStartTime])
 
   const hasMetadata =
     metadata &&
     (metadata.faces?.length || metadata.emotions?.length || metadata.objects?.length || metadata.shotTypes?.length)
 
   const minHeight = aspectRatio === '16:9' ? 'min-h-[250px]' : 'min-h-[350px]'
-
 
   return (
     <motion.div
@@ -193,8 +210,8 @@ export function VideoCard({
               {!videoError && (
                 <video
                   ref={videoRef}
-                  src={videoSrc ?? undefined}
-                  preload="none"
+                  src={forceMetadataLoad ? `/media/${source}`: videoSrc ?? undefined}
+                  preload={forceMetadataLoad ? "metadata": "none"}
                   controls={false}
                   onError={() => setVideoError(true)}
                   className={`

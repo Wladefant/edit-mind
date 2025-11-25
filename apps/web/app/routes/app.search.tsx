@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { type MetaFunction } from 'react-router'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { FilterSidebar } from '~/features/videos/components/FilterSidebar'
@@ -7,21 +7,23 @@ import { SearchResultsGrid } from '~/features/search/components/SearchResultsGri
 import { SearchStats } from '~/features/search/components/SearchStats'
 import { EmptyState } from '~/features/search/components/EmptyState'
 import { useVideoSearch } from '~/features/search/hooks/useVideoSearch'
-import { hybridSearch } from '@shared/services/vectorDb';
+import { hybridSearch } from '@shared/services/vectorDb'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getUser } from '~/services/user.sever'
 import { SearchInput } from '~/features/search/components/SearchInput'
 import type { SearchQuery } from '@shared/types/search'
 import { generateActionFromPrompt } from '@shared/services/gemini'
-import { getSearchStats } from '@shared/utils/search'
-import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion'
+import { getSimpleSearchStats } from '@shared/utils/search';
+import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion';
 import { logger } from '@shared/services/logger'
+import type { SimpleSearchStats, Video } from '@shared/types';
+
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Search | Edit Mind' }]
 }
 
-export async function action({ request }: { request: Request }) {
+export async function action({ request }: { request: Request }): Promise<{ success: boolean, videos?: Video[], stats?: SimpleSearchStats, error?: string }> {
   try {
     const user = await getUser(request)
     const data = await request.formData()
@@ -46,12 +48,12 @@ export async function action({ request }: { request: Request }) {
       console.debug('Generated search query from AI:', searchQuery)
     }
 
-    const videos = await hybridSearch(searchQuery)
+    const videos: Video[] = await hybridSearch(searchQuery)
 
     logger.debug(`We got ${videos.length} videos for your search`)
     const duration = Date.now() - startTime
 
-    const stats = getSearchStats({
+    const stats = getSimpleSearchStats({
       query: searchQuery.description || query,
       finalResultsCount: videos.length,
       durationMs: duration,
@@ -87,6 +89,11 @@ export default function SearchPage() {
   }, [results, page])
 
   const totalPages = Math.ceil(results.length / RESULTS_PER_PAGE)
+  useEffect(() => {
+    if (!isSearching && results.length > 0) {
+      setIsFocused(true)
+    }
+  }, [isSearching, results])
 
   return (
     <DashboardLayout

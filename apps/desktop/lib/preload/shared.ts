@@ -1,6 +1,10 @@
 import type { ElectronAPI, IpcRenderer } from '@electron-toolkit/preload'
 import type { ChannelName, ChannelArgs, ChannelReturn } from '@/lib/conveyor/schemas'
 
+type IpcRendererEvent = Parameters<IpcRenderer['on']>[1] extends (event: infer E, ...args: unknown[]) => unknown
+  ? E
+  : never
+
 export abstract class ConveyorApi {
   protected renderer: IpcRenderer
 
@@ -14,8 +18,11 @@ export abstract class ConveyorApi {
     return this.renderer.invoke(channel, ...args) as Promise<ChannelReturn<T>>
   }
 
-  on = <T extends ChannelName>(channel: T, callback: (...args: ChannelArgs<T>) => void) => {
-    const subscription = (_: unknown, ...args: any[]) => {
+  on = <T extends ChannelName>(
+    channel: T,
+    callback: (...args: ChannelArgs<T>) => void
+  ): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, ...args: unknown[]) => {
       callback(...(args as ChannelArgs<T>))
     }
     this.renderer.on(channel, subscription)

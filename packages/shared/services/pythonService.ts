@@ -15,7 +15,10 @@ class PythonService {
   private serviceUrl: string
   private isRunning = false
   private restartCount = 0
-  private messageCallbacks: Map<string, (payload: any) => void> = new Map()
+  private messageCallbacks: Map<
+    string,
+    (payload: AnalysisProgress | TranscriptionProgress | FaceIndexingProgress | FaceMatchingProgress) => void
+  > = new Map()
   private port: string
   private startPromise: Promise<string> | null = null
 
@@ -187,7 +190,7 @@ class PythonService {
     jsonFilePath: string,
     job_id: string,
     onProgress: (progress: TranscriptionProgress) => void,
-    onComplete: (result: any) => void,
+    onComplete: (result: void) => void,
     onError: (error: Error) => void
   ): Promise<void> {
     if (!this.isRunning || !this.client) {
@@ -223,7 +226,7 @@ class PythonService {
   public reindexFaces(
     specificFaces: { name: string; image_path: string }[],
     onProgress: (progress: FaceIndexingProgress) => void,
-    onComplete: (result: any) => void,
+    onComplete: (result: void) => void,
     onError: (error: Error) => void
   ): void {
     if (!this.isRunning || !this.client) {

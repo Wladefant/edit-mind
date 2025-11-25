@@ -102,7 +102,7 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
   }
 }
 
-export const metadataToScene = (metadata: Record<string, any> | null, id: string): Scene => {
+export const metadataToScene = (metadata: Record<string, unknown> | null, id: string): Scene => {
   if (!metadata) {
     return {
       id: id,
@@ -193,14 +193,14 @@ export const metadataToScene = (metadata: Record<string, any> | null, id: string
     description: metadata.description?.toString() || '',
     shot_type: metadata.shot_type?.toString() || '',
     emotions,
-    createdAt: metadata.createdAt,
+    createdAt: parseInt(metadata.createdAt?.toString() || '0'),
     source: metadata.source?.toString() || '',
     camera: metadata.camera?.toString() || 'N/A',
     dominantColorHex: metadata.dominantColor?.toString() || metadata.dominantColorHex?.toString() || 'N/A',
     dominantColorName: metadata.dominantColorName?.toString() || 'N/A',
     detectedText,
     location: metadata.location?.toString() || 'N/A',
-    duration: metadata.duration,
+    duration: parseInt(metadata.duration?.toString() || '0'),
     detectedTextData,
     transcriptionWords,
     objectsData,
@@ -312,7 +312,7 @@ export const sceneToVectorFormat = async (scene: Scene) => {
 
   const text = await generateVectorDocumentText(scene)
 
-  const metadata: Record<string, any> = {
+  const metadata: Record<string, string | number | boolean | undefined> = {
     source: scene.source,
     thumbnailUrl: scene.thumbnailUrl || '',
     startTime: scene.startTime,

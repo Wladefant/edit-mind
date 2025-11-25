@@ -19,12 +19,7 @@ class SearchSuggestionCache {
   private readonly CACHE_PREFIX = 'search:suggestions:cache:'
   private readonly STATS_KEY = 'search:suggestions:stats'
   private readonly MIN_PREFIX_LENGTH = 2
-  private readonly MAX_PREFIX_LENGTH = 10
-  private readonly MEMORY_CACHE_TTL = 15 * 60 * 1000 // 15 minutes
-  private readonly MAX_MEMORY_CACHE_SIZE = 1000
   private readonly REDIS_KEY_TTL = 7 * 24 * 60 * 60 // 7 days in seconds
-
-  private memoryCache: Map<string, { suggestions: Suggestion[]; timestamp: number }> = new Map()
 
   private readonly STOP_WORDS = new Set([
     'the',
@@ -79,7 +74,7 @@ class SearchSuggestionCache {
 
   private async buildCache(): Promise<void> {
     logger.debug('Building search suggestion cache...')
-    
+
     const allDocs = await getAllDocs()
 
     const faceCounts = new Map<string, number>()
@@ -102,12 +97,12 @@ class SearchSuggestionCache {
       )
 
       if (metadata.camera) {
-        const camera = metadata.camera.toString().toLowerCase()
+        const camera = metadata.camera.toString()
         cameraCounts.set(camera, (cameraCounts.get(camera) || 0) + 1)
       }
 
       if (metadata.shot_type) {
-        const shotType = metadata.shot_type.toString().toLowerCase()
+        const shotType = metadata.shot_type.toString()
         shotTypeCounts.set(shotType, (shotTypeCounts.get(shotType) || 0) + 1)
       }
 
@@ -154,23 +149,17 @@ class SearchSuggestionCache {
     if (!value) return
     const items = Array.isArray(value) ? value : [value]
     items.forEach((item) => {
-      const normalized = item.toString().toLowerCase().trim()
-      // More inclusive: removed 'person' requirement, kept unknown filter
-      if (normalized && normalized.length >= 2 && !normalized.includes('unknown')) {
-        counts.set(normalized, (counts.get(normalized) || 0) + 1)
+      if (item && item.length >= 2 && !item.includes('unknown')) {
+        counts.set(item, (counts.get(item) || 0) + 1)
       }
     })
   }
 
   private extractWords(text: string, counts: Map<string, number>, minLength = 3): void {
-    const words = text
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((word) => word.length >= minLength)
+    const words = text.split(/\s+/).filter((word) => word.length >= minLength)
     words.forEach((word) => {
-      const cleaned = word.replace(/[^\w]/g, '')
-      if (cleaned.length >= minLength && !this.STOP_WORDS.has(cleaned)) {
-        counts.set(cleaned, (counts.get(cleaned) || 0) + 1)
+      if (word.length >= minLength && !this.STOP_WORDS.has(word)) {
+        counts.set(word, (counts.get(word) || 0) + 1)
       }
     })
   }
@@ -181,36 +170,26 @@ class SearchSuggestionCache {
     const total = Array.from(counts.values()).reduce((a, b) => a + b, 0)
 
     for (const [term, count] of counts.entries()) {
-      const normalized = term.toLowerCase()
-      const maxLen = Math.min(normalized.length, this.MAX_PREFIX_LENGTH)
-
       const frequency = count / total
-      const lengthBonus = Math.min(normalized.length / 20, 1)
-      
-      // Improved scoring: prioritize frequency, use logarithmic count
+      const lengthBonus = Math.min(term.length / 20, 1)
+
       const score = frequency * 100 + Math.log10(count + 1) * 10 + lengthBonus * 5
 
-      for (let i = this.MIN_PREFIX_LENGTH; i <= maxLen; i++) {
-        const prefix = normalized.slice(0, i)
-        const key = `${this.CACHE_PREFIX}${prefix}`
+      const prefix = term
+      const key = `${this.CACHE_PREFIX}${prefix}`
 
-        const existing = (await getCache<Suggestion[]>(key)) || []
-        existing.push({ text: term, type, count: score })
-        existing.sort((a, b) => b.count - a.count) // sort by score descending
+      const existing = (await getCache<Suggestion[]>(key)) || []
+      existing.push({ text: term, type, count: score })
+      existing.sort((a, b) => b.count - a.count) // sort by score descending
 
-        await setCache(key, existing.slice(0, 50), this.REDIS_KEY_TTL) // store top 50 suggestions per prefix
-      }
+      await setCache(key, existing.slice(0, 50), this.REDIS_KEY_TTL) // store top 50 suggestions per prefix
     }
   }
 
   async getSuggestions(query: string, limit = 8): Promise<Suggestion[]> {
     if (!this.isInitialized || query.length < this.MIN_PREFIX_LENGTH) return []
 
-    const normalized = query.toLowerCase().trim()
-    const cached = this.memoryCache.get(normalized)
-    if (cached && Date.now() - cached.timestamp < this.MEMORY_CACHE_TTL) {
-      return cached.suggestions.slice(0, limit)
-    }
+    const normalized = query
 
     const key = `${this.CACHE_PREFIX}${normalized}`
     const results = (await getCache<Suggestion[]>(key)) || []
@@ -235,17 +214,7 @@ class SearchSuggestionCache {
       }
     }
 
-    this.updateMemoryCache(normalized, suggestions)
     return suggestions
-  }
-
-  private updateMemoryCache(query: string, suggestions: Suggestion[]): void {
-    if (this.memoryCache.size >= this.MAX_MEMORY_CACHE_SIZE) {
-      const oldestKey = this.memoryCache.keys().next().value
-      if (oldestKey) this.memoryCache.delete(oldestKey)
-    }
-
-    this.memoryCache.set(query, { suggestions, timestamp: Date.now() })
   }
 
   async getGroupedSuggestions(query: string, limitPerGroup = 3, totalLimit = 20): Promise<GroupedSuggestions> {
@@ -279,7 +248,6 @@ class SearchSuggestionCache {
     logger.debug('Refreshing search suggestion cache...')
     await invalidateCache(`${this.CACHE_PREFIX}*`)
     await invalidateCache(this.STATS_KEY)
-    this.memoryCache.clear()
     this.isInitialized = false
     await this.initialize()
   }
@@ -287,12 +255,7 @@ class SearchSuggestionCache {
   async clear(): Promise<void> {
     await invalidateCache(`${this.CACHE_PREFIX}*`)
     await invalidateCache(this.STATS_KEY)
-    this.memoryCache.clear()
     this.isInitialized = false
-  }
-
-  clearMemoryCache(): void {
-    this.memoryCache.clear()
   }
 }
 
@@ -316,10 +279,6 @@ export async function getSuggestionsByType(query: string, type: Suggestion['type
 
 export async function refreshSuggestionCache(): Promise<void> {
   await suggestionCache.refresh()
-}
-
-export async function clearMemoryCache(): Promise<void> {
-  suggestionCache.clearMemoryCache()
 }
 
 export function buildSearchQueryFromSuggestions(suggestions: Record<string, string>): SearchQuery {
@@ -348,7 +307,7 @@ export function buildSearchQueryFromSuggestions(suggestions: Record<string, stri
       case 'locations':
         searchQuery[field] = value
           .split(',')
-          .map((v) => v.trim())
+          .map((v) => v)
           .filter((v) => v)
         break
 

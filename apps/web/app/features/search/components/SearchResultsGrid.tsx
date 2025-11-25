@@ -13,21 +13,26 @@ export function SearchResultsGrid({ videos, viewMode }: SearchResultsGridProps) 
     <motion.div
       layout
       className={
-        viewMode === 'grid'
-          ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 z-0'
-          : 'flex flex-col gap-4'
+        viewMode === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 z-0' : 'flex flex-col gap-4'
       }
     >
       {videos.map((video) => (
-        <VideoCard
-          key={video.source}
-          source={video.source}
-          thumbnailUrl={video.thumbnailUrl}
-          duration={parseFloat(video.duration.toString())}
-          createdAt={video.createdAt}
-          aspectRatio={video?.aspect_ratio === '9:16' ? '9:16' : '16:9'}
-          metadata={{}}
-        />
+        <>
+          <VideoCard
+            key={video.source}
+            source={video.source}
+            thumbnailUrl={video.thumbnailUrl}
+            duration={parseFloat(video.duration.toString())}
+            createdAt={video.createdAt}
+            aspectRatio={video?.aspect_ratio === '9:16' ? '9:16' : '16:9'}
+            metadata={{
+              faces: video.faces,
+              objects: video.objects,
+              emotions: video.emotions,
+            }}
+            initialStartTime={video.scenes[0].startTime}
+          />
+        </>
       ))}
     </motion.div>
   )

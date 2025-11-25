@@ -1,5 +1,5 @@
-import fs from 'fs/promises'
-import path from 'path'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 import fetch from 'node-fetch'
 import { FACES_DIR } from '../constants'
 import { AssetsBucketResponse, Face, ImmichConfig, PeopleResponse, Person, TimeBucket } from '../types/immich'

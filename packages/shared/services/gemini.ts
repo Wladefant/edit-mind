@@ -1,3 +1,4 @@
+import { ChatMessage } from './../../../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.2__typescript@5.9.2/node_modules/.prisma/client/index.d';
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import 'dotenv/config'
 import { VideoSearchParams } from '../types/search'
@@ -195,7 +196,7 @@ Your response:`
   }
 }
 
-export async function generateGeneralResponse(userPrompt: string, chatHistory?: any[]): Promise<string> {
+export async function generateGeneralResponse(userPrompt: string, chatHistory?: ChatMessage[]): Promise<string> {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
   const historyContext =

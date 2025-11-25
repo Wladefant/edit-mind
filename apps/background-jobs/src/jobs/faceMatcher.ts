@@ -138,7 +138,7 @@ faceMatcherWorker.on('completed', (job) => {
   logger.info({ jobId: job.id }, 'Face labeling job completed')
 })
 
-faceMatcherWorker.on('failed', (job, err) => {
+faceMatcherWorker.on('failed', (job: Job | undefined, err: Error) => {
   logger.error(
     {
       jobId: job?.id,

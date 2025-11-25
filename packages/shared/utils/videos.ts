@@ -15,6 +15,7 @@ import { CameraInfo, GeoLocation, VideoFile, VideoMetadata, FFmpegError } from '
 import { spawnFFmpeg, spawnFFprobe } from './ffmpeg'
 import { validateFile } from './file'
 import { logger } from '../services/logger'
+import { FFprobeMetadata, FFprobeStream } from '../types/ffmpeg'
 
 const initializeThumbnailsDir = (): void => {
   if (!fs.existsSync(THUMBNAILS_DIR)) {
@@ -156,7 +157,7 @@ export async function findVideoFiles(
   }
 }
 
-const extractCameraInfo = (tags: Record<string, any>, videoPath: string): string => {
+const extractCameraInfo = (tags: Record<string, string>, videoPath: string): string => {
   const cameraMake = tags['com.apple.quicktime.make'] || tags['make'] || tags['encoder'] || ''
   const cameraModel = tags['com.apple.quicktime.model'] || tags['model'] || tags['com.android.version'] || ''
   const goProModel = tags['camera_model_name'] || tags['DeviceName'] || tags['device_name'] || ''
@@ -278,20 +279,28 @@ export async function getVideoMetadata(videoFilePath: string): Promise<VideoMeta
       })
     })
 
-    const metadata = JSON.parse(stdout)
-    const videoStream = metadata.streams.find((s: any) => s.codec_type === 'video')
+    const metadata: FFprobeMetadata = JSON.parse(stdout)
+    const videoStream = metadata.streams.find((s: FFprobeStream) => s.codec_type === 'video')
 
     if (!videoStream) {
       throw new Error('No video stream found in file')
     }
 
-    const duration = metadata.format.duration || 0
+    const duration = typeof metadata.format.duration === 'string' 
+      ? parseFloat(metadata.format.duration) 
+      : (metadata.format.duration || 0)
+    
     const fps = parseFPS(videoStream.r_frame_rate)
     let width = videoStream.width || 0
     let height = videoStream.height || 0
 
     // Handle rotation metadata
-    const rotation = videoStream.tags?.rotate || metadata.format.tags?.rotate || 0
+    const streamRotate = videoStream.tags?.rotate
+    const formatRotate = metadata.format.tags?.rotate
+    const rotation = typeof streamRotate === 'string' 
+      ? parseInt(streamRotate, 10) 
+      : (streamRotate || (typeof formatRotate === 'string' ? parseInt(formatRotate, 10) : formatRotate) || 0)
+    
     if (rotation === 90 || rotation === 270 || rotation === -90 || rotation === -270) {
       // Swap width and height for rotated videos
       ;[width, height] = [height, width]
@@ -301,6 +310,7 @@ export async function getVideoMetadata(videoFilePath: string): Promise<VideoMeta
     const displayAspectRatio = videoStream.display_aspect_ratio
 
     const totalFrames = Math.floor(duration * fps)
+
 
     return {
       duration,

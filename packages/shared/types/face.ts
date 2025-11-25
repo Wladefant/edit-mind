@@ -44,7 +44,7 @@ export interface FaceMatchingProgress {
   total: number
   progress: number
   elapsed: number
-  match: FaceMatchingResult
+  match?: MatchResult
 }
 
 interface FaceData {
@@ -52,18 +52,10 @@ interface FaceData {
   timestamp_seconds: number
 }
 
-interface FaceMatchingResult {
-  json_file: string
-  image_file: string
-  confidence: number
-  face_id: string
-  face_data: FaceData
-}
-
 export interface FindMatchingFacesResponse {
   success: boolean
   person_name: string
   matches_found: number
-  matches: FaceMatchingResult[]
+  matches: MatchResult[]
   reference_images_used: number
 }

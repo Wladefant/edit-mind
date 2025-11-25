@@ -67,6 +67,7 @@ export interface SearchAnalytics {
   durationMs: number
   timestamp: Date
 }
+
 export interface SearchStats {
   query: string
   durationMs: number

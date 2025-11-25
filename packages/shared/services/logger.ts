@@ -1,4 +1,4 @@
-import pino from 'pino';
+import * as pino from 'pino';
 
 export const logger = pino({
   name: 'edit-mind',

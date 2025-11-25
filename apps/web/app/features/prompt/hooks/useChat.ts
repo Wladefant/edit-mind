@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@prisma/client'
 import type { Scene } from '@shared/schemas'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useFetcher } from 'react-router-dom'
+import { useFetcher, useNavigate } from 'react-router-dom'
 
 interface ChatMessageWithScenes extends ChatMessage {
   outputScenes: Scene[]
@@ -19,6 +19,7 @@ export function useChat(chatId?: string) {
   const stitchFetcher = useFetcher<{ message: ChatMessageWithScenes }>()
 
   const revalidationIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!chatId) {
@@ -49,6 +50,18 @@ export function useChat(chatId?: string) {
       setMessages(messagesFetcher.data.messages)
     }
   }, [messagesFetcher.data])
+
+  useEffect(() => {
+    if (sendMessageFetcher.data) {
+      if (sendMessageFetcher.data.chatId) {
+        navigate(`/app/prompt/${sendMessageFetcher.data.chatId}`)
+      }
+      const newMessage = sendMessageFetcher.data?.message
+      if (newMessage) {
+        setMessages((prev) => [...prev, newMessage])
+      }
+    }
+  }, [sendMessageFetcher.data, navigate])
 
   const isLoading = sendMessageFetcher.state === 'submitting' || sendMessageFetcher.state === 'loading'
 

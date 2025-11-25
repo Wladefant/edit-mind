@@ -1,4 +1,11 @@
-import { VideoMetadataSummary, SearchSuggestion, SearchAnalytics, VideoSearchParams } from '../types/search'
+import { VideoMetadataSummary, SearchSuggestion, SearchAnalytics, VideoSearchParams, SimpleSearchStats } from '../types/search'
+
+export function getSimpleSearchStats(data: Omit<SimpleSearchStats, 'id'>): SimpleSearchStats {
+  return {
+    ...data,
+    id: crypto.randomUUID(),
+  };
+}
 
 export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary): SearchSuggestion[] => {
   const suggestions: SearchSuggestion[] = []

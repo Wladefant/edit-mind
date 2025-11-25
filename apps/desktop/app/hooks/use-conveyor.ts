@@ -11,9 +11,9 @@ export const useConveyor = <T extends ConveyorKey | undefined = undefined>(
 ): T extends ConveyorKey ? Window['conveyor'][T] : Window['conveyor'] => {
   const conveyor = window.conveyor
 
-  if (key) {
-    return conveyor[key] as any
+  if (key !== undefined) {
+    return conveyor[key as ConveyorKey] as T extends ConveyorKey ? Window['conveyor'][T] : Window['conveyor']
   }
 
-  return conveyor as any
+  return conveyor as T extends ConveyorKey ? Window['conveyor'][T] : Window['conveyor']
 }
