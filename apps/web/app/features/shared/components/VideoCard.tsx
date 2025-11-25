@@ -2,7 +2,8 @@ import { Link } from 'react-router'
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Smile, Frown, Meh, Camera, Package, Play, Pause, ImageOff } from 'lucide-react'
-import { formatDate, formatDuration, intervalToDuration } from 'date-fns'
+import { formatDate } from 'date-fns';
+import { humanizeSeconds } from '../utils/duration'
 
 interface VideoMetadata {
   faces?: string[]
@@ -104,21 +105,7 @@ export function VideoCard({
 
   const minHeight = aspectRatio === '16:9' ? 'min-h-[250px]' : 'min-h-[350px]'
 
-  const formatVideoDuration = (seconds: number): string => {
-    const durationObj = intervalToDuration({ start: 0, end: seconds * 1000 })
 
-    // For very short videos (< 1 minute), show seconds
-    if (seconds < 60) {
-      return `${Math.round(seconds)}s`
-    }
-
-    return formatDuration(durationObj, {
-      delimiter: ' ',
-    })
-      .replace(/(\d+)\s+hours?/, '$1h')
-      .replace(/(\d+)\s+minutes?/, '$1m')
-      .replace(/(\d+)\s+seconds?/, '$1s')
-  }
   return (
     <motion.div
       layout
@@ -368,7 +355,7 @@ export function VideoCard({
             </span>
           </div>
           <span className="bg-black/50 backdrop-blur-md text-sm font-medium px-2.5 py-1 rounded-md whitespace-nowrap shadow-sm">
-            {formatVideoDuration(duration)}
+            {humanizeSeconds(duration)}
           </span>
         </div>
       </Link>

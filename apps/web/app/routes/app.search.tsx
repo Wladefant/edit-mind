@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useLoaderData, type MetaFunction } from 'react-router'
+import { useState, useMemo } from 'react'
+import { type MetaFunction } from 'react-router'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { FilterSidebar } from '~/features/videos/components/FilterSidebar'
 import { SearchHero } from '~/features/search/components/SearchHero'
@@ -7,27 +7,17 @@ import { SearchResultsGrid } from '~/features/search/components/SearchResultsGri
 import { SearchStats } from '~/features/search/components/SearchStats'
 import { EmptyState } from '~/features/search/components/EmptyState'
 import { useVideoSearch } from '~/features/search/hooks/useVideoSearch'
-import { getAllVideosWithScenes, queryCollection } from '@shared/services/vectorDb'
+import { hybridSearch } from '@shared/services/vectorDb'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getUser } from '~/services/user.sever'
 import { SearchInput } from '~/features/search/components/SearchInput'
 import type { SearchQuery } from '@shared/types/search'
 import { generateActionFromPrompt } from '@shared/services/gemini'
 import { getSearchStats } from '@shared/utils/search'
-import { buildSearchQueryFromSuggestions, suggestionCache } from '@shared/services/suggestion'
-import { Sidebar } from '~/features/shared/components/Sidebar'
+import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion';
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Search | Edit Mind' }]
-}
-
-export async function loader() {
-  await suggestionCache.initialize()
-  const data = await getAllVideosWithScenes(20, 0)
-  if (data) {
-    return { filters: data.filters }
-  }
-  return { filters: [] }
 }
 
 export async function action({ request }: { request: Request }) {
@@ -55,7 +45,7 @@ export async function action({ request }: { request: Request }) {
       console.debug('Generated search query from AI:', searchQuery)
     }
 
-    const videos = await queryCollection(searchQuery)
+    const videos = await hybridSearch(searchQuery)
 
     const duration = Date.now() - startTime
 
@@ -76,32 +66,37 @@ export async function action({ request }: { request: Request }) {
 
 export default function SearchPage() {
   const search = useVideoSearch()
-  const { query, results, stats, isLoading, isError, selectedSuggestion } = search
-  const { filters } = useLoaderData<typeof loader>()
+  const { query, results, stats, isLoading, isError, selectedSuggestion, isSearching } = search
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({})
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [isFocused, setIsFocused] = useState(false)
+  const [page, setPage] = useState(1)
+
+  const RESULTS_PER_PAGE = 20
 
   const hasQuery = query.length > 0 || Object.keys(selectedSuggestion).length > 0
   const hasResults = results.length > 0
   const showHero = !isFocused && !hasQuery
 
+  const paginatedResults = useMemo(() => {
+    const start = (page - 1) * RESULTS_PER_PAGE
+    return results.slice(start, start + RESULTS_PER_PAGE)
+  }, [results, page])
+
+  const totalPages = Math.ceil(results.length / RESULTS_PER_PAGE)
+
   return (
     <DashboardLayout
       sidebar={
-        Object.values(filters).length > 0 ? (
-          <FilterSidebar
-            filters={filters}
-            selectedFilters={selectedFilters}
-            onFilterChange={setSelectedFilters}
-            onClose={() => setIsSidebarOpen(false)}
-            isCollapsed={isSidebarOpen}
-            setIsCollapsed={setIsSidebarOpen}
-          />
-        ) : (
-          <Sidebar />
-        )
+        <FilterSidebar
+          filters={[]}
+          selectedFilters={selectedFilters}
+          onFilterChange={setSelectedFilters}
+          onClose={() => setIsSidebarOpen(false)}
+          isCollapsed={isSidebarOpen}
+          setIsCollapsed={setIsSidebarOpen}
+        />
       }
     >
       <AnimatePresence>
@@ -154,13 +149,33 @@ export default function SearchPage() {
               </div>
             </div>
 
-            <SearchResultsGrid videos={results} viewMode={viewMode} onViewModeChange={setViewMode} />
+            <SearchResultsGrid videos={paginatedResults} viewMode={viewMode} onViewModeChange={setViewMode} />
+
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-8">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-gray-600 dark:text-gray-400">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </>
         )}
 
-        {hasQuery && !hasResults && !isLoading && <EmptyState hasQuery={true} query={query} />}
-
-        {!hasQuery && !isLoading && <EmptyState hasQuery={false} />}
+        {!hasResults && !isSearching && <EmptyState hasQuery={hasQuery} query={query} />}
       </main>
     </DashboardLayout>
   )

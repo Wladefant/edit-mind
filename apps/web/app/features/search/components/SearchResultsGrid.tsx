@@ -22,11 +22,10 @@ export function SearchResultsGrid({ videos, viewMode }: SearchResultsGridProps) 
         <VideoCard
           key={video.source}
           source={video.source}
-          fileName={video.fileName}
           thumbnailUrl={video.thumbnailUrl}
           duration={parseFloat(video.duration.toString())}
           createdAt={video.createdAt}
-          aspectRatio={video?.aspect_ratio === '16:9' ? '16:9' : '9:16'}
+          aspectRatio={video?.aspect_ratio === '9:16' ? '9:16' : '16:9'}
           metadata={{}}
         />
       ))}

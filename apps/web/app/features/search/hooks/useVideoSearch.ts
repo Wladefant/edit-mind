@@ -40,8 +40,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   const lastSearchQueryRef = useRef('')
 
   const isSearching = searchFetcher.state === 'submitting' || searchFetcher.state === 'loading'
-  const isLoadingSuggestions = suggestionFetcher.state === 'submitting' || suggestionFetcher.state === 'loading'
-  const isLoading = isSearching || isLoadingSuggestions
+  const isLoading = isSearching
   const isError = searchFetcher.data?.success === false
 
   useEffect(() => {
@@ -76,7 +75,7 @@ export function useVideoSearch(): UseVideoSearchResult {
           setSuggestions({})
           setShowSuggestions(false)
         }
-      }, 150),
+      }, 300), // Optimized from 150ms to 300ms
     [suggestionFetcher]
   )
 
@@ -90,7 +89,9 @@ export function useVideoSearch(): UseVideoSearchResult {
   const performSearch = useCallback(() => {
     if (!query.trim()) return
 
-    if (lastSearchQueryRef.current === query) {
+    // Create search key with both query and suggestions for better deduplication
+    const searchKey = `${query}:${JSON.stringify(selectedSuggestion)}`
+    if (lastSearchQueryRef.current === searchKey) {
       return
     }
 
@@ -98,7 +99,7 @@ export function useVideoSearch(): UseVideoSearchResult {
       return
     }
 
-    lastSearchQueryRef.current = query
+    lastSearchQueryRef.current = searchKey
 
     const formData = new FormData()
     formData.append('query', query)
@@ -116,22 +117,20 @@ export function useVideoSearch(): UseVideoSearchResult {
     (suggestion: Suggestion) => {
       setQuery(suggestion.text)
       setShowSuggestions(false)
-      setSelectedSuggestion(() => ({
+
+      const newSuggestions = {
+        ...selectedSuggestion,
         [suggestion.type]: suggestion.text,
-      }))
+      }
+      setSelectedSuggestion(newSuggestions)
 
       setTimeout(() => {
-        lastSearchQueryRef.current = suggestion.text
+        const searchKey = `${suggestion.text}:${JSON.stringify(newSuggestions)}`
+        lastSearchQueryRef.current = searchKey
 
         const formData = new FormData()
         formData.append('query', suggestion.text)
-        formData.append(
-          'suggestions',
-          JSON.stringify({
-            ...selectedSuggestion,
-            [suggestion.type]: suggestion.text,
-          })
-        )
+        formData.append('suggestions', JSON.stringify(newSuggestions))
 
         searchFetcher.submit(formData, {
           method: 'POST',

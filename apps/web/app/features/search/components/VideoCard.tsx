@@ -1,6 +1,7 @@
 import type { Video } from '@shared/types/video'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { humanizeSeconds } from '~/features/shared/utils/duration';
 
 export function VideoCard({ video, viewMode }: { video: Video; viewMode: 'grid' | 'list' }) {
   const [isHovering, setIsHovering] = useState(false)
@@ -24,8 +25,6 @@ export function VideoCard({ video, viewMode }: { video: Video; viewMode: 'grid' 
 
         <video
           src={`/media/${video.source}`}
-          autoPlay
-          muted
           loop
           className={`object-cover w-full h-full rounded-3xl transition-opacity duration-200
                      ${isHovering ? 'opacity-100' : 'opacity-0'}`}
@@ -46,7 +45,7 @@ export function VideoCard({ video, viewMode }: { video: Video; viewMode: 'grid' 
           </span>
         </div>
         <span className="bg-white/25 backdrop-blur-md text-[12px] px-2 py-0.5 rounded-md">
-          {Math.round(parseFloat(video.duration.toString()))} sec
+          {humanizeSeconds(parseInt(video.duration.toString()))}
         </span>
       </div>
     </Link>

@@ -1,6 +1,7 @@
 import { Clock, Zap, FileSearch } from 'lucide-react'
 import type { SearchStats } from '@shared/types/search'
 import type { JSX } from 'react'
+import { humanizeSeconds } from '~/features/shared/utils/duration'
 
 interface SearchStatsProps {
   stats: SearchStats
@@ -29,8 +30,8 @@ export function SearchStats({ stats, resultsCount }: SearchStatsProps) {
 
       <div className="flex items-center gap-2">
         {icon}
-        <span className={`${color}`} title={`Search duration: ${stats.durationMs}ms`}>
-          {stats.durationMs}ms
+        <span className={`${color}`} title={`Search duration: ${humanizeSeconds(stats.durationMs / 1000)}`}>
+          {humanizeSeconds(stats.durationMs / 1000)}
         </span>
       </div>
 
@@ -44,18 +45,11 @@ export function SearchStats({ stats, resultsCount }: SearchStatsProps) {
 
       {stats.complexity.factors.length > 0 && (
         <div className="group relative">
-          <span
-            className="text-xs text-gray-400 cursor-help"
-            aria-label="Search filters"
-            tabIndex={0}
-          >
+          <span className="text-xs text-gray-400 cursor-help" aria-label="Search filters" tabIndex={0}>
             {stats.complexity.factors.length} filters
           </span>
           <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-50">
-            <div
-              className="bg-black/95 text-white text-xs rounded-lg p-3 shadow-xl min-w-[200px]"
-              role="tooltip"
-            >
+            <div className="bg-black/95 text-white text-xs rounded-lg p-3 shadow-xl min-w-[200px]" role="tooltip">
               <div className="font-semibold mb-2">Search Filters:</div>
               <ul className="space-y-1">
                 {stats.complexity.factors.map((factor, i) => (

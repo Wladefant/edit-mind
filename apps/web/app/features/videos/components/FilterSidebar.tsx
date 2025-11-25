@@ -1,5 +1,14 @@
 import React, { useEffect } from 'react'
-import { ChevronDown, ChevronLeft, Home, MessageSquare, MoreHorizontal, SlidersHorizontal, SearchIcon, Users } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronLeft,
+  Home,
+  MessageSquare,
+  MoreHorizontal,
+  SlidersHorizontal,
+  SearchIcon,
+  Users,
+} from 'lucide-react'
 import { useFilterSidebar } from '~/features/videos/hooks/useFilterSidebar'
 import { FilterGroup } from './FilterGroup'
 import { Link } from '../../shared/components/Link'
@@ -54,7 +63,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
     if (Object.keys(urlFilters).length > 0) {
       onFilterChange(urlFilters)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run on mount
 
   const handleFilterChange = (category: string, value: string) => {
@@ -130,33 +139,30 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           to="/app/prompt"
           label="New Chat"
         />
-        <Link
-          isCollapsed={isCollapsed}
-          icon={<Users className="w-5 h-5" />}
-          to="/app/training"
-          label="Face Training"
-        />
+        <Link isCollapsed={isCollapsed} icon={<Users className="w-5 h-5" />} to="/app/training" label="Face Training" />
 
-        <button
-          onClick={() => {
-            setIsCollapsed(false)
-            setIsSidebarOpen(!isSidebarOpen)
-          }}
-          className={`w-full  ${!isCollapsed ? 'pr-2' : ''} cursor-pointer rounded-lg flex justify-between items-center text-left text-black hover:text-white dark:text-white hover:bg-gray-50 transition-colors dark:hover:bg-gray-200 dark:hover:text-black`}
-        >
-          <span className="truncate text-inherit flex items-center  gap-3 px-2 py-2">
-            <SlidersHorizontal className="w-5 h-5" />
-            {!isCollapsed && 'Filters'}
-          </span>
-          {!isCollapsed && (
-            <ChevronDown
-              className={`w-5 h-5 transition-transform duration-300 text-inherit ${isSidebarOpen ? 'transform rotate-180' : ''}`}
-            />
-          )}
-        </button>
+        {Object.keys(filters).length > 0 && (
+          <button
+            onClick={() => {
+              setIsCollapsed(false)
+              setIsSidebarOpen(!isSidebarOpen)
+            }}
+            className={`w-full  ${!isCollapsed ? 'pr-2' : ''} cursor-pointer rounded-lg flex justify-between items-center text-left text-black hover:text-white dark:text-white hover:bg-gray-50 transition-colors dark:hover:bg-gray-200 dark:hover:text-black`}
+          >
+            <span className="truncate text-inherit flex items-center  gap-3 px-2 py-2">
+              <SlidersHorizontal className="w-5 h-5" />
+              {!isCollapsed && 'Filters'}
+            </span>
+            {!isCollapsed && (
+              <ChevronDown
+                className={`w-5 h-5 transition-transform duration-300 text-inherit ${isSidebarOpen ? 'transform rotate-180' : ''}`}
+              />
+            )}
+          </button>
+        )}
       </nav>
 
-      {!isCollapsed && isSidebarOpen && (
+      {!isCollapsed && isSidebarOpen && Object.keys(filters).length > 0 && (
         <div className="flex-1 overflow-y-auto p-4">
           {Object.entries(filters).map(([category, values]) => (
             <FilterGroup
