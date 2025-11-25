@@ -20,7 +20,7 @@ class SearchSuggestionCache {
   private readonly STATS_KEY = 'search:suggestions:stats'
   private readonly MIN_PREFIX_LENGTH = 2
   private readonly MAX_PREFIX_LENGTH = 10
-  private readonly MEMORY_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+  private readonly MEMORY_CACHE_TTL = 15 * 60 * 1000 // 15 minutes
   private readonly MAX_MEMORY_CACHE_SIZE = 1000
   private readonly REDIS_KEY_TTL = 7 * 24 * 60 * 60 // 7 days in seconds
 

@@ -7,7 +7,6 @@ interface SearchSuggestionsProps {
   onSelect: (suggestion: Suggestion) => void
   isVisible: boolean
   selectedIndex?: number
-  onHoverIndex?: (index: number) => void
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
@@ -61,13 +60,7 @@ const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; 
   },
 }
 
-export function SearchSuggestions({
-  suggestions,
-  onSelect,
-  isVisible,
-  selectedIndex = -1,
-  onHoverIndex,
-}: SearchSuggestionsProps) {
+export function SearchSuggestions({ suggestions, onSelect, isVisible, selectedIndex = -1 }: SearchSuggestionsProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef<HTMLButtonElement>(null)
 
@@ -92,12 +85,11 @@ export function SearchSuggestions({
 
   let globalIndex = 0
   const suggestionGroups = Object.entries(suggestions).map(([type, items]) => {
-    const startIndex = globalIndex
     const itemsWithIndex = items.map((item) => ({
       ...item,
       globalIndex: globalIndex++,
     }))
-    return { type, items: itemsWithIndex, startIndex }
+    return { type, items: itemsWithIndex }
   })
 
   return (
@@ -111,10 +103,7 @@ export function SearchSuggestions({
         id="search-suggestions"
         role="listbox"
       >
-        <div
-          ref={containerRef}
-          className="p-2 max-h-[400px] overflow-y-auto custom-scrollbar"
-        >
+        <div ref={containerRef} className="p-2 max-h-[400px] overflow-y-auto custom-scrollbar">
           {suggestionGroups.map(({ type, items }, groupIndex) => {
             const config = TYPE_CONFIG[type] || {
               label: type,
@@ -144,7 +133,7 @@ export function SearchSuggestions({
 
                     return (
                       <motion.button
-                        key={`${type}-${suggestion.text}`}
+                        key={`${type}-${suggestion.text}-${suggestion.globalIndex}`}
                         ref={isSelected ? selectedRef : null}
                         id={`suggestion-${suggestion.globalIndex}`}
                         role="option"
@@ -153,18 +142,12 @@ export function SearchSuggestions({
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: groupIndex * 0.05 + index * 0.02 }}
                         onClick={() => onSelect(suggestion)}
-                        onMouseEnter={() => onHoverIndex?.(suggestion.globalIndex)}
-                        onMouseMove={() => onHoverIndex?.(suggestion.globalIndex)}
                         className={`
                           w-full text-left px-3 py-2.5 rounded-lg
                           flex items-center justify-between
                           transition-all duration-200
                           group relative
-                          ${
-                            isSelected
-                              ? 'bg-white/20 shadow-lg scale-[1.02]'
-                              : 'hover:bg-white/10 active:bg-white/15'
-                          }
+                          ${isSelected ? 'bg-white/20 shadow-lg scale-[1.02]' : 'hover:bg-white/10 active:bg-white/15'}
                         `}
                       >
                         <span
@@ -189,8 +172,7 @@ export function SearchSuggestions({
                               group-hover:opacity-100
                             `}
                           >
-                            {Math.round(suggestion.count)}{' '}
-                            {Math.round(suggestion.count) === 1 ? 'match' : 'matches'}
+                            {Math.round(suggestion.count)} {Math.round(suggestion.count) === 1 ? 'match' : 'matches'}
                           </motion.span>
 
                           {isSelected && (

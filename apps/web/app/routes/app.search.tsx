@@ -7,14 +7,15 @@ import { SearchResultsGrid } from '~/features/search/components/SearchResultsGri
 import { SearchStats } from '~/features/search/components/SearchStats'
 import { EmptyState } from '~/features/search/components/EmptyState'
 import { useVideoSearch } from '~/features/search/hooks/useVideoSearch'
-import { hybridSearch } from '@shared/services/vectorDb'
+import { hybridSearch } from '@shared/services/vectorDb';
 import { motion, AnimatePresence } from 'framer-motion'
 import { getUser } from '~/services/user.sever'
 import { SearchInput } from '~/features/search/components/SearchInput'
 import type { SearchQuery } from '@shared/types/search'
 import { generateActionFromPrompt } from '@shared/services/gemini'
 import { getSearchStats } from '@shared/utils/search'
-import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion';
+import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion'
+import { logger } from '@shared/services/logger'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Search | Edit Mind' }]
@@ -47,6 +48,7 @@ export async function action({ request }: { request: Request }) {
 
     const videos = await hybridSearch(searchQuery)
 
+    logger.debug(`We got ${videos.length} videos for your search`)
     const duration = Date.now() - startTime
 
     const stats = getSearchStats({

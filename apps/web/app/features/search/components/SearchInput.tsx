@@ -43,12 +43,15 @@ export function SearchInput({
     setLocalQuery(query)
   }, [query])
 
-  // Flatten suggestions for keyboard navigation
+  // Flatten suggestions for keyboard navigation - MUST match order in SearchSuggestions
   const flattenedSuggestions = useMemo(() => {
-    const flattened: Array<Suggestion & { groupType: string }> = []
+    const flattened: Array<Suggestion & { groupType: string; globalIndex: number }> = []
+    let index = 0
+
     Object.entries(suggestions).forEach(([type, items]) => {
       items.forEach((item) => {
-        flattened.push({ ...item, groupType: type })
+        flattened.push({ ...item, groupType: type, globalIndex: index })
+        index++
       })
     })
     return flattened
@@ -65,7 +68,6 @@ export function SearchInput({
       return () => clearTimeout(timeoutId)
     } else {
       setShowSuggestions(false)
-      setSelectedSuggestionIndex(-1)
     }
   }, [localQuery, isFocused, fetchSuggestions, setShowSuggestions])
 
@@ -100,10 +102,6 @@ export function SearchInput({
     }
   }, [autoFocus])
 
-  useEffect(() => {
-    setSelectedSuggestionIndex(-1)
-  }, [suggestions])
-
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = e.target.value
@@ -127,6 +125,7 @@ export function SearchInput({
           if (selectedSuggestion) {
             handleSuggestionSelect(selectedSuggestion)
             setSelectedSuggestionIndex(-1)
+            setShowSuggestions(false)
           }
         }
         // Otherwise, perform regular search
@@ -146,6 +145,7 @@ export function SearchInput({
       case 'ArrowUp':
         if (hasSuggestions) {
           e.preventDefault()
+
           setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : flattenedSuggestions.length - 1))
         }
         break
@@ -157,6 +157,7 @@ export function SearchInput({
           setSelectedSuggestionIndex(-1)
         } else {
           inputRef.current?.blur()
+          onBlur?.()
         }
         break
 
@@ -185,24 +186,22 @@ export function SearchInput({
     // Delay to allow suggestion clicks to register
     setTimeout(() => {
       setShowSuggestions(false)
-      setSelectedSuggestionIndex(-1)
     }, 200)
   }, [onBlur, setShowSuggestions])
 
   const handleClear = useCallback(() => {
     clearSearch()
     setLocalQuery('')
-    setSelectedSuggestionIndex(-1)
     inputRef.current?.focus()
   }, [clearSearch])
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {
       handleSuggestionSelect(suggestion)
-      setSelectedSuggestionIndex(-1)
+      setShowSuggestions(false)
       inputRef.current?.focus()
     },
-    [handleSuggestionSelect]
+    [handleSuggestionSelect, setShowSuggestions]
   )
 
   const hasSuggestions = Object.keys(suggestions).length > 0
@@ -333,7 +332,6 @@ export function SearchInput({
             onSelect={handleSuggestionClick}
             isVisible={showSuggestions}
             selectedIndex={selectedSuggestionIndex}
-            onHoverIndex={setSelectedSuggestionIndex}
           />
         )}
       </AnimatePresence>

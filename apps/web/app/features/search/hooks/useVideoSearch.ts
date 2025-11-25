@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFetcher } from 'react-router-dom'
 import lodash from 'lodash'
 import type { VideoWithScenes } from '@shared/types/video'
@@ -38,6 +38,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   const [showSuggestions, setShowSuggestions] = useState(false)
 
   const lastSearchQueryRef = useRef('')
+  const lastSuggestionQueryRef = useRef('') // Add this to prevent duplicate fetches
 
   const isSearching = searchFetcher.state === 'submitting' || searchFetcher.state === 'loading'
   const isLoading = isSearching
@@ -59,37 +60,44 @@ export function useVideoSearch(): UseVideoSearchResult {
     }
   }, [suggestionFetcher.data])
 
-  const debouncedFetch = useMemo(
-    () =>
-      debounce((q: string) => {
-        if (q.length >= 2) {
-          suggestionFetcher.submit(
-            { query: q },
-            {
-              method: 'post',
-              action: '/api/suggestions',
-              encType: 'application/json',
-            }
-          )
-        } else {
-          setSuggestions({})
-          setShowSuggestions(false)
-        }
-      }, 300), // Optimized from 150ms to 300ms
-    [suggestionFetcher]
+  const debouncedFetchRef = useRef(
+    debounce((q: string, fetcher: ReturnType<typeof useFetcher>) => {
+      if (q.length >= 2) {
+        fetcher.submit(
+          { query: q },
+          {
+            method: 'post',
+            action: '/api/suggestions',
+            encType: 'application/json',
+          }
+        )
+      }
+    }, 300)
   )
 
   const fetchSuggestions = useCallback(
     (q: string) => {
-      debouncedFetch(q)
+      if (lastSuggestionQueryRef.current === q) {
+        return
+      }
+
+      if (q.length < 2) {
+        setSuggestions({})
+        setShowSuggestions(false)
+        lastSuggestionQueryRef.current = ''
+        debouncedFetchRef.current.cancel()
+        return
+      }
+
+      lastSuggestionQueryRef.current = q
+      debouncedFetchRef.current(q, suggestionFetcher)
     },
-    [debouncedFetch]
+    [suggestionFetcher]
   )
 
   const performSearch = useCallback(() => {
     if (!query.trim()) return
 
-    // Create search key with both query and suggestions for better deduplication
     const searchKey = `${query}:${JSON.stringify(selectedSuggestion)}`
     if (lastSearchQueryRef.current === searchKey) {
       return
@@ -149,8 +157,9 @@ export function useVideoSearch(): UseVideoSearchResult {
     setSuggestions({})
     setShowSuggestions(false)
     lastSearchQueryRef.current = ''
-    debouncedFetch.cancel()
-  }, [debouncedFetch])
+    lastSuggestionQueryRef.current = ''
+    debouncedFetchRef.current.cancel()
+  }, [])
 
   return {
     query,

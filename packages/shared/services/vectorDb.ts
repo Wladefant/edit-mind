@@ -717,7 +717,7 @@ const hybridSearch = async (query: SearchQuery, nResults = undefined): Promise<V
       const result = await collection?.get({
         where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         whereDocument: whereDocument,
-        include: ['metadatas', 'documents', 'embeddings'],
+        include: ['metadatas'],
         limit: nResults,
       })
       finalScenes = { metadatas: result.metadatas, ids: result.ids }
