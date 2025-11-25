@@ -5,7 +5,7 @@ import {
   generateCompilationResponse,
   generateGeneralResponse,
 } from '@shared/services/gemini'
-import { getVideoWithScenesBySceneIds, hybridSearch } from '@shared/services/vectorDb';
+import { getVideoWithScenesBySceneIds, hybridSearch } from '@shared/services/vectorDb'
 import type { ActionFunction, LoaderFunction } from 'react-router'
 import { prisma } from '~/services/database'
 import { getVideoAnalytics } from '@shared/utils/analytics'
@@ -37,7 +37,7 @@ export const loader: LoaderFunction = async ({ params }) => {
     })
   )
 
-  return messagesWithScenes
+  return { messages: messagesWithScenes }
 }
 export const action: ActionFunction = async ({ request, params }) => {
   const chatId = params.id

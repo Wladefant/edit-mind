@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { useChat } from '../features/prompt/hooks/useChat'
-import { useLoaderData, useParams, type LoaderFunctionArgs, type MetaFunction, useRouteLoaderData } from 'react-router'
+import { useLoaderData, useParams, type LoaderFunctionArgs, type MetaFunction } from 'react-router'
 import { getVideosMetadataSummary } from '@shared/services/vectorDb'
 import { generateSearchSuggestions } from '@shared/utils/search'
 import { ChatHistory } from '~/features/prompt/components/ChatHistory'
@@ -9,22 +9,32 @@ import { Welcome } from '~/features/prompt/components/Welcome'
 import { MessageList } from '~/features/prompt/components/MessageList'
 import { LoadingIndicator } from '~/features/prompt/components/LoadingIndicator'
 import { ChatInput } from '~/features/prompt/components/ChatInput'
+import { getUser } from '~/services/user.sever'
+import { prisma } from '~/services/database'
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Prompt | Edit Mind' }]
 }
-export async function loader({ params }: LoaderFunctionArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
+  const user = await getUser(request)
+  if (!user) {
+    return { chats: [] }
+  }
+
+  const chats = await prisma.chat.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  })
+
   const metadata = await getVideosMetadataSummary()
   const suggestions = generateSearchSuggestions(metadata)
-  const chatId = params.id
-  if (!chatId) throw new Response('Chat ID required', { status: 400 })
-
-  return { suggestions }
+  return { suggestions, chats }
 }
 
 export default function ChatPage() {
   const { id } = useParams()
-  const { chats } = useRouteLoaderData('routes/app') as { chats: any[] }
+  const { suggestions, chats } = useLoaderData<typeof loader>()
 
   const {
     input,
@@ -39,14 +49,13 @@ export default function ChatPage() {
     toggleSceneSelection,
     stitchSelectedScenes,
   } = useChat(id)
-  const { suggestions } = useLoaderData<typeof loader>()
 
   return (
     <DashboardLayout sidebar={<ChatHistory chats={chats} />}>
       <div className="flex flex-col h-full min-h-screen">
         <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
           <AnimatePresence mode="wait">
-            {messages.length === 0 ? (
+            {messages.length === 0 && suggestions ? (
               <Welcome onSuggestionClick={handleSuggestionClick} suggestions={suggestions} />
             ) : (
               <div className="max-w-4xl mx-auto space-y-6 pb-8">
