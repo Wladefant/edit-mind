@@ -49,3 +49,6 @@ export const PYTHON_SCRIPT = path.resolve(process.env.PYTHON_SCRIPT || "./python
 export const VENV_PATH = path.resolve(process.env.VENV_PATH || "./venv")
 
 export const MEDIA_BASE_PATH = '/media/videos'
+
+
+export const STITCHED_VIDEOS_DIR = process.env.STITCHED_VIDEOS_DIR
