@@ -16,6 +16,7 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, Connecti
 from transcribe import TranscriptionService
 from analyze import AnalysisConfig, OutputManager, VideoAnalysisResult, VideoAnalyzer
 from batch_add_faces import batch_add_faces_from_folder
+from face_matcher import FaceMatchingResult
 import os
 from dotenv import load_dotenv
 
@@ -159,7 +160,7 @@ class ConnectionManager:
     """Manages WebSocket connections and safe message sending."""
     
     def __init__(self) -> None:
-        self.active_connections: Set[WebSocketServerProtocol] = set()
+        self.active_connections: Set["WebSocketServerProtocol"] = set()
         self._lock: asyncio.Lock = asyncio.Lock()
     
     async def register(self, websocket: WebSocketServerProtocol) -> None:
@@ -231,10 +232,10 @@ class ConnectionManager:
 class CallbackGuard:
     """Guards callbacks from sending to closed connections."""
     
-    def __init__(self, websocket: WebSocketServerProtocol, connection_manager: ConnectionManager):
-        self.websocket = websocket
-        self.connection_manager = connection_manager
-        self.cancelled = False
+    def __init__(self, websocket: "WebSocketServerProtocol", connection_manager: "ConnectionManager") -> None:
+        self.websocket: "WebSocketServerProtocol" = websocket
+        self.connection_manager: "ConnectionManager" = connection_manager
+        self.cancelled: bool = False
     
     def cancel(self) -> None:
         """Cancel this callback guard, preventing future calls."""
@@ -250,37 +251,43 @@ class MessageHandler:
     
     def __init__(
         self,
-        service_state: ServiceState,
-        connection_manager: ConnectionManager,
-        max_concurrent_analyses: int
+        service_state: "ServiceState",
+        connection_manager: "ConnectionManager",
+        max_concurrent_analyses: int,
     ) -> None:
-        self.state: ServiceState = service_state
-        self.connection_manager: ConnectionManager = connection_manager
+        self.state: "ServiceState" = service_state
+        self.connection_manager: "ConnectionManager" = connection_manager
         self.max_concurrent_analyses: int = max_concurrent_analyses
-        self.analysis_semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent_analyses)
-        self.transcription_service: TranscriptionService = TranscriptionService()
+        self.analysis_semaphore: asyncio.Semaphore = asyncio.Semaphore(
+            max_concurrent_analyses
+        )
+        self.transcription_service: "TranscriptionService" = TranscriptionService()
         self.reindex_lock: asyncio.Lock = asyncio.Lock()
-        
+
         # Track active callback guards for cleanup
-        self.active_guards: Set[CallbackGuard] = set()
-        
+        self.active_guards: Set["CallbackGuard"] = set()
+
         # Message type to handler mapping
-        self._handlers: Dict[str, Callable[[WebSocketServerProtocol, JsonDict], Awaitable[None]]] = {
+        self._handlers: Dict[
+            str, Callable[["WebSocketServerProtocol", JsonDict], Awaitable[None]]
+        ] = {
             MessageType.ANALYZE.value: self._handle_analyze,
             MessageType.TRANSCRIBE.value: self._handle_transcribe,
             MessageType.REINDEX_FACES.value: self._handle_reindex_faces,
             MessageType.HEALTH.value: self._handle_health,
-            MessageType.FIND_MATCHING_FACES.value: self._handle_find_matching_faces
+            MessageType.FIND_MATCHING_FACES.value: self._handle_find_matching_faces,
         }
     
-    def cleanup_guards(self, websocket: WebSocketServerProtocol) -> None:
+    def cleanup_guards(self, websocket: "WebSocketServerProtocol") -> None:
         """Cancel all callback guards for a specific websocket."""
         for guard in list(self.active_guards):
             if guard.websocket == websocket:
                 guard.cancel()
                 self.active_guards.discard(guard)
     
-    async def process_message(self, websocket: WebSocketServerProtocol, message: str) -> None:
+    async def process_message(
+        self, websocket: "WebSocketServerProtocol", message: str
+    ) -> None:
         """Process and route incoming WebSocket messages."""
         try:
             data: JsonDict = json.loads(message)  # type: ignore[assignment]
@@ -310,10 +317,10 @@ class MessageHandler:
     
     async def _send_message(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: "WebSocketServerProtocol",
         msg_type: MessageType,
         payload: JsonDict,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
     ) -> bool:
         """Send a message through the connection manager."""
         if not websocket:
@@ -336,11 +343,15 @@ class MessageHandler:
             return False
 
     
-    async def _send_error(self, websocket: WebSocketServerProtocol, error_msg: str) -> None:
+    async def _send_error(
+        self, websocket: "WebSocketServerProtocol", error_msg: str
+    ) -> None:
         """Send an error message to the client."""
         await self._send_message(websocket, MessageType.ERROR, {"message": error_msg})
     
-    async def _handle_health(self, websocket: WebSocketServerProtocol, payload: JsonDict) -> None:
+    async def _handle_health(
+        self, websocket: "WebSocketServerProtocol", payload: JsonDict
+    ) -> None:
         """Handle health check request."""
         metrics_dict = self.state.metrics.to_dict()
         health_data: JsonDict = {
@@ -353,7 +364,9 @@ class MessageHandler:
         }
         await self._send_message(websocket, MessageType.STATUS, health_data)
     
-    async def _handle_analyze(self, websocket: WebSocketServerProtocol, payload: JsonDict) -> None:
+    async def _handle_analyze(
+        self, websocket: "WebSocketServerProtocol", payload: JsonDict
+    ) -> None:
         """Handle video analysis request with concurrency control."""
         video_path_str = payload.get("video_path")
         if not isinstance(video_path_str, str):
@@ -409,11 +422,11 @@ class MessageHandler:
                 
     async def _run_analysis_workflow(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: "WebSocketServerProtocol",
         video_path: Path,
         video_path_normalized: str,
-        config: AnalysisConfig,
-        job_id: str
+        config: "AnalysisConfig",
+        job_id: str,
     ) -> None:
         """Execute the complete analysis workflow with proper cleanup."""
         self.state.start_analysis(video_path_normalized)
@@ -466,11 +479,11 @@ class MessageHandler:
                 del analyzer
     async def _execute_analysis(
         self,
-        websocket: WebSocketServerProtocol,
-        analyzer: VideoAnalyzer,
-        guard: CallbackGuard,
-        job_id: str
-    ) -> VideoAnalysisResult:
+        websocket: "WebSocketServerProtocol",
+        analyzer: "VideoAnalyzer",
+        guard: "CallbackGuard",
+        job_id: str,
+    ) -> "VideoAnalysisResult":
         """Execute video analysis with progress updates."""
         loop = asyncio.get_running_loop()
         
@@ -510,7 +523,9 @@ class MessageHandler:
             analyzer.progress_callback = None
 
     
-    def _build_analysis_config(self, settings: Dict[str, JsonValue]) -> AnalysisConfig:
+    def _build_analysis_config(
+        self, settings: Dict[str, JsonValue]
+    ) -> "AnalysisConfig":
         """Build analysis configuration from settings dictionary."""
         config = AnalysisConfig()
         
@@ -523,9 +538,7 @@ class MessageHandler:
         return config
             
     async def _handle_transcribe(
-        self,
-        websocket: WebSocketServerProtocol,
-        payload: JsonDict
+        self, websocket: "WebSocketServerProtocol", payload: JsonDict
     ) -> None:
         """Handle transcription request with live progress updates and debug logging."""
         video_path = payload.get("video_path")
@@ -596,9 +609,7 @@ class MessageHandler:
             self.state.finish_transcription(video_path_normalized)
             
     async def _handle_find_matching_faces(
-        self,
-        websocket: WebSocketServerProtocol,
-        payload: JsonDict
+        self, websocket: "WebSocketServerProtocol", payload: JsonDict
     ) -> None:
         """Handle face matching request."""
         person_name = payload.get("person_name")
@@ -634,7 +645,7 @@ class MessageHandler:
         
         loop = asyncio.get_running_loop()
         
-        def progress_callback(data: Dict[str, Union[str, int, float]]) -> None:
+        def progress_callback(data: Dict[str, str]) -> None:
             """Thread-safe synchronous progress callback for face matching."""            
             progress_data: JsonDict = {
                 "person_name": person_name,
@@ -652,7 +663,7 @@ class MessageHandler:
             from face_matcher import find_and_label_matching_faces
             
             logger.info(f"Running face matching for {person_name}")
-            result = await find_and_label_matching_faces(
+            result: FaceMatchingResult = await find_and_label_matching_faces(
                 person_name=person_name,
                 reference_image_paths=reference_images,
                 unknown_faces_dir=unknown_faces_dir,
@@ -699,9 +710,7 @@ class MessageHandler:
 
 
     async def _handle_reindex_faces(
-        self,
-        websocket: WebSocketServerProtocol,
-        payload: JsonDict
+        self, websocket: "WebSocketServerProtocol", payload: JsonDict
     ) -> None:
         """Handle face reindexing request with exclusive locking."""
         if self.reindex_lock.locked():
@@ -805,18 +814,14 @@ class WebSocketHandler:
     """Coordinates WebSocket connections and message processing."""
     
     def __init__(
-        self,
-        service_state: ServiceState,
-        max_concurrent_analyses: int
+        self, service_state: "ServiceState", max_concurrent_analyses: int
     ) -> None:
-        self.connection_manager = ConnectionManager()
-        self.message_handler = MessageHandler(
-            service_state,
-            self.connection_manager,
-            max_concurrent_analyses
+        self.connection_manager: "ConnectionManager" = ConnectionManager()
+        self.message_handler: "MessageHandler" = MessageHandler(
+            service_state, self.connection_manager, max_concurrent_analyses
         )
     
-    async def handle_connection(self, websocket: WebSocketServerProtocol) -> None:
+    async def handle_connection(self, websocket: "WebSocketServerProtocol") -> None:
         """Handle incoming WebSocket connection lifecycle."""
         await self.connection_manager.register(websocket)
         client_addr = websocket.remote_address
@@ -868,15 +873,19 @@ class AnalysisService:
     """Main service coordinator."""
     
     def __init__(self, max_concurrent_analyses: int = 3) -> None:
-        self.state = ServiceState()
-        self.handler = WebSocketHandler(self.state, max_concurrent_analyses)
-        logger.info(f"Service initialized (max concurrent analyses: {max_concurrent_analyses})")
+        self.state: "ServiceState" = ServiceState()
+        self.handler: "WebSocketHandler" = WebSocketHandler(
+            self.state, max_concurrent_analyses
+        )
+        logger.info(
+            f"Service initialized (max concurrent analyses: {max_concurrent_analyses})"
+        )
     
     async def start(
         self,
         host: Optional[str] = None,
         port: Optional[int] = None,
-        socket_path: Optional[str] = None
+        socket_path: Optional[str] = None,
     ) -> None:
         """Start the WebSocket server."""
         if socket_path:
@@ -943,9 +952,9 @@ def parse_arguments() -> argparse.Namespace:
 async def main() -> None:
     """Application entry point."""
     args = parse_arguments()
-    
+
     service = AnalysisService(max_concurrent_analyses=args.max_concurrent)
-    
+
     try:
         if args.socket:
             await service.start(socket_path=args.socket)

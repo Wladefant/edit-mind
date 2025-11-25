@@ -1,9 +1,9 @@
 import warnings
-from typing import Dict, Any
+from typing import Dict, Optional, Union, List
 import numpy as np
 import cv2
 
-from plugins.base import AnalyzerPlugin
+from plugins.base import AnalyzerPlugin, FrameAnalysis, PluginResult
 
 try:
     from fer import FER
@@ -14,44 +14,33 @@ except ImportError:
 
 
 class EmotionDetectionPlugin(AnalyzerPlugin):
-    """
-    A plugin for detecting emotions in faces.
-    """
+    """A plugin for detecting emotions in faces."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Union[str, bool, int, float]]):
         super().__init__(config)
-        self.emotion_detector = None
-        self.emotion_scale = config.get('emotion_scale', 0.5)  
-        self.use_mtcnn = config.get('use_mtcnn', False)
-        self.min_face_size = config.get('min_face_size', 30)  # Skip tiny faces
-        self.iou_threshold = config.get('emotion_iou_threshold', 0.3)  # Lower threshold
+        self.emotion_detector: Optional[FER] = None
+        self.emotion_scale = float(config.get('emotion_scale', 0.5))
+        self.use_mtcnn = bool(config.get('use_mtcnn', False))
+        self.min_face_size = int(config.get('min_face_size', 30))
+        self.iou_threshold = float(config.get('emotion_iou_threshold', 0.3))
         self.enabled = FER_AVAILABLE
 
-    def setup(self):
-        """
-        Initializes the FER emotion detector.
-        """
+    def setup(self) -> None:
+        """Initialize the FER emotion detector."""
         if not FER_AVAILABLE:
             print("  ✗ Emotion Detection: FER package not available, skipping")
             self.enabled = False
             return
         
         try:
-            # Use faster detector without MTCNN
             self.emotion_detector = FER(mtcnn=self.use_mtcnn)
             print(f"  ✓ Emotion Detection: FER initialized (MTCNN: {self.use_mtcnn}, Scale: {self.emotion_scale})")
         except Exception as e:
             print(f"  ✗ Emotion Detection: Failed to initialize FER: {e}")
             self.enabled = False
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
-        """
-        Analyzes a single frame for emotions.
-
-        :param frame: The frame to analyze.
-        :param frame_analysis: A dictionary containing the analysis results so far for the current frame.
-        :return: An updated dictionary with the analysis results from this plugin.
-        """
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: FrameAnalysis, video_path: str) -> FrameAnalysis:
+        """Analyze a single frame for emotions."""
         if not self.enabled or self.emotion_detector is None:
             return frame_analysis
             
@@ -59,25 +48,28 @@ class EmotionDetectionPlugin(AnalyzerPlugin):
             self._add_emotions(frame, frame_analysis)
         return frame_analysis
 
-    def _add_emotions(self, frame: np.ndarray, frame_analysis: Dict) -> None:
-        """
-        Add emotion data to recognized faces.
-        """
+    def _add_emotions(self, frame: np.ndarray, frame_analysis: FrameAnalysis) -> None:
+        """Add emotion data to recognized faces."""
         if not self.enabled or self.emotion_detector is None:
             return
             
         faces = frame_analysis.get('faces', [])
-        if not faces:
+        if not faces or not isinstance(faces, list):
             return
 
-        # Filter out tiny faces for speed
-        valid_faces = []
+        valid_faces: List[Dict[str, Union[str, List[int], Optional[Dict[str, float]], float, List[float], Dict[str, float], Dict[str, int]]]] = []
         for face in faces:
-            if 'location' not in face:
-                face['emotion'] = None
+            if not isinstance(face, dict) or 'location' not in face:
+                if isinstance(face, dict):
+                    face['emotion'] = None
                 continue
             
-            ft, fr, fb, fl = face['location']
+            location = face['location']
+            if not isinstance(location, list) or len(location) != 4:
+                face['emotion'] = None
+                continue
+                
+            ft, fr, fb, fl = location
             face_width = fr - fl
             face_height = fb - ft
             
@@ -86,6 +78,7 @@ class EmotionDetectionPlugin(AnalyzerPlugin):
                 continue
             
             valid_faces.append(face)
+
 
         if not valid_faces:
             return
@@ -162,8 +155,8 @@ class EmotionDetectionPlugin(AnalyzerPlugin):
             else:
                 face['emotion'] = None
 
-    def get_results(self) -> Any:
+    def get_results(self) -> PluginResult:
         return None
 
-    def get_summary(self) -> Any:
+    def get_summary(self) -> PluginResult:
         return None

@@ -5,38 +5,58 @@ import logging
 import re
 import time
 import threading
-from pathlib import Path
-from typing import Optional, Callable, Dict, List, TextIO
-from dataclasses import dataclass
-from faster_whisper import WhisperModel
 import os
+from pathlib import Path
+from typing import Optional, Callable, Dict, List, TextIO, Literal
+from dataclasses import dataclass
 import torch
+from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class Word:
+    start: float
+    end: float
+    word: str
+    confidence: Optional[float]
+
+
+@dataclass
+class Segment:
+    id: int
+    start: float
+    end: float
+    text: str
+    confidence: Optional[float]
+    words: List[Word]
+
+
 @dataclass
 class TranscriptionResult:
     text: str
-    segments: List[Dict[str, object]]
+    segments: List[Segment]
     language: Optional[str]
 
     def to_dict(self) -> Dict[str, object]:
         return {
             "text": self.text,
-            "segments": self.segments,
+            "segments": [vars(seg) for seg in self.segments],
             "language": self.language
         }
 
 
 class ModelDownloadProgress:
     """Tracks model download progress"""
+
     def __init__(self, callback: Optional[Callable[[int, str], None]] = None):
         self.callback = callback
-        self.total_size = 0
-        self.downloaded = 0
-        
-    def update(self, chunk_size: int):
+        self.total_size: int = 0
+        self.downloaded: int = 0
+
+    def update(self, chunk_size: int) -> None:
         self.downloaded += chunk_size
         if self.total_size > 0 and self.callback:
             progress = int((self.downloaded / self.total_size) * 100)
@@ -48,20 +68,18 @@ class StderrInterceptor(io.TextIOBase):
         self.original_stderr = original_stderr
         self.line_callback = line_callback
         self._buffer = ""
-
         outer_self = self
 
         class BufferProxy(io.RawIOBase):
-            def write(_, b):
+            def write(_, b: bytes) -> int:
                 text = b.decode("utf-8", errors="ignore")
                 outer_self._handle_text(text)
                 return outer_self.original_stderr.buffer.write(b)
 
         self.buffer = BufferProxy()
 
-    def _handle_text(self, data: str):
+    def _handle_text(self, data: str) -> None:
         self._buffer += data
-
         parts = self._buffer.split('\r')
         if len(parts) > 1:
             for part in parts[:-1]:
@@ -76,14 +94,14 @@ class StderrInterceptor(io.TextIOBase):
                     self.line_callback(line.strip())
             self._buffer = lines[-1]
 
-    def write(self, data: str):
+    def write(self, data: str) -> int:
         self._handle_text(data)
         return self.original_stderr.write(data)
 
-    def flush(self):
+    def flush(self) -> None:
         if self._buffer.strip() and self.line_callback:
             self.line_callback(self._buffer.strip())
-            self._buffer = ""
+        self._buffer = ""
         self.original_stderr.flush()
 
 
@@ -93,7 +111,7 @@ class ProgressTracker:
 
     def __init__(self, callback: Optional[Callable[[int, str], None]] = None):
         self.callback = callback
-        self.last_progress = -1
+        self.last_progress: int = -1
 
     def parse_line(self, line: str) -> None:
         match = self.PROGRESS_PATTERN.search(line)
@@ -101,7 +119,6 @@ class ProgressTracker:
             return
 
         progress = int(match.group(1))
-
         if progress == self.last_progress:
             return
 
@@ -122,26 +139,26 @@ class ProgressTracker:
 
 class TranscriptionService:
     def __init__(
-        self, 
-        model_name: str = "medium", 
-        device: str = "auto", 
-        compute_type: str = "float16",
+        self,
+        model_name: Literal["large-v3", "large-v2", "medium", "small", "base", "tiny"] = "medium",
+        device: Literal["auto", "cuda", "cpu"] = "auto",
+        compute_type: Literal["int8", "int8_float16", "int16", "float16"] = "float16",
         cache_dir: Optional[str] = None,
         download_callback: Optional[Callable[[int, str], None]] = None
     ):
         self.model_name = model_name
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.compute_type = "int8"  
+        self.device: Literal["cuda", "cpu"] = "cuda" if torch.cuda.is_available() else "cpu"
+        self.compute_type: Literal["int8", "int8_float16"] = "int8"
         self.cache_dir = cache_dir or os.getenv("WHISPER_CACHE_DIR", "/app/models")
         self.download_callback = download_callback
         self._model: Optional[WhisperModel] = None
-        self._model_loading = False
-        self._model_loaded = False
+        self._model_loading: bool = False
+        self._model_loaded: bool = False
         self._download_thread: Optional[threading.Thread] = None
 
     def _get_model_path(self) -> str:
         """Get the HuggingFace model repository path"""
-        model_map = {
+        model_map: Dict[str, str] = {
             "large-v3": "Systran/faster-whisper-large-v3",
             "large-v2": "Systran/faster-whisper-large-v2",
             "medium": "Systran/faster-whisper-medium",
@@ -162,12 +179,12 @@ class TranscriptionService:
         if self._download_thread and self._download_thread.is_alive():
             logger.info("Model download already in progress")
             return
-            
+
         if self.is_model_cached():
             logger.info("Model already cached")
             return
 
-        def _download():
+        def _download() -> None:
             try:
                 self._download_model_sync()
             except Exception as e:
@@ -186,30 +203,24 @@ class TranscriptionService:
             return
 
         logger.info(f"Downloading model {self.model_name} to {self.cache_dir}")
-        
         model_repo = self._get_model_path()
-        
-        # Set environment variables for better download experience
-        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-        os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-        
+
+
         try:
             if self.download_callback:
                 self.download_callback(0, "Starting download...")
-            
-            # Download model using huggingface_hub
+
             snapshot_download(
                 repo_id=model_repo,
                 cache_dir=self.cache_dir,
                 local_dir=os.path.join(self.cache_dir, model_repo.replace("/", "--")),
                 local_dir_use_symlinks=False,
             )
-            
+
             if self.download_callback:
                 self.download_callback(100, "Download complete")
-                
             logger.info(f"Model {self.model_name} downloaded successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to download model: {e}")
             if self.download_callback:
@@ -221,36 +232,29 @@ class TranscriptionService:
         if self._model is None:
             if self._model_loading:
                 raise RuntimeError("Model is currently being loaded")
-                
+
             self._model_loading = True
-            
-            # Ensure model is downloaded
+
             if not self.is_model_cached():
                 logger.info("Model not cached, downloading...")
                 self._download_model_sync()
-            
-            # Set environment variables
-            os.environ["HF_HUB_VERBOSITY"] = "info"
-            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-            os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-            
+
             logging.getLogger("httpx").setLevel(logging.INFO)
             logging.getLogger("huggingface_hub").setLevel(logging.INFO)
-            
+
             logger.info(f"Loading Faster-Whisper model: {self.model_name}")
-            
-            # Load model from cache
+
             self._model = WhisperModel(
-                self.model_name, 
-                device=self.device, 
+                self.model_name,
+                device=self.device,
                 compute_type=self.compute_type,
                 download_root=self.cache_dir
             )
-            
+
             logger.info("Model loaded successfully")
             self._model_loading = False
             self._model_loaded = True
-            
+
         return self._model
 
     def wait_for_download(self, timeout: Optional[float] = None) -> bool:
@@ -275,10 +279,14 @@ class TranscriptionService:
 
         if progress_callback:
             progress_callback(1, "00:00")
-            
+
         progress_tracker = ProgressTracker(progress_callback)
         original_stderr = sys.stderr
         sys.stderr = StderrInterceptor(original_stderr, progress_tracker.parse_line)
+
+        result_segments: List[Segment] = []
+        full_text = ""
+        total_duration = 0.0
 
         try:
             segments, info = self.model.transcribe(
@@ -288,7 +296,7 @@ class TranscriptionService:
                 vad_filter=True,
                 log_progress=True,
                 vad_parameters={
-                    "threshold": 0.5,  
+                    "threshold": 0.5,
                     "min_speech_duration_ms": 250,
                     "min_silence_duration_ms": 2000
                 },
@@ -296,37 +304,44 @@ class TranscriptionService:
 
             total_duration = round(info.duration, 2) if info else 0.0
             processed_duration = 0.0
-        
-            result_segments = []
-            full_text = ""
 
             for seg in segments:
-                segment_data = {
-                    "id": seg.id,
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text.strip(),
-                    "confidence": getattr(seg, 'avg_logprob', None),  
-                    "words": [
-                        {
-                            "start": w.start,
-                            "end": w.end,
-                            "word": w.word,
-                            "confidence": getattr(w, 'probability', None) 
-                        } for w in (seg.words or [])
+                segment_data = Segment(
+                    id=seg.id,
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text.strip(),
+                    confidence=getattr(seg, 'avg_logprob', None),
+                    words=[
+                        Word(
+                            start=w.start,
+                            end=w.end,
+                            word=w.word,
+                            confidence=getattr(w, 'probability', None)
+                        )
+                        for w in (seg.words or [])
                     ]
-                }
+                )
+
                 result_segments.append(segment_data)
                 full_text += seg.text + " "
                 processed_duration += seg.end - seg.start
+
                 percent_done = (processed_duration / total_duration) * 100 if total_duration > 0 else 100
                 elapsed_str = f"{int(processed_duration // 60):02d}:{int(processed_duration % 60):02d}"
 
                 if progress_callback:
                     progress_callback(int(percent_done), elapsed_str)
 
-        except RuntimeError as e:
-            if "no audio streams" in str(e).lower() or "failed to load audio" in str(e).lower():
+            result = TranscriptionResult(
+                text=full_text.strip(),
+                segments=result_segments,
+                language=info.language if info else None
+            )
+
+        except (RuntimeError, IndexError) as e:
+            error_msg = str(e).lower()
+            if "no audio streams" in error_msg or "failed to load audio" in error_msg or "tuple index out of range" in error_msg:
                 logger.warning(f"No audio stream found in {video_path}. Returning empty transcription.")
                 result = TranscriptionResult(text='', segments=[], language='N/A')
                 self._save_result(result.to_dict(), output_path)
@@ -335,28 +350,12 @@ class TranscriptionService:
                 return result
             raise
 
-        except IndexError as e:
-            if "tuple index out of range" in str(e).lower():
-                logger.warning(f"No valid audio streams found in {video_path}. Returning empty transcription.")
-                result = TranscriptionResult(text='', segments=[], language='N/A')
-                self._save_result(result.to_dict(), output_path)
-                if progress_callback:
-                    progress_callback(100, "00:00")
-                return result
-            raise
-            
         finally:
             sys.stderr = original_stderr
-            
+
         total_transcription_time = int(time.time() - start_transcription_time)
         if progress_callback:
             progress_callback(100, f"{total_transcription_time // 60:02d}:{total_transcription_time % 60:02d}")
-
-        result = TranscriptionResult(
-            text=full_text.strip(),
-            segments=result_segments,
-            language=info.language
-        )
 
         self._save_result(result.to_dict(), output_path)
         return result

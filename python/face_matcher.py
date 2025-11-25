@@ -3,12 +3,20 @@ import sys
 import json
 import face_recognition
 import numpy as np
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, TypedDict, Union
 import time
 from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
+
+class FaceMatchingResult(TypedDict):
+    success: bool
+    error: Optional[str]
+    matches: List[Dict[str, str]]
+    person_name: str
+    matches_found: int
+    reference_images_used: int
 
 @dataclass
 class MatchResult:
@@ -77,7 +85,7 @@ class FaceMatcher:
         self,
         reference_encodings: List[np.ndarray],
         unknown_faces_dir: str,
-        progress_callback: Optional[Callable[[dict], None]] = None
+        progress_callback: Optional[Callable[[Dict[str, Union[int, float]]], None]] = None,
     ) -> List[MatchResult]:
         """
         Find all matching faces in the unknown faces directory.
@@ -146,19 +154,20 @@ class FaceMatcher:
                     face_id = self.get_face_id_from_json(json_file, unknown_faces_dir)
                     elapsed = time.monotonic() - start_time
                     progress_percent = (idx / total_files) * 100
-                    progress_callback({
-                        "current": idx,
-                        "total": total_files,
-                        "progress": round(progress_percent, 1),
-                        "elapsed": int(elapsed),
-                        "match": {
-                            "json_file": json_file,
-                            "image_file": image_file,
-                            "confidence": float(confidence),
-                            "face_id": face_id,
-                            "face_data": face_data
-                        }
-                    })
+                    if progress_callback:
+                        progress_callback({
+                            "current": idx,
+                            "total": total_files,
+                            "progress": round(progress_percent, 1),
+                            "elapsed": int(elapsed),
+                            "match": {
+                                "json_file": json_file,
+                                "image_file": image_file,
+                                "confidence": float(confidence),
+                                "face_id": face_id,
+                                "face_data": face_data
+                            }
+                        })
                     logger.info(f"Face match found and progress callback sent")
                 
             except Exception as e:
@@ -185,7 +194,7 @@ async def find_and_label_matching_faces(
     unknown_faces_dir: str = "analysis_results/unknown_faces",
     tolerance: float = 0.6,
     progress_callback: Optional[Callable[[dict], None]] = None
-) -> Dict[str, any]:
+) -> FaceMatchingResult:
     """
     Find and return all faces matching the reference images.
     
@@ -214,7 +223,10 @@ async def find_and_label_matching_faces(
         return {
             "success": False,
             "error": "No valid face encodings found in reference images",
-            "matches": []
+            "matches": [],
+            "person_name": person_name,
+            "matches_found": 0,
+            "reference_images_used": 0,
         }
     
     print(f"Found {len(reference_encodings)} reference encodings", file=sys.stderr)
@@ -242,5 +254,6 @@ async def find_and_label_matching_faces(
         "person_name": person_name,
         "matches_found": len(match_data),
         "matches": match_data,
-        "reference_images_used": len(reference_encodings)
+        "reference_images_used": len(reference_encodings),
+        "error": None,
     }

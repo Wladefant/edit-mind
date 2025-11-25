@@ -4,16 +4,15 @@ import json
 import hashlib
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, List, Optional, Union
 from datetime import datetime
 
 import cv2
 import numpy as np
+from dotenv import load_dotenv
 
 from face_recognizer import FaceRecognizer
-from plugins.base import AnalyzerPlugin
-import os
-from dotenv import load_dotenv
+from plugins.base import AnalyzerPlugin, FrameAnalysis, PluginResult
 
 load_dotenv()
 
@@ -23,17 +22,17 @@ logger = logging.getLogger(__name__)
 class FaceRecognitionPlugin(AnalyzerPlugin):
     """Plugin for detecting and recognizing faces in video frames."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Union[str, bool, int, float]]):
         super().__init__(config)
-        self.face_recognizer = None
-        self.all_faces: List[Dict] = []
-        self.unknown_faces_output_path = None
+        self.face_recognizer: Optional[FaceRecognizer] = None
+        self.all_faces: List[Dict[str, Union[float, str, int]]] = []
+        self.unknown_faces_output_path: Optional[Path] = None
         self.known_faces_file = os.getenv("KNOWN_FACES_FILE_LOADED", ".known_faces.json")
         
-        self.detection_model = config.get('detection_model', 'hog')  # HOG is 10x faster than CNN
-        self.face_scale = config.get('face_scale', 0.5)  # Process at 50% scale
-        self.save_unknown_faces = config.get('save_unknown_faces', True)
-        self.unknown_save_interval = config.get('unknown_save_interval', 5)  # Save every 5th detection
+        self.detection_model = str(config.get('detection_model', 'hog'))
+        self.face_scale = float(config.get('face_scale', 0.5))
+        self.save_unknown_faces = bool(config.get('save_unknown_faces', True))
+        self.unknown_save_interval = int(config.get('unknown_save_interval', 5))
 
     def setup(self) -> None:
         """Initialize face recognizer and load known faces."""
@@ -59,7 +58,7 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         self._log_loaded_faces()
         
         if self.save_unknown_faces:
-            path_str = os.getenv("UNKNOWN_FACES_DIR", self.config['unknown_faces_dir'])
+            path_str = os.getenv("UNKNOWN_FACES_DIR", str(self.config.get('unknown_faces_dir', 'unknown_faces')))
             self.unknown_faces_output_path = Path(path_str)
             self.unknown_faces_output_path.mkdir(parents=True, exist_ok=True)
             logger.info(f"Unknown faces directory: {self.unknown_faces_output_path}")
@@ -100,7 +99,7 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             logger.warning("No known faces loaded!")
             return
         
-        face_counts = {}
+        face_counts: Dict[str, int] = {}
         for name in known_names:
             face_counts[name] = face_counts.get(name, 0) + 1
         
@@ -127,19 +126,17 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
     def analyze_frame(
         self, 
         frame: np.ndarray, 
-        frame_analysis: Dict[str, Any], 
+        frame_analysis: FrameAnalysis, 
         video_path: str
-    ) -> Dict[str, Any]:
+    ) -> FrameAnalysis:
         """Detect and recognize faces in frame."""
         if self.face_recognizer is None:
             logger.error("Face recognizer not initialized")
             frame_analysis['faces'] = []
             return frame_analysis
         
-        # Resize frame for faster processing
         original_height, original_width = frame.shape[:2]
         
-        # Scale down for detection (balanced: 0.5 = 50% size = 4x faster)
         small_frame = cv2.resize(
             frame, 
             (0, 0), 
@@ -148,40 +145,36 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             interpolation=cv2.INTER_LINEAR
         )
         
-        # Recognize faces on smaller frame
         recognized_faces = self.face_recognizer.recognize_faces(small_frame)
         
         frame_scale_inverse = 1.0 / self.face_scale
-        ui_scale = frame_analysis.get('scale_factor', 1.0)
+        ui_scale = float(frame_analysis.get('scale_factor', 1.0))
         output_faces = []
+        
         for face in recognized_faces:
-            # Scale face locations back to original frame size
             top, right, bottom, left = face['location']
 
-            # Map back to original frame pixel coords
             top = int(round(top * frame_scale_inverse))
             right = int(round(right * frame_scale_inverse))
             bottom = int(round(bottom * frame_scale_inverse))
             left = int(round(left * frame_scale_inverse))
 
-            # Clamp to original frame bounds
             left = max(0, min(left, original_width - 1))
             top = max(0, min(top, original_height - 1))
             right = max(0, min(right, original_width))
             bottom = max(0, min(bottom, original_height))
-            # Absolute (original-frame) bbox
+            
             abs_x = left
             abs_y = top
             abs_w = right - left
             abs_h = bottom - top
 
-            # Also provide UI-scaled bbox if a UI/display scale is provided
             ui_x = abs_x * ui_scale
             ui_y = abs_y * ui_scale
             ui_w = abs_w * ui_scale
             ui_h = abs_h * ui_scale
                 
-            output_face = {
+            output_face: Dict[str, Union[str, List[int], Optional[Dict[str, float]], float, List[float], Dict[str, float], Dict[str, int]]] = {
                 "name": face['name'],
                 "location": [top, right, bottom, left],
                 "emotion": face.get('emotion'),
@@ -210,22 +203,18 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
                 "frame_idx": frame_analysis.get('frame_idx', 0)
             })
 
-            # Save unknown faces less frequently for performance
             if face['name'].startswith("Unknown_") and self.save_unknown_faces:
-                # Extract unique ID from Unknown_XXXX
                 unknown_id = face['name'].split('_')[1] if '_' in face['name'] else '0'
                 unknown_num = int(unknown_id) if unknown_id.isdigit() else 0
                 
-                # Only save every Nth unknown face detection
                 if unknown_num % self.unknown_save_interval == 0:
-                    # Update face location to original frame coordinates
                     face_original = face.copy()
                     face_original['location'] = [top, right, bottom, left]
                     
                     self._save_unknown_face(
                         frame,
-                        frame_analysis['start_time_ms'],
-                        frame_analysis.get('frame_idx', 0),
+                        int(frame_analysis['start_time_ms']),
+                        int(frame_analysis.get('frame_idx', 0)),
                         face_original,
                         frame_analysis,
                         video_path
@@ -239,15 +228,18 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         frame: np.ndarray,
         timestamp_ms: int,
         frame_idx: int,
-        face: Dict,
-        frame_analysis: Dict[str, Any],
+        face: Dict[str, Union[str, List[int], np.ndarray, List[float]]],
+        frame_analysis: FrameAnalysis,
         video_path: str
     ) -> None:
-        """Crop and save unknown face with metadata (optimized)."""
+        """Crop and save unknown face with metadata."""
         h, w = frame.shape[:2]
-        top, right, bottom, left = face['location']
+        location = face['location']
+        if not isinstance(location, list) or len(location) != 4:
+            return
+            
+        top, right, bottom, left = location
 
-        # Validate bounds
         left = max(0, int(left))
         top = max(0, int(top))
         right = min(w, int(right))
@@ -262,7 +254,6 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             'height': bottom - top
         }
 
-        # Add padding
         padding_w = int((right - left) * 0.1)
         padding_h = int((bottom - top) * 0.1)
         
@@ -289,19 +280,23 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         image_filename = f"{base_filename}.jpg"
         json_filename = f"{base_filename}.json"
         
+        if self.unknown_faces_output_path is None:
+            return
+            
         image_filepath = self.unknown_faces_output_path / image_filename
         json_filepath = self.unknown_faces_output_path / json_filename
         
         try:
-            # Ensure directory exists before saving
             self.unknown_faces_output_path.mkdir(parents=True, exist_ok=True)
             
-            # Use faster JPEG quality setting
             cv2.imwrite(
                 str(image_filepath), 
                 face_image,
                 [cv2.IMWRITE_JPEG_QUALITY, 85]
             )
+            
+            encoding = face['encoding']
+            encoding_list = encoding.tolist() if isinstance(encoding, np.ndarray) else encoding
             
             metadata = {
                 "image_file": image_filename,
@@ -318,11 +313,7 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
                 "face_id": face['name'],
                 "bounding_box": original_bbox,
                 "padded_bounding_box": padded_bbox,
-                "face_encoding": (
-                    face['encoding'].tolist() 
-                    if isinstance(face['encoding'], np.ndarray) 
-                    else face['encoding']
-                ),
+                "face_encoding": encoding_list,
                 "label": {
                     "name": None,
                     "labeled_by": None,
@@ -339,9 +330,6 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             
         except Exception as e:
             logger.error(f"Error saving unknown face {image_filepath}: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-            
             
     @staticmethod
     def _format_timestamp(timestamp_ms: int) -> str:
@@ -354,37 +342,39 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
         
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
-    def get_results(self) -> List[Dict]:
+    def get_results(self) -> PluginResult:
         """Return all detected faces."""
         return self.all_faces
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> PluginResult:
         """Return comprehensive face recognition summary."""
         known_people = list(set(
             face['name']
             for face in self.all_faces
-            if not face['name'].startswith('Unknown_')
+            if isinstance(face.get('name'), str) and not face['name'].startswith('Unknown_')
         ))
 
         unknown_count = sum(
             1 for face in self.all_faces
-            if face['name'].startswith('Unknown_')
+            if isinstance(face.get('name'), str) and face['name'].startswith('Unknown_')
         )
 
         unique_unknown = len(set(
             face['name']
             for face in self.all_faces
-            if face['name'].startswith('Unknown_')
+            if isinstance(face.get('name'), str) and face['name'].startswith('Unknown_')
         ))
 
-        known_appearances = {}
+        known_appearances: Dict[str, Dict[str, Union[int, float]]] = {}
         for person in known_people:
-            appearances = [f for f in self.all_faces if f['name'] == person]
-            known_appearances[person] = {
-                'count': len(appearances),
-                'first_seen': min(appearances, key=lambda x: x['timestamp'])['timestamp'],
-                'last_seen': max(appearances, key=lambda x: x['timestamp'])['timestamp']
-            }
+            appearances = [f for f in self.all_faces if f.get('name') == person]
+            if appearances:
+                timestamps = [float(f['timestamp']) for f in appearances if isinstance(f.get('timestamp'), (int, float))]
+                known_appearances[person] = {
+                    'count': len(appearances),
+                    'first_seen': min(timestamps) if timestamps else 0.0,
+                    'last_seen': max(timestamps) if timestamps else 0.0
+                }
 
         logger.info("\n" + "=" * 70)
         logger.info("FACE RECOGNITION SUMMARY")
@@ -418,4 +408,3 @@ class FaceRecognitionPlugin(AnalyzerPlugin):
             "total_faces_detected": len(self.all_faces),
             "unknown_faces_directory": str(self.unknown_faces_output_path) if self.save_unknown_faces else None
         }
-

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass, asdict
 import numpy as np
 import cv2
@@ -6,7 +6,8 @@ from collections import Counter
 from sklearn.cluster import KMeans
 import colorsys
 
-from plugins.base import AnalyzerPlugin
+from plugins.base import AnalyzerPlugin, FrameAnalysis, PluginResult
+
 
 @dataclass
 class ColorInfo:
@@ -18,61 +19,46 @@ class ColorInfo:
     is_vibrant: bool
     is_muted: bool
 
-    def to_json_dict(self) -> Dict[str, Any]:
+    def to_json_dict(self) -> Dict[str, Union[str, float, bool]]:
         """Convert ColorInfo to a dictionary suitable for JSON serialization, excluding RGB."""
         d = asdict(self)
-        del d['rgb'] 
+        del d['rgb']
         return d
+
 
 @dataclass
 class SceneColorAnalysis:
     """Scene-level color analysis"""
-    dominant_color: Dict[str, Any]
-    color_palette: List[Dict[str, Any]]
+    dominant_color: Optional[Dict[str, Union[str, float, bool]]]
+    color_palette: List[Dict[str, Union[str, float, bool]]]
     overall_brightness: float
     overall_saturation: float
     overall_warmth: float
     color_mood: str
     color_harmony: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, Union[Optional[Dict[str, Union[str, float, bool]]], List[Dict[str, Union[str, float, bool]]], float, str]]:
         return asdict(self)
 
 
 class DominantColorPlugin(AnalyzerPlugin):
-    """
-    Plugin for analyzing dominant colors, color palettes, and color moods in video frames.
+    """Plugin for analyzing dominant colors, color palettes, and color moods in video frames."""
     
-    Features:
-    - Extract dominant colors using K-Means clustering
-    - Identify color names (basic and advanced)
-    - Analyze color temperature (warm/cool)
-    - Detect color mood and harmony
-    - Calculate brightness and saturation
-    """
-    
-    COLOR_NAMES = {
-        # Reds
+    COLOR_NAMES: Dict[Tuple[int, int, int], str] = {
         (255, 0, 0): "Red",
         (220, 20, 60): "Crimson",
         (178, 34, 34): "Firebrick",
         (139, 0, 0): "Dark Red",
         (255, 99, 71): "Tomato",
         (255, 69, 0): "Red Orange",
-        
-        # Oranges
         (255, 165, 0): "Orange",
         (255, 140, 0): "Dark Orange",
         (255, 127, 80): "Coral",
         (255, 160, 122): "Light Salmon",
-        
-        # Yellows
         (255, 255, 0): "Yellow",
         (255, 215, 0): "Gold",
         (255, 255, 224): "Light Yellow",
         (189, 183, 107): "Dark Khaki",
-        
-        # Greens
         (0, 255, 0): "Lime",
         (0, 128, 0): "Green",
         (34, 139, 34): "Forest Green",
@@ -81,8 +67,6 @@ class DominantColorPlugin(AnalyzerPlugin):
         (46, 139, 87): "Sea Green",
         (128, 128, 0): "Olive",
         (85, 107, 47): "Dark Olive Green",
-        
-        # Blues
         (0, 0, 255): "Blue",
         (0, 0, 139): "Dark Blue",
         (0, 191, 255): "Deep Sky Blue",
@@ -92,8 +76,6 @@ class DominantColorPlugin(AnalyzerPlugin):
         (0, 255, 255): "Cyan",
         (0, 139, 139): "Dark Cyan",
         (64, 224, 208): "Turquoise",
-        
-        # Purples
         (128, 0, 128): "Purple",
         (75, 0, 130): "Indigo",
         (138, 43, 226): "Blue Violet",
@@ -102,14 +84,10 @@ class DominantColorPlugin(AnalyzerPlugin):
         (221, 160, 221): "Plum",
         (238, 130, 238): "Violet",
         (255, 0, 255): "Magenta",
-        
-        # Pinks
         (255, 192, 203): "Pink",
         (255, 182, 193): "Light Pink",
         (255, 105, 180): "Hot Pink",
         (219, 112, 147): "Pale Violet Red",
-        
-        # Browns
         (165, 42, 42): "Brown",
         (139, 69, 19): "Saddle Brown",
         (160, 82, 45): "Sienna",
@@ -117,8 +95,6 @@ class DominantColorPlugin(AnalyzerPlugin):
         (244, 164, 96): "Sandy Brown",
         (222, 184, 135): "Burlywood",
         (210, 180, 140): "Tan",
-        
-        # Grays
         (255, 255, 255): "White",
         (220, 220, 220): "Gainsboro",
         (211, 211, 211): "Light Gray",
@@ -127,8 +103,6 @@ class DominantColorPlugin(AnalyzerPlugin):
         (128, 128, 128): "Gray",
         (105, 105, 105): "Dim Gray",
         (0, 0, 0): "Black",
-        
-        # Beiges/Creams
         (245, 245, 220): "Beige",
         (255, 248, 220): "Cornsilk",
         (255, 250, 240): "Floral White",
@@ -137,34 +111,27 @@ class DominantColorPlugin(AnalyzerPlugin):
         (255, 228, 196): "Bisque",
     }
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Union[str, bool, int, float]]):
         super().__init__(config)
-        self.num_colors = config.get('num_dominant_colors', 3) 
-        self.sample_size = config.get('color_sample_size', 500) 
-        self.color_resize = config.get('color_resize', 100) 
+        self.num_colors = int(config.get('num_dominant_colors', 3))
+        self.sample_size = int(config.get('color_sample_size', 500))
+        self.color_resize = int(config.get('color_resize', 100))
+        self.frame_colors: List[Dict[str, Union[int, List[ColorInfo], float]]] = []
         
-        self.frame_colors: List[Dict[str, Any]] = []
-        
-    def setup(self):
-        try:
-            print(f"  ✓ Color Analysis: K-Means with {self.num_colors} colors, {self.color_resize}x{self.color_resize} resolution", flush=True)
-        except ImportError:
-            print("  ⚠️  Warning: scikit-learn not installed. Install with: pip install scikit-learn", flush=True)
+    def setup(self) -> None:
+        print(f"  ✓ Color Analysis: K-Means with {self.num_colors} colors, {self.color_resize}x{self.color_resize} resolution", flush=True)
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: FrameAnalysis, video_path: str) -> FrameAnalysis:
         """Extract dominant colors and color properties from a frame."""
         try:
-            # Extract dominant colors
             dominant_color_objects = self._extract_dominant_colors(frame, self.num_colors)
             
-            # Calculate frame-level color metrics (optimized)
-            brightness = self._calculate_brightness_fast(frame)
-            saturation = self._calculate_saturation_fast(frame)
+            brightness = self._calculate_brightness(frame)
+            saturation = self._calculate_saturation(frame)
             warmth = self._calculate_warmth(dominant_color_objects)
             
-            # Store frame data
-            frame_color_data = {
-                'timestamp_ms': frame_analysis.get('start_time_ms', 0),
+            frame_color_data: Dict[str, Union[int, List[ColorInfo], float]] = {
+                'timestamp_ms': int(frame_analysis.get('start_time_ms', 0)),
                 'dominant_colors': dominant_color_objects,
                 'brightness': brightness,
                 'saturation': saturation,
@@ -172,9 +139,8 @@ class DominantColorPlugin(AnalyzerPlugin):
             }
             self.frame_colors.append(frame_color_data)
             
-            # Add to frame analysis
             frame_analysis['dominant_color'] = dominant_color_objects[0].to_json_dict() if dominant_color_objects else None
-            frame_analysis['color_palette'] = [c.to_json_dict() for c in dominant_color_objects[:2]]  # Top 2 only
+            frame_analysis['color_palette'] = [c.to_json_dict() for c in dominant_color_objects[:2]]
             frame_analysis['brightness'] = brightness
             frame_analysis['saturation'] = saturation
             frame_analysis['color_temperature'] = 'warm' if warmth > 20 else 'cool' if warmth < -20 else 'neutral'
@@ -187,62 +153,46 @@ class DominantColorPlugin(AnalyzerPlugin):
         return frame_analysis
 
     def _extract_dominant_colors(self, frame: np.ndarray, num_colors: int) -> List[ColorInfo]:
-        """
-        Extract dominant colors using K-Means clustering.
-        Returns a list of ColorInfo objects.
-        """
+        """Extract dominant colors using K-Means clustering."""
         try:
-            # Resize frame for faster processing
             small_frame = cv2.resize(frame, (self.color_resize, self.color_resize))
-            
-            # Convert BGR to RGB
             rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-            
-            # Reshape to 2D array of pixels
             pixels = rgb_frame.reshape(-1, 3)
             
-            # Sample random pixels if dataset is large
             if len(pixels) > self.sample_size:
                 indices = np.random.choice(len(pixels), self.sample_size, replace=False)
                 pixels = pixels[indices]
             
-            # Perform K-Means clustering
             kmeans = KMeans(
                 n_clusters=num_colors,
                 random_state=42,
-                n_init=5,  
-                max_iter=100,  
-                tol=0.01  
+                n_init=5,
+                max_iter=100,
+                tol=0.01
             )
             kmeans.fit(pixels)
             
-            # Get cluster centers
             colors = kmeans.cluster_centers_.astype(int)
-            
-            # Count pixels in each cluster
             labels = kmeans.labels_
             label_counts = Counter(labels)
             total_pixels = len(labels)
             
-            # Build ColorInfo list
-            color_info_list = []
+            color_info_list: List[ColorInfo] = []
             for i, color_rgb_array in enumerate(colors):
                 rgb_tuple = tuple(color_rgb_array)
                 percentage = (label_counts[i] / total_pixels) * 100
                 
                 color_info = ColorInfo(
-                    name=self._get_color_name_fast(rgb_tuple),
+                    name=self._get_color_name(rgb_tuple),
                     hex=self._rgb_to_hex(rgb_tuple),
                     rgb=rgb_tuple,
                     percentage=round(percentage, 2),
-                    is_vibrant=self._is_vibrant_fast(rgb_tuple),
-                    is_muted=self._is_muted_fast(rgb_tuple),
+                    is_vibrant=self._is_vibrant(rgb_tuple),
+                    is_muted=self._is_muted(rgb_tuple),
                 )
                 color_info_list.append(color_info)
             
-            # Sort by percentage
             color_info_list.sort(key=lambda x: x.percentage, reverse=True)
-            
             return color_info_list
             
         except Exception as e:
@@ -250,16 +200,12 @@ class DominantColorPlugin(AnalyzerPlugin):
             return []
 
     def _get_color_name(self, rgb: Tuple[int, int, int]) -> str:
-        """
-        Find the closest named color to the given RGB value.
-        """
+        """Find the closest named color to the given RGB value."""
         min_distance = float('inf')
         closest_name = "Unknown"
         
         for known_rgb, name in self.COLOR_NAMES.items():
-            # Calculate Euclidean distance in RGB space
             distance = sum((a - b) ** 2 for a, b in zip(rgb, known_rgb))
-            
             if distance < min_distance:
                 min_distance = distance
                 closest_name = name
@@ -270,7 +216,7 @@ class DominantColorPlugin(AnalyzerPlugin):
         """Convert RGB to hex color code."""
         return '#{:02x}{:02x}{:02x}'.format(*rgb)
 
-    def _is_vibrant_fast(self, rgb: Tuple[int, int, int]) -> bool:
+    def _is_vibrant(self, rgb: Tuple[int, int, int]) -> bool:
         """Check if a color is vibrant (high saturation)."""
         max_val = max(rgb)
         min_val = min(rgb)
@@ -280,7 +226,7 @@ class DominantColorPlugin(AnalyzerPlugin):
         brightness = max_val / 255
         return saturation > 0.5 and brightness > 0.5
 
-    def _is_muted_fast(self, rgb: Tuple[int, int, int]) -> bool:
+    def _is_muted(self, rgb: Tuple[int, int, int]) -> bool:
         """Check if a color is muted (low saturation)."""
         max_val = max(rgb)
         min_val = min(rgb)
@@ -290,21 +236,14 @@ class DominantColorPlugin(AnalyzerPlugin):
         return saturation < 0.3
 
     def _calculate_brightness(self, frame: np.ndarray) -> float:
-        """
-        Calculate overall brightness of frame (0-100).
-        Uses perceived luminance formula.
-        """
-        # Convert to grayscale using perceived luminance
+        """Calculate overall brightness of frame (0-100)."""
         small = cv2.resize(frame, (50, 50))
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         brightness = np.mean(gray) / 255 * 100
         return round(brightness, 2)
 
-    def _calculate_saturation_fast(self, frame: np.ndarray) -> float:
-        """
-        Calculate overall saturation of frame (0-100).
-        """
-        # Convert to HSV
+    def _calculate_saturation(self, frame: np.ndarray) -> float:
+        """Calculate overall saturation of frame (0-100)."""
         small = cv2.resize(frame, (50, 50))
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
         saturation = hsv[:, :, 1]
@@ -312,14 +251,11 @@ class DominantColorPlugin(AnalyzerPlugin):
         return round(avg_saturation, 2)
 
     def _calculate_warmth(self, colors: List[ColorInfo]) -> float:
-        """
-        Calculate color temperature (warmth).
-        Returns: -100 (cool) to +100 (warm)
-        """
+        """Calculate color temperature (warmth). Returns: -100 (cool) to +100 (warm)"""
         if not colors:
             return 0.0
         
-        warmth_scores = []
+        warmth_scores: List[float] = []
         for color_info in colors:
             r, g, b = color_info.rgb
             warmth = (r - b) / 255 * 100
@@ -328,44 +264,48 @@ class DominantColorPlugin(AnalyzerPlugin):
         
         return round(sum(warmth_scores), 2)
 
-    def analyze_scene(self, all_frame_analyses: List[Dict[str, Any]]):
+    def analyze_scene(self, all_frame_analyses: List[FrameAnalysis]) -> None:
         pass
 
-    def get_results(self) -> SceneColorAnalysis:
-        """
-        Generate scene-level color analysis.
-        """
+    def get_results(self) -> Optional[SceneColorAnalysis]:
+        """Generate scene-level color analysis."""
         if not self.frame_colors:
             return None
         
-        # Aggregate all colors (ColorInfo objects) across frames
         all_color_objects: List[ColorInfo] = []
-        all_brightness = []
-        all_saturation = []
-        all_warmth = []
+        all_brightness: List[float] = []
+        all_saturation: List[float] = []
+        all_warmth: List[float] = []
         
         for frame_data in self.frame_colors:
-            all_color_objects.extend(frame_data['dominant_colors'])
-            all_brightness.append(frame_data['brightness'])
-            all_saturation.append(frame_data['saturation'])
-            all_warmth.append(frame_data['warmth'])
+            colors = frame_data['dominant_colors']
+            if isinstance(colors, list):
+                all_color_objects.extend(colors)
+            
+            brightness = frame_data['brightness']
+            if isinstance(brightness, (int, float)):
+                all_brightness.append(float(brightness))
+                
+            saturation = frame_data['saturation']
+            if isinstance(saturation, (int, float)):
+                all_saturation.append(float(saturation))
+                
+            warmth = frame_data['warmth']
+            if isinstance(warmth, (int, float)):
+                all_warmth.append(float(warmth))
         
-        # Calculate overall metrics
-        overall_brightness = np.mean(all_brightness)
-        overall_saturation = np.mean(all_saturation)
-        overall_warmth = np.mean(all_warmth)
+        overall_brightness = float(np.mean(all_brightness)) if all_brightness else 0.0
+        overall_saturation = float(np.mean(all_saturation)) if all_saturation else 0.0
+        overall_warmth = float(np.mean(all_warmth)) if all_warmth else 0.0
         
-        # Find most common colors
-        color_counter = Counter()
+        color_counter: Counter = Counter()
         for color_obj in all_color_objects:
             color_counter[color_obj.hex] += color_obj.percentage
         
-        # Get top colors
         top_color_hexes = [k for k, v in color_counter.most_common(5)]
         
-        # Reconstruct color palette
         color_palette_objects: List[ColorInfo] = []
-        seen_hex = set()
+        seen_hex: set = set()
         for color_obj in all_color_objects:
             if color_obj.hex in top_color_hexes and color_obj.hex not in seen_hex:
                 color_palette_objects.append(color_obj)
@@ -375,7 +315,6 @@ class DominantColorPlugin(AnalyzerPlugin):
         
         json_color_palette = [c.to_json_dict() for c in color_palette_objects]
         
-        # Determine color mood and harmony
         color_mood = self._determine_color_mood(overall_brightness, overall_saturation, overall_warmth, json_color_palette)
         color_harmony = self._determine_color_harmony(color_palette_objects)
         
@@ -391,7 +330,7 @@ class DominantColorPlugin(AnalyzerPlugin):
             color_harmony=color_harmony,
         )
 
-    def _determine_color_mood(self, brightness: float, saturation: float, warmth: float, palette: List[Dict]) -> str:
+    def _determine_color_mood(self, brightness: float, saturation: float, warmth: float, palette: List[Dict[str, Union[str, float, bool]]]) -> str:
         """Determine the overall color mood."""
         vibrant_count = sum(1 for c_dict in palette if c_dict.get('is_vibrant', False))
         
@@ -415,9 +354,8 @@ class DominantColorPlugin(AnalyzerPlugin):
         if len(palette) < 2:
             return "monochromatic"
         
-        # Simplified harmony detection
-        hues = []
-        for color_info in palette[:3]:  # Only check top 3 colors
+        hues: List[float] = []
+        for color_info in palette[:3]:
             rgb = color_info.rgb
             h, s, v = colorsys.rgb_to_hsv(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
             hues.append(h * 360)
@@ -425,15 +363,14 @@ class DominantColorPlugin(AnalyzerPlugin):
         if len(hues) < 2:
             return "monochromatic"
         
-        # Calculate average hue difference
-        diffs = []
+        diffs: List[float] = []
         for i in range(len(hues) - 1):
             diff = abs(hues[i] - hues[i+1])
             if diff > 180:
                 diff = 360 - diff
             diffs.append(diff)
         
-        avg_diff = np.mean(diffs)
+        avg_diff = float(np.mean(diffs)) if diffs else 0.0
         
         if avg_diff < 30:
             return "monochromatic"
@@ -444,10 +381,8 @@ class DominantColorPlugin(AnalyzerPlugin):
         else:
             return "mixed"
 
-    def get_summary(self) -> Dict[str, Any]:
-        """
-        Generate a summary of color analysis.
-        """
+    def get_summary(self) -> Dict[str, Union[str, float]]:
+        """Generate a summary of color analysis."""
         results = self.get_results()
         if results is None:
             return {}

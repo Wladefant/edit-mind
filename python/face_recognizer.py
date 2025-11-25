@@ -3,11 +3,12 @@ import numpy as np
 import json
 from collections import defaultdict
 import os
+from typing import List, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
 class FaceRecognizer:
-    def __init__(self, known_faces_file='.faces.json', tolerance=0.40, model='cnn'):
+    def __init__(self, known_faces_file: str ='.faces.json', tolerance: float =0.40, model: str ='cnn'):
         """
         Initialize the face recognizer.
         
@@ -19,9 +20,9 @@ class FaceRecognizer:
         self.known_faces_file = known_faces_file
         self.tolerance = tolerance
         self.model = model
-        self.known_face_encodings = []
-        self.known_face_names = []
-        self.unknown_face_encodings = defaultdict(list)
+        self.known_face_encodings: List[np.ndarray] = []
+        self.known_face_names: List[str] = []
+        self.unknown_face_encodings: Dict[str, List[np.ndarray]] = defaultdict(list)
         self.unknown_face_counter = 0
         self.load_known_faces()
 
@@ -96,7 +97,7 @@ class FaceRecognizer:
                             continue
 
 
-    def recognize_faces(self, frame, upsample=1):
+    def recognize_faces(self, frame: np.ndarray, upsample: int =1) -> List[Dict[str, str]]:
         """
         Recognize faces in a frame with improved accuracy.
         
@@ -121,7 +122,7 @@ class FaceRecognizer:
             face_locations,
             num_jitters=10  # More jitters = more accurate but slower
         )
-        def distance_to_confidence(face_distance, tolerance=self.tolerance):
+        def distance_to_confidence(face_distance: float, tolerance: float =self.tolerance) -> float:
             """Convert face distance to confidence (0-1 scale)."""
             if face_distance > tolerance:
                 return 0.0
@@ -180,14 +181,14 @@ class FaceRecognizer:
         
         return recognized_faces
 
-    def add_known_face(self, name, encoding):
+    def add_known_face(self, name: str, encoding: np.ndarray) -> None:
         """Add a known face encoding."""
         self.known_face_encodings.append(np.array(encoding))
         self.known_face_names.append(name)
 
-    def save_known_faces(self):
+    def save_known_faces(self) -> None:
         """Save known faces to JSON file."""
-        known_faces_data = {}
+        known_faces_data: Dict[str, List[List[float]]] = {}
         for name, encoding in zip(self.known_face_names, self.known_face_encodings):
             if name not in known_faces_data:
                 known_faces_data[name] = []
@@ -196,11 +197,11 @@ class FaceRecognizer:
         with open(self.known_faces_file, 'w') as f:
             json.dump(known_faces_data, f, indent=2)
 
-    def get_all_faces(self):
+    def get_all_faces(self) -> List[Dict[str, str]]:
         """
         Returns a list of all known and unknown faces with their representative encodings and counts.
         """
-        all_faces = defaultdict(list)
+        all_faces: Dict[str, List[np.ndarray]] = defaultdict(list)
         for name, encoding in zip(self.known_face_names, self.known_face_encodings):
             all_faces[name].append(encoding)
         
@@ -218,7 +219,7 @@ class FaceRecognizer:
                 })
         return result
 
-    def label_face(self, old_name, new_name):
+    def label_face(self, old_name: str, new_name: str) -> None:
         """
         Labels an existing face (known or unknown) with a new name.
         If old_name was unknown, it becomes known.
@@ -235,11 +236,11 @@ class FaceRecognizer:
                     self.known_face_names[i] = new_name
         self.save_known_faces()
 
-    def merge_faces(self, names_to_merge, new_name):
+    def merge_faces(self, names_to_merge: List[str], new_name: str) -> None:
         """
         Merges multiple faces (known or unknown) under a single new name.
         """
-        merged_encodings = []
+        merged_encodings: List[np.ndarray] = []
         for name in names_to_merge:
             if name.startswith("Unknown_") and name in self.unknown_face_encodings:
                 for encoding in self.unknown_face_encodings[name]:

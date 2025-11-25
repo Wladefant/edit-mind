@@ -3,7 +3,7 @@ import os
 import json
 import asyncio
 from pathlib import Path
-from typing import Optional, Callable, List, Dict
+from typing import Optional, Callable, List, Dict, Union
 import time 
 import os
 from dotenv import load_dotenv
@@ -58,8 +58,9 @@ async def create_faces_data_from_folder_async():
         print(f"No faces data found in '{faces_directory}' to save to '{output_json_path}'.", file=sys.stderr)
 
     return faces_data
+
 async def batch_add_faces_from_folder(
-    progress_callback: Optional[Callable[[dict], None]] = None,
+    progress_callback: Optional[Callable[[Dict[str, Union[int, float]]], None]] = None,
     specific_faces: Optional[List[Dict[str, str]]] = None
 ):
     """
