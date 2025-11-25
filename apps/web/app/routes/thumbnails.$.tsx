@@ -59,9 +59,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         })
       }
 
-      console.debug('Cache miss for file:', decodedPath)
-
-      // Read file and cache it
       const fileBuffer = fs.readFileSync(decodedPath)
       const base64Buffer = fileBuffer.toString('base64')
       const etag = generateEtag(decodedPath, stats)
@@ -69,7 +66,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       // Cache the file buffer (TTL: 1 hour for images)
       await setCache(cacheKey, base64Buffer, 3600)
 
-      // Cache metadata separately (longer TTL)
       await setCache<CachedFileMetadata>(
         metadataCacheKey,
         {
@@ -94,7 +90,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       })
     }
 
-    console.debug('File too large for Redis cache, streaming:', decodedPath)
     const fileBuffer = fs.readFileSync(decodedPath)
     const uint8Array = new Uint8Array(fileBuffer)
     const etag = generateEtag(decodedPath, stats)
@@ -108,8 +103,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         ETag: etag,
       },
     })
-  } catch (error) {
-    console.error('Error serving file:', error)
+  } catch {
     throw new Response('File not found', { status: 404 })
   }
 }
