@@ -2,64 +2,84 @@
 
 ## Project Overview
 
-Edit Mind is a cross-platform Electron desktop app for AI-powered video indexing and semantic search. It's an "editor's second brain" that locally indexes video libraries using Python-based ML analysis (transcription, face recognition, object detection, OCR) and stores embeddings in ChromaDB for semantic search.
+Edit Mind is a comprehensive, cross-platform application for AI-powered video indexing and semantic search. It provides both **Desktop (Electron)** and **Web** interfaces to search your videos by content (faces, speech, objects, events) rather than just filenames.
 
 **Key Technology Stack:**
-- **Frontend:** Electron + React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui
-- **Backend (Main Process):** Node.js + Electron main process
+- **Monorepo:** pnpm workspaces
+- **Containerization:** Docker, Docker Compose (recommended for development)
+- **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui
+- **Desktop App:** Electron (`apps/desktop`)
+- **Web App:** React Router (`apps/web`)
+- **Backend Services:** Node.js + Express + BullMQ (`apps/background-jobs`)
 - **AI/ML Pipeline:** Python 3.9+ (OpenCV, PyTorch, Whisper, face recognition)
-- **Vector Database:** ChromaDB (external service on port 8000)
-- **AI Models:** Google Gemini 2.5 Pro (search query parsing), Google Text Embedding 004 (embeddings)
+- **Vector Database:** ChromaDB (port 8000)
+- **Relational DB:** PostgreSQL (via Prisma ORM)
+- **Queue:** Redis + BullMQ
+- **AI Models:** Google Gemini (NLP/search), local Whisper (transcription)
 
-## Architecture & Data Flow
+## Monorepo Architecture
 
-### Three-Process Architecture
-1. **Renderer Process** (`app/`): React UI, communicates via Conveyor IPC
-2. **Main Process** (`lib/main/`): Electron backend, orchestrates services
-3. **Python Service** (`python/`): WebSocket-based analysis service (`analysis_service.py`)
+### Applications (`apps/`)
+- **`apps/desktop`**: Native Electron app with Conveyor IPC system
+- **`apps/web`**: Full-stack React Router web application
+- **`apps/background-jobs`**: Node.js service for video processing, AI analysis orchestration, and BullMQ job queues
 
-### Critical Data Flow
-**Video Indexing Pipeline:**
-1. User selects folder → `selectFolder` handler finds videos → filters already-indexed via ChromaDB
-2. For each new video:
-   - Generate thumbnail (FFmpeg) → `.thumbnails/`
-   - **Transcription:** Python service extracts audio → Whisper model → `{videoName}/transcription.json`
-   - **Frame Analysis:** Python plugins analyze 2-second scenes → `{videoName}/analysis.json`
-   - **Scene Creation:** Merge transcription + analysis → `{videoName}/scenes.json`
-   - **Embedding:** Generate text from scenes → Google Embedding API → ChromaDB
-3. Results cached in `.results/{videoName}/` to avoid re-processing
+### Shared Packages (`packages/`)
+- **`packages/prisma`**: Database schema, migrations, seed data
+- **`packages/shared`**: Cross-application constants, types, services, and utilities
+- **`packages/ui`**: Reusable UI components (under construction)
 
-**Search Flow:**
-1. User query → `searchDocuments` handler
-2. Gemini API converts natural language to structured JSON query (faces, objects, emotions, shot_type, etc.)
-3. ChromaDB vector search + metadata filtering → return matching `Scene[]`
+### Python Services (`python/`)
+- **`python/analysis_service.py`**: WebSocket-based video analysis service
+- **`python/plugins/`**: Analysis plugins (face_recognition, object_detection, emotion_detection, etc.)
 
-## Custom IPC System: "Conveyor"
+## Data Flow
 
-**DO NOT use `ipcMain.handle()` or `ipcRenderer.invoke()` directly.** Use the Conveyor system located in `lib/conveyor/`.
+### Video Indexing Pipeline (Web/Docker)
+1. User adds folder → Background jobs service watches for videos
+2. Videos queued in BullMQ → Worker processes each video:
+   - Generate thumbnail (FFmpeg)
+   - **Transcription:** Python service → Whisper model → `transcription.json`
+   - **Frame Analysis:** Python plugins analyze scenes → `analysis.json`
+   - **Scene Creation:** Merge transcription + analysis → `scenes.json`
+   - **Embedding:** Generate embeddings → ChromaDB
+3. Job progress tracked in PostgreSQL `Job` table
+
+### Video Indexing Pipeline (Desktop/Electron)
+1. User selects folder via Conveyor IPC → finds videos
+2. For each video: same pipeline as above but orchestrated via Electron main process
+3. Results cached in `.results/{videoName}/`
+
+### Search Flow
+1. User query → Gemini API converts to structured JSON query
+2. ChromaDB vector search + metadata filtering → return `Scene[]`
+
+## Desktop App: Conveyor IPC System
+
+**DO NOT use `ipcMain.handle()` or `ipcRenderer.invoke()` directly.** Use the Conveyor system in `apps/desktop/lib/conveyor/`.
 
 ### How to Add a New IPC Channel
 
-**1. Define Schema** (`lib/conveyor/schemas/{name}-schema.ts`):
+**1. Define Schema** (`apps/desktop/lib/conveyor/schemas/{name}-schema.ts`):
 ```typescript
 export const myIpcSchema = {
   'my-channel-name': {
-    args: z.tuple([z.string(), z.number()]), // Request args
-    return: z.object({ result: z.string() }), // Response type
+    args: z.tuple([z.string(), z.number()]),
+    return: z.object({ result: z.string() }),
   },
 }
 ```
 
-**2. Register in Main Schemas** (`lib/conveyor/schemas/index.ts`):
+**2. Register in Main Schemas** (`apps/desktop/lib/conveyor/schemas/index.ts`):
 ```typescript
 export const ipcSchemas = {
   ...windowIpcSchema,
   ...appIpcSchema,
-  ...myIpcSchema, // Add here
+  ...myIpcSchema,
 }
 ```
 
-**3. Create API Class** (`lib/conveyor/api/{name}-api.ts`):
+**3. Create API Class** (`apps/desktop/lib/conveyor/api/{name}-api.ts`):
 ```typescript
 import { ConveyorApi } from '@/lib/preload/shared'
 
@@ -69,48 +89,48 @@ export class MyApi extends ConveyorApi {
 }
 ```
 
-**4. Export in Conveyor** (`lib/conveyor/api/index.ts`):
+**4. Export in Conveyor** (`apps/desktop/lib/conveyor/api/index.ts`):
 ```typescript
 export const conveyor = {
   app: new AppApi(electronAPI),
   window: new WindowApi(electronAPI),
-  my: new MyApi(electronAPI), // Add here
+  my: new MyApi(electronAPI),
 }
 ```
 
-**5. Create Handler** (`lib/conveyor/handlers/{name}-handler.ts`):
+**5. Create Handler** (`apps/desktop/lib/conveyor/handlers/{name}-handler.ts`):
 ```typescript
 import { handle } from '@/lib/main/shared'
 
 export const registerMyHandlers = () => {
   handle('my-channel-name', async (path: string, count: number) => {
-    // Implementation - args are auto-validated by Zod
     return { result: 'success' }
   })
 }
 ```
 
-**6. Register Handler** (`lib/main/app.ts`):
+**6. Register Handler** (`apps/desktop/lib/main/app.ts`):
 ```typescript
 import { registerMyHandlers } from '@/lib/conveyor/handlers/my-handler'
 registerMyHandlers()
 ```
 
-**Usage in React:**
-```typescript
-import { useConveyor } from '@/app/hooks/use-conveyor'
-
-const myApi = useConveyor('my')
-const result = await myApi.doSomething('/path', 42)
-```
-
 ## Python Plugin System
 
-### Creating an Analysis Plugin
+Plugins extend video analysis. Located in `python/plugins/`, inherit from `AnalyzerPlugin` (`python/plugins/base.py`).
 
-Plugins extend video analysis capabilities. All plugins inherit from `AnalyzerPlugin` (`python/plugins/base.py`).
+**Available Plugins:**
+- `face_recognition.py` - Face detection and recognition
+- `object_detection.py` - YOLO-based object detection
+- `emotion_detection.py` - Facial emotion analysis
+- `activity.py` - Activity/action recognition
+- `dominant_color.py` - Color palette extraction
+- `environment.py` - Scene environment classification
+- `shot_type.py` - Camera shot type detection
+- `text_detection.py` - OCR/text extraction
 
-**1. Create Plugin File** (`python/plugins/my_plugin.py`):
+### Creating a Plugin
+
 ```python
 from plugins.base import AnalyzerPlugin
 import logging
@@ -127,7 +147,6 @@ class MyPlugin(AnalyzerPlugin):
         logger.info("MyPlugin ready")
     
     def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict, video_path: str) -> Dict:
-        # Process frame (called for EVERY 2-second scene)
         frame_analysis['my_data'] = { 'detected': True }
         self.results.append({'timestamp': frame_analysis['start_time_ms']})
         return frame_analysis
@@ -136,133 +155,196 @@ class MyPlugin(AnalyzerPlugin):
         return self.results
     
     def get_summary(self) -> Any:
-        logger.info(f"Total detections: {len(self.results)}")
         return {'total': len(self.results)}
 ```
 
-**2. Register Plugin** (`python/analyze.py`):
+Register in `python/analyze.py`:
 ```python
 plugin_module_map = {
-    "MyPlugin": "my_plugin",  # Add here (no .py extension)
+    "MyPlugin": "my_plugin",
 }
 ```
 
-**Performance Rules:**
-- Load models in `setup()`, NOT `analyze_frame()`
-- Don't store entire frames - extract data only
-- Use NumPy vectorized operations
-- Clean up large tensors with `del` immediately
-
 ## Development Workflows
 
-### Running in Dev Mode
+### Docker-First Setup (Recommended)
+
+**Prerequisites:** Docker Desktop, pnpm
+
 ```bash
-npm run dev  # Starts Vite dev server + Electron with hot reload
+# 1. Clone and install
+git clone https://github.com/iliashad/edit-mind
+cd edit-mind
+pnpm install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env: set HOST_MEDIA_PATH, GEMINI_API_KEY, etc.
+
+# 3. Start all services
+docker compose -f docker/docker-compose.yml --env-file .env up --build
 ```
 
-### Python Service Setup (Required)
+**Access Points:**
+- **Web App:** http://localhost:3745
+- **BullMQ Dashboard:** http://localhost:4000
+- **ChromaDB:** http://localhost:8000/docs
+
+### Desktop App Development
+
 ```bash
-cd python
-python3.12 -m venv .venv
-source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
-pip install -r requirements.txt
-chroma run --host localhost --port 8000 --path .chroma_db
+cd apps/desktop
+pnpm run dev  # Starts Vite + Electron with hot reload
 ```
 
-### Building for Production
+### Building Desktop App
+
 ```bash
-npm run build:win   # Windows installer
-npm run build:mac   # macOS .dmg
-npm run build:linux # Linux AppImage
+cd apps/desktop
+pnpm run build:win   # Windows
+pnpm run build:mac   # macOS
+pnpm run build:linux # Linux
 ```
 
-### Environment Variables (.env)
+## Environment Variables
+
+Create `.env` in project root:
+
+```ini
+# Required
+DATABASE_URL="postgresql://user:password@postgres:5432/app"
+GEMINI_API_KEY="your_key_here"
+HOST_MEDIA_PATH="/path/to/your/media/folder"
+
+# Redis
+REDIS_HOST="redis"
+REDIS_PORT="6379"
+REDIS_URL="redis://redis:6379"
+
+# ChromaDB
+CHROMA_HOST="chroma"
+CHROMA_PORT="8000"
+
+# Python Service
+PYTHON_PORT="8765"
+VENV_PATH="/app/.venv"
+PYTHON_SCRIPT="/app/python/analysis_service.py"
+
+# File Paths (Docker)
+UNKNOWN_FACES_DIR="/app/data/.unknown_faces"
+PROCESSED_VIDEOS_DIR="/app/data/.analysis"
+KNOWN_FACES_FILE="/app/data/.faces.json"
+FACES_DIR="/app/data/.faces"
+THUMBNAILS_PATH="/app/data/.thumbnails"
+STITCHED_VIDEOS_DIR="/app/data/.stitched-videos"
+
+# Models
+SEARCH_AI_MODEL="/app/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+WHISPER_CACHE_DIR="/app/models"
+YOLO_CONFIG_DIR="/app/models/yolo"
+
+# Services
+PORT="3745"
+BACKGROUND_JOBS_PORT="4000"
+BACKGROUND_JOBS_URL="http://background-jobs:4000"
+
+# Security
+SESSION_SECRET=""
+ENCRYPTION_KEY=""
 ```
-GEMINI_API_KEY=your_api_key_here  # Required for search & embeddings
-CHROMA_HOST=localhost             # Optional, defaults to localhost
-CHROMA_PORT=8000                  # Optional, defaults to 8000
+
+## Project Structure
+
+```
+edit-mind/
+├── apps/
+│   ├── desktop/           # Electron desktop app
+│   │   ├── app/           # React renderer (components, hooks, pages)
+│   │   ├── lib/           # Main process (conveyor/, main/, preload/, utils/)
+│   │   └── resources/     # Build assets, icons
+│   ├── web/               # React Router web app
+│   │   ├── app/           # Routes, components, services
+│   │   └── tests/         # Playwright tests
+│   └── background-jobs/   # Node.js job processor
+│       └── src/           # Workers, queues, API routes
+├── packages/
+│   ├── prisma/            # Database schema & migrations
+│   ├── shared/            # Cross-app utilities
+│   │   ├── constants/     # App-wide constants
+│   │   ├── schemas/       # Zod validation schemas
+│   │   ├── services/      # gemini, vectorDb, pythonService, immich
+│   │   ├── types/         # TypeScript types (Scene, Video, SearchQuery, etc.)
+│   │   └── utils/         # ffmpeg, transcribe, scenes, embed, faces
+│   └── ui/                # Shared UI components
+├── python/                # AI/ML analysis service
+│   ├── plugins/           # Analysis plugins
+│   ├── analysis_service.py
+│   ├── analyze.py
+│   └── transcribe.py
+└── docker/                # Docker configs
 ```
 
-## Project Conventions
+## Database Schema (Prisma)
 
-### File Organization
-- `app/`: Renderer process (React components, hooks, pages, styles)
-- `lib/main/`: Main process logic
-- `lib/conveyor/`: Type-safe IPC system (api/, handlers/, schemas/)
-- `lib/services/`: Node.js services (pythonService, vectorDb, gemini)
-- `lib/utils/`: Utility functions (ffmpeg, transcribe, scenes, embed)
-- `lib/types/`: TypeScript type definitions
-- `python/`: Python analysis service & plugins
+Key models in `packages/prisma/schema.prisma`:
+- **User**: Authentication, roles (admin/user)
+- **Folder**: Watched folders, scan status
+- **Job**: Video processing jobs (status, stage, progress)
+- **Chat/ChatMessage**: Search conversation history
+- **Integration**: External service configs (Immich)
 
-### Path Aliases
-Use `@/app` and `@/lib` imports (configured in `electron.vite.config.ts`):
-```typescript
-import { useConveyor } from '@/app/hooks/use-conveyor'
-import { pythonService } from '@/lib/services/pythonService'
-```
+## Shared Package (`packages/shared`)
 
-### React Component Patterns
-- Use **functional components** with hooks
-- **shadcn/ui** components in `app/components/ui/`
-- Custom hooks in `app/hooks/` (prefix with `use`)
-- Pages in `app/pages/` (Index, Chat, Videos, Settings, Training)
-- HashRouter navigation (Electron requires `HashRouter`)
+### Services
+- `gemini.ts` - Google Gemini API for NLP search parsing
+- `vectorDb.ts` - ChromaDB operations
+- `pythonService.ts` - WebSocket communication with Python
+- `immich.ts` - Immich photo library integration
+- `embedding.ts` - Text embedding generation
 
-### Python Service Communication
-The Python service runs as a subprocess with WebSocket IPC:
-- **Windows:** TCP socket (`ws://127.0.0.1:{port}`)
-- **Unix/macOS:** Unix socket (`ws+unix://{path}`)
-- Service auto-restarts on crash (max 10 times with backoff)
-- Check `pythonService.isServiceRunning()` before calling
+### Types
+- `Scene` - Video segment with transcription, faces, objects, emotions
+- `Video` - Video metadata (source, duration, aspect_ratio)
+- `SearchQuery` - Structured search parameters
+- `Analysis` - Raw Python analysis output
 
-### Data Persistence
-- **ChromaDB:** Scene embeddings and metadata (external service)
-- **File System:**
-  - `.results/{videoName}/`: Cached analysis results (transcription.json, analysis.json, scenes.json)
-  - `.thumbnails/`: Video thumbnails
-  - `.faces/{personName}/`: Known face encodings
-  - `.faces.json`: Face name → image paths mapping
-  - `settings.json`: User settings (in project root)
-
-### TypeScript Types
-Key types in `lib/types/`:
-- `Scene`: A 2-second video segment with transcription, faces, objects, emotions, colors
-- `Video`: Video metadata (source, duration, aspect_ratio, camera, category)
-- `VideoWithScenes`: Video + array of Scene objects
-- `SearchQuery`: Structured search parameters (faces, objects, shot_type, etc.)
-- `Analysis`: Raw Python analysis output
-- `AnalysisProgress`: Progress events from Python service
+### Utilities
+- `ffmpeg.ts` - Video processing helpers
+- `transcribe.ts` - Whisper transcription
+- `scenes.ts` - Scene generation from analysis
+- `embed.ts` - Embedding generation
+- `faces.ts` - Face management utilities
 
 ## Common Pitfalls
 
-1. **Don't bypass Conveyor:** Always use the schema → api → handler pattern for IPC
-2. **Python service dependencies:** Call `pythonService.start()` in main process before using (already done in `main.ts`)
-3. **ChromaDB required:** App won't work without ChromaDB running on port 8000
-4. **Scene timing:** Scenes are 2-second chunks (configurable via `sample_interval_seconds` in `settings.json`)
-5. **Face recognition:** Unknown faces stored in `analysis_results/unknown_faces/` must be manually labeled
-6. **Transcription files:** Missing transcription.json will trigger re-transcription on next index
+1. **Docker required:** Web app requires full Docker stack (PostgreSQL, Redis, ChromaDB)
+2. **Desktop uses Conveyor:** Don't bypass IPC system in Electron app
+3. **Shared package build:** Run `pnpm run build:shared` in desktop before dev
+4. **HOST_MEDIA_PATH:** Must be set and shared with Docker for video access
+5. **Python service:** WebSocket on port 8765, auto-managed by background-jobs
+6. **Database migrations:** Run `pnpm prisma migrate dev` after schema changes
 
 ## Testing & Debugging
 
-- **Electron DevTools:** Press F12 in app or use `View → Toggle Developer Tools`
-- **Python logs:** Stderr output appears in terminal running `npm run dev`
-- **Service logs:** Check WebSocket messages in `pythonService.ts`
-- **ChromaDB UI:** Visit `http://localhost:8000/docs` for FastAPI interface
+- **Web Tests:** `cd apps/web && pnpm test` (Playwright)
+- **Desktop DevTools:** F12 or View → Toggle Developer Tools
+- **BullMQ Dashboard:** http://localhost:4000 (job monitoring)
+- **ChromaDB UI:** http://localhost:8000/docs
+- **Python logs:** Check Docker logs for background-jobs container
+- **Database:** Connect to PostgreSQL at `localhost:5433`
 
-## External Dependencies Requiring Manual Setup
+## Integrations
 
-1. **ChromaDB Server:** Must be running before app starts
-   ```bash
-   chroma run --host localhost --port 8000 --path .chroma_db
-   ```
-2. **FFmpeg/FFprobe:** Bundled via `ffmpeg-ffprobe-static` (auto-installed)
-3. **Python 3.9+:** Required for analysis service
-4. **Gemini API Key:** Required in `.env` for search functionality
+### Immich Support
+Edit Mind can integrate with [Immich](https://immich.app/) photo/video library:
+- Configure via `Integration` model (API key, base URL)
+- Import videos from Immich library
+- Sync metadata bidirectionally
 
-## Current Limitations (v0.1.0)
+## Current Limitations (v0.1.1)
 
-- No offline embedding/query models yet (requires Google API)
-- No auto-packaging of Python environment in builds
-- Face recognition requires manual labeling of unknown faces
-- Re-indexing entire library on schema changes (no migrations)
-- Single-threaded Python analysis (no parallel processing)
+- Shared UI package (`packages/ui`) under construction
+- Desktop app doesn't use PostgreSQL (local file storage)
+- No auto-packaging of Python in desktop builds
+- Face recognition requires manual labeling
+- Single-threaded Python analysis
