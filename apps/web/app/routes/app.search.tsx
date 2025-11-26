@@ -12,8 +12,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { getUser } from '~/services/user.sever'
 import { SearchInput } from '~/features/search/components/SearchInput'
 import type { SearchQuery } from '@shared/types/search'
-import { generateActionFromPrompt } from '@shared/services/gemini'
-import { getSimpleSearchStats } from '@shared/utils/search'
+import { generateActionFromPrompt } from '@shared/services/modelRouter'
+import { getSearchStats } from '@shared/utils/search';
 import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion'
 import { logger } from '@shared/services/logger'
 
@@ -51,7 +51,7 @@ export async function action({ request }: { request: Request }) {
     logger.debug(`We got ${videos.length} videos for your search`)
     const duration = Date.now() - startTime
 
-    const stats = getSimpleSearchStats({
+    const stats = getSearchStats({
       query: searchQuery.description || query,
       finalResultsCount: videos.length,
       durationMs: duration,

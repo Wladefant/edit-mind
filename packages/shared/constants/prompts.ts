@@ -1,144 +1,180 @@
-export const GENERATE_ACTION_PROMPT = (query: string) => `
-You are a video search parameter extraction assistant. Extract structured data from user queries.
-
-STRICT REQUIREMENTS:
-1. Return ONLY valid JSON, no markdown formatting
-2. All fields must be present (use null or [] for missing values)
-3. Ensure outputFilename is URL-safe and descriptive
-
-FIELD SPECIFICATIONS:
-- action: Main activity/subject (string, can be empty)
-- emotions: Array of emotion keywords (valid: happy, sad, surprised, angry, neutral, excited, calm)
-- shot_type: Camera framing (valid: "medium-shot", "long-shot", "close-up", or null)
-- aspect_ratio: Video dimensions (valid: "16:9", "9:16", "1:1", "4:3", "8:7", or null)
-- duration: Total seconds (positive integer or null)
-- description: Natural language scene description (string, required)
-- outputFilename: Kebab-case name without extension, max 50 chars (string, required)
-- objects: Physical objects/items in scene (array of strings)
-- faces: Array of person names mentioned (extract @mentions and names, array of strings)
-- locations: Array of location names (indoor, outdoor, office, beach, etc., array of strings)
-- transcriptionQuery: Exact text to search for in video transcriptions (string or null)
-- semanticQuery: Conceptual/contextual search terms for ranking (string or null)
-
-EXAMPLES:
-Input: "Show me scenes with @Ilias and @Pierre talking about Strapi outdoors"
-Output: { "action":"talking", "emotions":[], "shot_type":null, "aspect_ratio":null, "duration":null, "description":"Ilias and Pierre talking about Strapi outdoors", "outputFilename":"ilias-pierre-strapi-outdoors", "objects":[], "faces":["Ilias","Pierre"], "locations":["outdoor"], "transcriptionQuery":"Strapi", "semanticQuery":"talking about discussing collaboration" }
-
-Input: "Find exciting product launch moments"
-Output: { "action":"", "emotions":["excited"], "shot_type":null, "aspect_ratio":null, "duration":null, "description":"exciting product launch moments", "outputFilename":"exciting-product-launch", "objects":[], "faces":[], "locations":[], "transcriptionQuery":null, "semanticQuery":"product launch announcement reveal celebration applause excitement" }
-
-Input: "Clips where @Sarah is brainstorming with the team"
-Output: { "action":"brainstorming", "emotions":[], "shot_type":null, "aspect_ratio":null, "duration":null, "description":"Sarah brainstorming with team", "outputFilename":"sarah-team-brainstorming", "objects":["whiteboard"], "faces":["Sarah"], "locations":["indoor"], "transcriptionQuery":null, "semanticQuery":"brainstorming collaboration discussing ideas planning whiteboard session" }
-
-USER QUERY: ${query}
-
-Respond with ONLY the JSON object:
-`
-
-export const ASSISTANT_MESSAGE_PROMPT = (userPrompt: string, resultsCount: number) => `
-You are a helpful video compilation assistant. The user requested: "${userPrompt}"
-
-You found ${resultsCount} video scenes matching their request.
-
-Respond with a brief, friendly message (1-2 sentences) acknowledging their request and what you found. Be conversational and helpful.
-
-Examples:
-- "I found 15 clips matching your description! Ready to compile them into your video."
-- "Great! I've located 8 happy moments from your summer videos."
-- "Found 12 scenes where you're riding a bike outdoors. Let me know if you'd like to proceed!"
-
-Your response:
-`
-
-export const GENERAL_RESPONSE_PROMPT = (userPrompt: string, chatHistory: string) => `
-You are a friendly, helpful AI assistant for a video library application. You help users:
-1. Search and compile their videos
-2. Get analytics and insights about their video collection
-3. Have casual conversations
-
-The user said: "${userPrompt}"${chatHistory}
-
-Respond naturally and helpfully (1-3 sentences). If they're asking what you can do, mention you can:
-- Create video compilations based on descriptions, people, emotions, etc.
-- Answer questions about their video library (duration, counts, statistics)
-- Search for specific moments or phrases in videos
-
-Your response:
-`
-
-export const CLASSIFY_INTENT_PROMPT = (query: string) => `
-Classify this user query about their video library:
+// constants/prompts.ts
+export const SEARCH_PROMPT = (query: string) => `You are a precise video search parameter extractor. Extract structured data from the user's query.
 
 Query: "${query}"
 
-Determine:
-1. Type: 
-   - "compilation" = user wants to create/find/compile videos
-   - "analytics" = user wants statistics/information about their videos
-   - "general" = casual conversation or unclear requests
+Instructions:
+1. **duration** (number|null): Convert time mentions to seconds
+   - "30 second" / "30s" / "30 sec" → 30
+   - "2 minute" / "2 min" / "2m" → 120
+   - "1.5 minutes" → 90
+   - "5 min" → 300
+   - If no duration mentioned → null
 
-2. needsVideoData: true if you need to query the video database to answer, false otherwise
+2. **aspect_ratio** (string): Detect format keywords
+   - "vertical" / "portrait" / "TikTok" / "Stories" / "9:16" → "9:16"
+   - "square" / "Instagram post" / "1:1" → "1:1"
+   - "horizontal" / "landscape" / "16:9" → "16:9"
+   - "4:3" → "4:3"
+   - "8:7" → "8:7"
+   - Default → "16:9"
 
-Respond with ONLY valid JSON:
-{"type": "compilation" | "analytics" | "general", "needsVideoData": true | false}
+3. **emotions** (string[]): Extract emotion words
+   - Examples: happy, sad, angry, surprised, excited, neutral, fearful, disgusted
+   - Normalize to lowercase
+   - Return empty array if none mentioned
 
-Examples:
-"Create a 30 second video of me looking happy" -> {"type":"compilation","needsVideoData":true}
-"How many videos do I have?" -> {"type":"analytics","needsVideoData":true}
-"Hello, how are you?" -> {"type":"general","needsVideoData":false}
+4. **shot_type** (string|null): Detect camera framing
+   - "close-up" / "closeup" / "close up" → "close-up"
+   - "medium-shot" / "medium shot" / "waist up" → "medium-shot"
+   - "long-shot" / "long shot" / "wide shot" / "full body" → "long-shot"
+   - If not mentioned → null
 
-Your JSON response:
-`
+5. **objects** (string[]): Extract physical items mentioned
+   - Examples: laptop, dog, pan, knife, car, phone
+   - Normalize to lowercase singular form
+   - Return empty array if none
 
-export const ANALYTICS_RESPONSE_PROMPT = (userPrompt: string, analytics: any) => `
-You are a friendly, knowledgeable video library assistant. The user asked: "${userPrompt}"
+6. **action** (string|null): Main activity/verb
+   - Examples: cooking, running, talking, walking, dancing
+   - Extract the main action verb
+   - null if no clear action
 
-Here's what you found in their video library:
-- Total videos: ${analytics.uniqueVideos}
-- Total scenes: ${analytics.totalScenes}
-- Total duration: ${analytics.totalDurationFormatted} (${analytics.totalDuration} seconds)
-${analytics.dateRange ? `- Date range: ${analytics.dateRange.oldest.toLocaleDateString()} to ${analytics.dateRange.newest.toLocaleDateString()}` : ''}
-${
-  Object.keys(analytics.emotionCounts).length > 0
-    ? `- Emotions detected: ${Object.entries(analytics.emotionCounts)
-        .map(([e, c]) => `${e} (${c})`)
-        .join(', ')}`
-    : ''
-}
-${
-  Object.keys(analytics.faceOccurrences).length > 0
-    ? `- People appearing: ${Object.entries(analytics.faceOccurrences)
-        .map(([f, c]) => `@${f} appears in ${c} scenes`)
-        .join(', ')}`
-    : ''
-}
+7. **transcriptionQuery** (string|null): Spoken word search
+   - Extract quoted text after "say", "says", "said", "saying"
+   - Example: "where I say 'hello world'" → "hello world"
+   - null if not searching for speech
 
-Respond naturally and conversationally (2-4 sentences). Include specific numbers and insights. Be enthusiastic and helpful.
+8. **description** (string): Brief summary of what user wants
+   - If query is empty → "No query provided"
+   - Otherwise, rephrase the query briefly
 
-Your response:
-`
+9. **faces** (string[]): Extract @mentions or person names
+   - "@John" → ["john"]
+   - "@Ilias" → ["ilias"]
+   - Normalize to lowercase, remove @ symbol
 
-
-export   const SEARCH_PROMPT = (query: string) => `Extract video search parameters from the user query into JSON format.
-
-RULES:
-1. Return ONLY valid JSON - no markdown, no explanations
-2. All fields are required (use null or [] when not applicable)
-3. Extract ALL mentioned emotions, objects, and parameters
-
-SCHEMA:
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "action": string | null,
-  "emotions": ["happy"|"sad"|"surprised"|"angry"|"neutral"|"excited"|"calm"],
-  "shot_type": "close-up" | "medium-shot" | "long-shot" | null,
-  "aspect_ratio": "16:9"|"9:16"|"1:1"|"4:3"|"8:7",
-  "duration": number | null,
-  "description": string,
-  "outputFilename": string,
+  "emotions": string[],
   "objects": string[],
-  "transcriptionQuery": string | null
+  "duration": number | null,
+  "shot_type": "close-up" | "medium-shot" | "long-shot" | null,
+  "aspect_ratio": "16:9" | "9:16" | "1:1" | "4:3" | "8:7",
+  "transcriptionQuery": string | null,
+  "description": string,
+  "faces": string[]
 }
 
-Query: ${query}
+Examples:
+Query: "Create a 30 second vertical video of me looking happy"
+{"action": null, "emotions": ["happy"], "objects": [], "duration": 30, "shot_type": null, "aspect_ratio": "9:16", "transcriptionQuery": null, "description": "30 second vertical video with happy emotion", "faces": []}
 
-JSON OUTPUT:`
+Query: "Find all close-ups where @Ilias is surprised and there's a laptop"
+{"action": null, "emotions": ["surprised"], "objects": ["laptop"], "duration": null, "shot_type": "close-up", "aspect_ratio": "16:9", "transcriptionQuery": null, "description": "Close-up shots of Ilias looking surprised with laptop", "faces": ["ilias"]}
+
+Query: "Show me clips where I say 'machine learning is awesome'"
+{"action": null, "emotions": [], "objects": [], "duration": null, "shot_type": null, "aspect_ratio": "16:9", "transcriptionQuery": "machine learning is awesome", "description": "Clips with speech: machine learning is awesome", "faces": []}
+
+Now extract from the query above. Return ONLY the JSON object:`
+
+
+
+export const ASSISTANT_MESSAGE_PROMPT = (userPrompt: string, resultsCount: number) => `
+You are a helpful video assistant.
+User request: "${userPrompt}"
+Results found: ${resultsCount}
+
+Instructions:
+- Reply in 1-2 friendly sentences.
+- Mention the result count explicitly.
+- Propose the next step (e.g., creating the video, showing preview).
+- Example: "I found 5 clips of you smiling! Shall I compile them?"
+
+Response:`
+
+export const VIDEO_COMPILATION_MESSAGE_PROMPT = (userPrompt: string, resultsCount: number) => `
+You are a helpful video-compilation assistant.
+User request: "${userPrompt}"
+Clips matched: ${resultsCount}
+
+Instructions:
+- Reply in 1–2 friendly sentences.
+- Mention the number of matching clips clearly.
+- Suggest the next step (e.g., compiling them, choosing style, trimming, or previewing).
+- Keep the tone creative but concise.
+- Example: "I found 12 clips that fit your 'energetic montage' idea! Want me to stitch them into a first draft?"
+
+Response:`
+
+
+export const GENERAL_RESPONSE_PROMPT = (userPrompt: string, chatHistory: string) => `
+You are a friendly video library AI.
+User said: "${userPrompt}"
+History: ${chatHistory || "None"}
+
+Instructions:
+- Respond naturally (1-3 sentences).
+- If the intent is unclear, mention your capabilities (Search, Compilation, Analytics).
+- Be conversational.
+
+Response:`
+
+export const CLASSIFY_INTENT_PROMPT = (query: string) => `
+Classify the user intent.
+
+Query: "${query}"
+
+Categories:
+- "compilation": Creating, finding, searching videos/scenes.
+- "analytics": Counting stats, dates, duration.
+- "general": Greetings, questions about the AI.
+
+Output JSON only:
+{
+  "type": "compilation" | "analytics" | "general",
+  "needsVideoData": boolean
+}
+
+Examples:
+"Make a video" -> {"type": "compilation", "needsVideoData": true}
+"How many clips?" -> {"type": "analytics", "needsVideoData": true}
+"Hi" -> {"type": "general", "needsVideoData": false}
+`
+
+export const ANALYTICS_RESPONSE_PROMPT = (userPrompt: string, analytics: any) => {
+  const emotionList = Object.entries(analytics.emotionCounts || {})
+    .sort(([, a]: any, [, b]: any) => (b as number) - (a as number))
+    .slice(0, 3)
+    .map(([emotion, count]) => `${emotion} (${count})`)
+    .join(', ')
+
+  const peopleList = Object.entries(analytics.faceOccurrences || {})
+    .sort(([, a]: any, [, b]: any) => (b as number) - (a as number))
+    .slice(0, 3)
+    .map(([name]) => `@${name}`)
+    .join(', ')
+
+  return `You are an enthusiastic video library assistant analyzing a user's video collection.
+
+User Question: "${userPrompt}"
+
+Video Library Statistics:
+- Total Videos: ${analytics.uniqueVideos ?? 0}
+- Total Scenes: ${analytics.totalScenes ?? 0}
+- Total Duration: ${analytics.totalDurationFormatted || analytics.totalDuration + ' seconds'}
+- Average Scene Duration: ${analytics.averageSceneDuration ?? 0} seconds
+- Top Emotions: ${emotionList || 'None detected'}
+- Featured People: ${peopleList || 'None detected'}
+${analytics.dateRange ? `- Date Range: ${analytics.dateRange.oldest?.toLocaleDateString()} to ${analytics.dateRange.newest?.toLocaleDateString()}` : ''}
+
+Instructions:
+1. Answer the user's specific question directly using the statistics provided
+2. Be enthusiastic and conversational (use exclamation marks!)
+3. Include specific numbers from the data
+4. Keep response to 2-4 sentences
+5. Highlight the most interesting or impressive statistics
+
+Response:`
+}

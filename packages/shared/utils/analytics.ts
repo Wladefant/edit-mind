@@ -1,5 +1,5 @@
 import { formatDuration } from 'date-fns'
-import { generateActionFromPrompt } from '../services/gemini'
+import { generateActionFromPrompt } from '../services/modelRouter'
 import { queryCollection } from '../services/vectorDb'
 import { Scene } from '../types/scene'
 

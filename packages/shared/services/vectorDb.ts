@@ -3,14 +3,16 @@ import { EmbeddingInput, CollectionStatistics, Filters } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
 import { SearchQuery, VideoMetadataSummary } from '../types/search'
-import { metadataToScene, sceneToVectorFormat } from '../utils/embed'
-import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME } from '../constants'
+import { metadataToScene, sanitizeMetadata, sceneToVectorFormat } from '../utils/embed'
+import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, IS_TESTING } from '../constants'
 import { getEmbeddings } from '../services/embedding'
 import { suggestionCache } from './suggestion'
 import { getCache, setCache } from './cache'
 import { logger } from './logger'
 
-export const createVectorDbClient = async (): Promise<{
+export const createVectorDbClient = async (
+  collectionName: string = COLLECTION_NAME
+): Promise<{
   collection: Collection | null
   client: ChromaClient | null
 }> => {
@@ -24,7 +26,7 @@ export const createVectorDbClient = async (): Promise<{
     }
 
   client = new ChromaClient({ host: CHROMA_HOST, port: parseInt(CHROMA_PORT) })
-  collection = await client.getOrCreateCollection({ name: COLLECTION_NAME })
+  collection = await client.getOrCreateCollection({ name: collectionName })
 
   return {
     client,
@@ -34,19 +36,26 @@ export const createVectorDbClient = async (): Promise<{
 
 async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
   try {
-    const { collection } = await createVectorDbClient()
-    if (!collection) throw new Error('Collection not initialized')
-
     const validDocuments = documents.filter((d) => d.text && d.text.trim().length > 0 && d.id && d.metadata)
 
     if (validDocuments.length === 0) {
-      logger.warn('No valid documents to embed')
+      logger.warn('No valid documents to embed after validation')
       return
     }
 
-    const ids = validDocuments.map((d) => d.id)
-    const metadatas = validDocuments.map((d) => d.metadata || {})
-    const documentTexts = validDocuments.map((d) => d.text)
+    const { collection } = await createVectorDbClient()
+    if (!collection) {
+      throw new Error('Collection not initialized')
+    }
+
+    const sanitizedDocuments = validDocuments.map((doc) => ({
+      ...doc,
+      metadata: doc.metadata ? sanitizeMetadata(doc.metadata) : {},
+    }))
+
+    const ids = sanitizedDocuments.map((d) => d.id)
+    const metadatas = sanitizedDocuments.map((d) => d.metadata || {})
+    const documentTexts = sanitizedDocuments.map((d) => d.text)
 
     const embeddings = await getEmbeddings(documentTexts)
 
@@ -66,7 +75,9 @@ async function embedDocuments(documents: EmbeddingInput[]): Promise<void> {
       embeddings,
     })
 
-    await suggestionCache.refresh()
+    if (!IS_TESTING) {
+      await suggestionCache.refresh()
+    }
   } catch (error) {
     logger.error('Error embedding documents:' + error)
     throw error
@@ -299,8 +310,9 @@ const getAllVideosWithScenes = async (
         allSources,
         filters,
       }
-      logger.debug('Setup the video cache')
-      await setCache(cacheKey, result, 300)
+      if (!IS_TESTING) {
+        await setCache(cacheKey, result, 300)
+      }
 
       return result
     }
@@ -310,7 +322,10 @@ const getAllVideosWithScenes = async (
       filters: { cameras: [], colors: [], locations: [], faces: [], objects: [], shotTypes: [], emotions: [] },
     }
 
-    await setCache(cacheKey, emptyResult, 300)
+    if (!IS_TESTING) {
+      await setCache(cacheKey, emptyResult, 300)
+    }
+
     return emptyResult
   } catch {
     return {
@@ -459,7 +474,7 @@ async function getByVideoSource(videoSource: string): Promise<Scene[]> {
   }
 }
 
-async function updateDocuments(scene: Scene): Promise<void> {
+async function updateMetadata(scene: Scene): Promise<void> {
   try {
     const { collection } = await createVectorDbClient()
 
@@ -488,9 +503,11 @@ async function updateDocuments(scene: Scene): Promise<void> {
       embeddings: embeddings,
     })
 
-    logger.debug(scene.id + ' has been updated')
-    // Refresh suggestions cache after update exciting videos
-    await suggestionCache.refresh()
+
+    if (!IS_TESTING) {
+      // Refresh suggestions cache after update exciting videos
+      await suggestionCache.refresh()
+    }
   } catch (error) {
     logger.error('Error updating documents: ' + error)
     throw error
@@ -501,12 +518,13 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
   try {
     const cacheKey = `videos:metadata`
 
-    const cached = await getCache<VideoMetadataSummary>(cacheKey)
-    if (cached) {
-      logger.debug('Cache hit for metadata:' + cacheKey)
-      return cached
+    if (!IS_TESTING) {
+      const cached = await getCache<VideoMetadataSummary>(cacheKey)
+      if (cached) {
+        logger.debug('Cache hit for metadata:' + cacheKey)
+        return cached
+      }
     }
-
     const { collection } = await createVectorDbClient()
 
     if (!collection) throw new Error('Collection not initialized')
@@ -543,6 +561,9 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       }
 
       // Emotions
+      if (!Array.isArray(scene.emotions)) {
+        logger.debug(scene.emotions)
+      }
       scene.emotions?.forEach((e) => {
         const name = e.emotion.toLowerCase()
         emotionsCount[name] = (emotionsCount[name] || 0) + 1
@@ -581,16 +602,14 @@ async function getVideosMetadataSummary(): Promise<VideoMetadataSummary> {
       cameras: getTop(cameraCount),
     }
 
-    await setCache(cacheKey, result, 300)
-
+    if (!IS_TESTING) {
+      await setCache(cacheKey, result, 300)
+    }
     return result
   } catch (error) {
     logger.error('Error aggregating metadata from DB: ' + error)
     throw error
   }
-}
-async function updateMetadata(metadata: Scene): Promise<void> {
-  await updateDocuments(metadata)
 }
 async function getVideoWithScenesBySceneIds(sceneIds: string[]): Promise<Scene[]> {
   try {
@@ -1009,7 +1028,6 @@ export {
   getAllVideos,
   hybridSearch,
   filterExistingVideos,
-  updateDocuments,
   updateMetadata,
   getByVideoSource,
   getVideosMetadataSummary,

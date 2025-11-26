@@ -62,7 +62,7 @@ export const sceneSchema = z.object({
   createdAt: z.number(),
   location: z.string(),
   category: z.string().optional(),
-  aspect_ratio: z.string().optional(),
+  aspect_ratio: z.string()
 })
 
 export type Scene = z.infer<typeof sceneSchema>

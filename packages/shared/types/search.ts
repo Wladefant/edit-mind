@@ -9,7 +9,6 @@ export interface VideoSearchParams {
   aspect_ratio: AspectRatio | null
   duration: number | null
   description: string
-  outputFilename: string
   objects: string[]
   camera?: string
   transcriptionQuery?: string | null

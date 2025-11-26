@@ -1,11 +1,4 @@
-import { VideoMetadataSummary, SearchSuggestion, SearchAnalytics, VideoSearchParams, SimpleSearchStats } from '../types/search'
-
-export function getSimpleSearchStats(data: Omit<SimpleSearchStats, 'id'>): SimpleSearchStats {
-  return {
-    ...data,
-    id: crypto.randomUUID(),
-  };
-}
+import { VideoMetadataSummary, SearchSuggestion, SearchAnalytics, VideoSearchParams } from '../types/search'
 
 export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary): SearchSuggestion[] => {
   const suggestions: SearchSuggestion[] = []
@@ -54,7 +47,6 @@ export const generateSearchSuggestions = (metadataSummary: VideoMetadataSummary)
 
   return suggestions.slice(0, 5)
 }
-
 
 export function getSearchStats(analytics: SearchAnalytics) {
   const searchComplexity = calculateSearchComplexity(analytics.extractedParams)

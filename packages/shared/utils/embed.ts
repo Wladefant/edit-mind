@@ -81,7 +81,9 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
         scene.camera = initialCamera
         scene.createdAt = new Date(createdAt).getTime()
         scene.location = location
-        scene.aspect_ratio = aspectRatio
+        if (!scene.aspect_ratio) {
+          scene.aspect_ratio = aspectRatio
+        }
         scene.category = category
         scene.duration = duration
         return await sceneToVectorFormat(scene)
@@ -131,6 +133,7 @@ export const metadataToScene = (metadata: Record<string, unknown> | null, id: st
       detectedText: [],
       location: '',
       duration: 0,
+      aspect_ratio: '16:9',
     }
   }
 
@@ -138,7 +141,25 @@ export const metadataToScene = (metadata: Record<string, unknown> | null, id: st
   try {
     const emotionsStr = metadata.emotions as string
     if (emotionsStr) {
-      emotions = JSON.parse(emotionsStr)
+      // Check if it's in "name:emotion,name:emotion" format
+      if (emotionsStr.includes(':') && !emotionsStr.includes('{')) {
+        emotions = emotionsStr
+          .split(',')
+          .map((s) => s.trim())
+          .map((part) => {
+            const [name, emotion] = part.split(':').map((s) => s.trim())
+            return { name: name || 'unknown', emotion: emotion || 'neutral' }
+          })
+      } else {
+        // Otherwise, try parsing as JSON
+        const parsed = JSON.parse(emotionsStr)
+        if (Array.isArray(parsed)) {
+          emotions = parsed.map((e) => ({
+            name: e.name || 'unknown',
+            emotion: e.emotion || 'neutral',
+          }))
+        }
+      }
     }
   } catch {
     emotions = []
@@ -213,6 +234,7 @@ export const metadataToScene = (metadata: Record<string, unknown> | null, id: st
     transcriptionWords,
     objectsData,
     facesData,
+    aspect_ratio: metadata.aspect_ratio?.toString() || '16:9',
   }
 }
 
@@ -329,7 +351,7 @@ export const sceneToVectorFormat = async (scene: Scene) => {
     faces: scene.faces.join(', '),
     objects: scene.objects.join(', '),
     transcription: scene.transcription || '',
-    emotions: scene.emotions.map((e) => JSON.stringify(e)).join(', '),
+    emotions: JSON.stringify(scene.emotions || []),
     description: text,
     shot_type: scene.shot_type || 'long-shot',
     detectedText: detectedText,
@@ -343,6 +365,7 @@ export const sceneToVectorFormat = async (scene: Scene) => {
     objectsData: JSON.stringify(scene.objectsData || []),
     detectedTextData: JSON.stringify(scene.detectedTextData || []),
     transcriptionWords: JSON.stringify(scene.transcriptionWords || []),
+    aspect_ratio: scene.aspect_ratio
   }
 
   return {
@@ -350,4 +373,48 @@ export const sceneToVectorFormat = async (scene: Scene) => {
     text,
     metadata,
   }
+}
+
+export const sanitizeMetadata = (metadata: Metadata): Record<string, string | number | boolean> => {
+  const sanitized: Record<string, string | number | boolean> = {}
+
+  for (const [key, value] of Object.entries(metadata)) {
+    // Skip null, undefined, or complex objects
+    if (value === null || value === undefined) {
+      continue
+    }
+
+    // Handle different types
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      sanitized[key] = value
+    } else if (typeof value === 'object') {
+      // Convert objects/arrays to JSON strings
+      try {
+        sanitized[key] = JSON.stringify(value)
+      } catch (e) {
+        logger.warn(`Failed to stringify metadata key ${key}: ${e}`)
+      }
+    } else {
+      // Convert other types to strings
+      sanitized[key] = String(value)
+    }
+  }
+
+  return sanitized
+}
+
+export const validateDocument = (doc: { id: string; text: string; metadata?: any }): boolean => {
+  // Must have an ID
+  if (!doc.id || typeof doc.id !== 'string' || doc.id.trim() === '') {
+    logger.warn('Document missing valid ID')
+    return false
+  }
+
+  // Must have text content
+  if (!doc.text || typeof doc.text !== 'string' || doc.text.trim() === '') {
+    logger.warn(`Document ${doc.id} has no valid text content`)
+    return false
+  }
+
+  return true
 }
