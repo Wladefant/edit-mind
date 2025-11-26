@@ -7,6 +7,13 @@ import { CACHE_TTL, SEARCH_AI_MODEL } from '../constants'
 import { logger } from './logger'
 import type { CachedResponse } from '../types/cache'
 import { IntentClassification } from '../types/llm'
+import {
+  ASSISTANT_MESSAGE_PROMPT,
+  GENERAL_RESPONSE_PROMPT,
+  CLASSIFY_INTENT_PROMPT,
+  ANALYTICS_RESPONSE_PROMPT,
+  SEARCH_PROMPT,
+} from '../constants/prompts';
 
 export const VideoSearchParamsSchema = z.object({
   action: z.string().nullable(),
@@ -68,31 +75,7 @@ class LlamaModelManager {
   }
 
   async generateParams(query: string): Promise<VideoSearchParams> {
-    const SYSTEM_PROMPT = `Extract video search parameters from the user query into JSON format.
-
-RULES:
-1. Return ONLY valid JSON - no markdown, no explanations
-2. All fields are required (use null or [] when not applicable)
-3. Extract ALL mentioned emotions, objects, and parameters
-
-SCHEMA:
-{
-  "action": string | null,
-  "emotions": ["happy"|"sad"|"surprised"|"angry"|"neutral"|"excited"|"calm"],
-  "shot_type": "close-up" | "medium-shot" | "long-shot" | null,
-  "aspect_ratio": "16:9"|"9:16"|"1:1"|"4:3"|"8:7",
-  "duration": number | null,
-  "description": string,
-  "outputFilename": string,
-  "objects": string[],
-  "transcriptionQuery": string | null
-}
-
-Query: ${query}
-
-JSON OUTPUT:`
-
-    const response = await this.generateCompletion(SYSTEM_PROMPT, 512)
+    const response = await this.generateCompletion(SEARCH_PROMPT(query), 512)
     return this.parseAndValidate(response, query)
   }
 
@@ -118,14 +101,12 @@ JSON OUTPUT:`
   }
 
   private sanitizeFilename(filename: string): string {
-    return (
-      filename
-        ?.toLowerCase()
-        .replace(/[^a-z0-9-]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 50) || `video-${Date.now()}`
-    )
+    return filename
+      ?.toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50) || `video-${Date.now()}`;
   }
 
   private createFallback(query: string): VideoSearchParams {
@@ -188,21 +169,8 @@ export async function generateAssistantMessage(userPrompt: string, resultsCount:
   const cached = modelManager.getCachedResult<string>(cacheKey)
   if (cached) return cached
 
-  const prompt = `You are a helpful video compilation assistant. The user requested: "${userPrompt}"
-
-You found ${resultsCount} video scenes matching their request.
-
-Respond with a brief, friendly message (1-2 sentences) acknowledging their request and what you found. Be conversational and helpful.
-
-Examples:
-- "I found 15 clips matching your description! Ready to compile them into your video."
-- "Great! I've located 8 happy moments from your summer videos."
-- "Found 12 scenes where you're riding a bike outdoors. Let me know if you'd like to proceed!"
-
-Your response:`
-
   try {
-    const result = await modelManager.generateCompletion(prompt, 256)
+    const result = await modelManager.generateCompletion(ASSISTANT_MESSAGE_PROMPT(userPrompt, resultsCount), 256)
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
@@ -228,22 +196,8 @@ export async function generateGeneralResponse(userPrompt: string, chatHistory?: 
           .join('\n')}`
       : ''
 
-  const prompt = `You are a friendly, helpful AI assistant for a video library application. You help users:
-1. Search and compile their videos
-2. Get analytics and insights about their video collection
-3. Have casual conversations
-
-The user said: "${userPrompt}"${historyContext}
-
-Respond naturally and helpfully (1-3 sentences). If they're asking what you can do, mention you can:
-- Create video compilations based on descriptions, people, emotions, etc.
-- Answer questions about their video library (duration, counts, statistics)
-- Search for specific moments or phrases in videos
-
-Your response:`
-
   try {
-    const result = await modelManager.generateCompletion(prompt, 256)
+    const result = await modelManager.generateCompletion(GENERAL_RESPONSE_PROMPT(userPrompt, historyContext), 256)
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
@@ -257,30 +211,8 @@ export async function classifyIntent(prompt: string): Promise<IntentClassificati
   const cached = modelManager.getCachedResult<IntentClassification>(cacheKey)
   if (cached) return cached
 
-  const classificationPrompt = `Classify this user query about their video library:
-
-Query: "${prompt}"
-
-Determine:
-1. Type: 
-   - "compilation" = user wants to create/find/compile videos
-   - "analytics" = user wants statistics/information about their videos
-   - "general" = casual conversation or unclear requests
-
-2. needsVideoData: true if you need to query the video database to answer, false otherwise
-
-Respond with ONLY valid JSON:
-{"type": "compilation" | "analytics" | "general", "needsVideoData": true | false}
-
-Examples:
-"Create a 30 second video of me looking happy" -> {"type":"compilation","needsVideoData":true}
-"How many videos do I have?" -> {"type":"analytics","needsVideoData":true}
-"Hello, how are you?" -> {"type":"general","needsVideoData":false}
-
-Your JSON response:`
-
   try {
-    const response = await modelManager.generateCompletion(classificationPrompt, 128)
+    const response = await modelManager.generateCompletion(CLASSIFY_INTENT_PROMPT(prompt), 128)
     const text = response
       .replace(/```json/g, '')
       .replace(/```/g, '')
@@ -318,34 +250,8 @@ export async function generateAnalyticsResponse(
   const cached = modelManager.getCachedResult<string>(cacheKey)
   if (cached) return cached
 
-  const analyticsPrompt = `You are a friendly, knowledgeable video library assistant. The user asked: "${userPrompt}"
-
-Here's what you found in their video library:
-- Total videos: ${analytics.uniqueVideos}
-- Total scenes: ${analytics.totalScenes}
-- Total duration: ${analytics.totalDurationFormatted} (${analytics.totalDuration} seconds)
-${analytics.dateRange ? `- Date range: ${analytics.dateRange.oldest.toLocaleDateString()} to ${analytics.dateRange.newest.toLocaleDateString()}` : ''}
-${
-  Object.keys(analytics.emotionCounts).length > 0
-    ? `- Emotions detected: ${Object.entries(analytics.emotionCounts)
-        .map(([e, c]) => `${e} (${c})`)
-        .join(', ')}`
-    : ''
-}
-${
-  Object.keys(analytics.faceOccurrences).length > 0
-    ? `- People appearing: ${Object.entries(analytics.faceOccurrences)
-        .map(([f, c]) => `@${f} appears in ${c} scenes`)
-        .join(', ')}`
-    : ''
-}
-
-Respond naturally and conversationally (2-4 sentences). Include specific numbers and insights. Be enthusiastic and helpful.
-
-Your response:`
-
   try {
-    const result = await modelManager.generateCompletion(analyticsPrompt, 256)
+    const result = await modelManager.generateCompletion(ANALYTICS_RESPONSE_PROMPT(userPrompt, analytics), 256)
     modelManager.setCachedResult(cacheKey, result)
     return result
   } catch (error) {
