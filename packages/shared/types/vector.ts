@@ -1,11 +1,9 @@
-interface Metadata {
-  [key: string]: string | number | boolean | undefined
-}
+import { Metadata } from 'chromadb'
 
 export interface AddDocumentsData {
   ids: string[]
   documents: string[]
-  metadatas: Metadata[]
+  metadata: Metadata[]
 }
 
 export interface FilterData {
@@ -28,7 +26,7 @@ export interface Filters {
 export interface EmbeddingInput {
   id: string
   text: string
-  metadata?: Record<string, string | number | boolean | undefined>
+  metadata?: Metadata
 }
 
 export interface CollectionStatistics {

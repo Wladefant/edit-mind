@@ -4,6 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.background-jobs.dev
     image: edit-mind-background-jobs:dev
+    container_name: edit-mind-background-jobs-dev
     ports:
       - "4000:4000"
       - "8765:8765"
@@ -12,6 +13,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    environment:
+      PYTHON_PORT: 8765
     env_file:
       - ../.env
     networks:
@@ -24,6 +27,7 @@ services:
       - background_jobs_node_modules:/app/node_modules
 
   web:
+    container_name: edit-mind-web-dev
     build:
       context: ..
       dockerfile: docker/Dockerfile.web.dev
@@ -55,8 +59,6 @@ services:
       - "8000:8000"
     volumes:
       - ../.chroma_db:/data
-    env_file:
-      - ../.env
     networks:
       - app-network
 

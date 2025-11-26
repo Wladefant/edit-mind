@@ -52,3 +52,5 @@ export const MEDIA_BASE_PATH = '/media/videos'
 
 
 export const STITCHED_VIDEOS_DIR = process.env.STITCHED_VIDEOS_DIR
+
+export const PYTHON_PORT = process.env.PYTHON_PORT || '8765'; 

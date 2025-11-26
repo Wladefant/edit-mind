@@ -44,9 +44,10 @@ export function getGoProDeviceName(metadata: GoProMetadata): string {
   return 'Unknown GoPro Device'
 }
 
-export function extractGPS(metadata: GoProMetadataWithStreams): { lat: number; lon: number; alt?: number }[] {
+export function extractGPS(metadata: GoProMetadataWithStreams ): { lat: number; lon: number; alt?: number }[] {
   const gpsData: { lat: number; lon: number; alt?: number }[] = []
 
+  
   if (metadata.streams?.GPS5) {
     const gps5 = metadata.streams.GPS5
 

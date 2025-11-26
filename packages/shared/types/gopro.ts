@@ -1,19 +1,20 @@
 export interface GoProMetadata {
-  [key: string]: unknown;
-  'device name'?: unknown;
+  [key: number]: unknown
+  1: GoProMetadataWithStreams | unknown
+  'device name'?: unknown
 }
-export  interface GPS5Sample {
+export interface GPS5Sample {
   value: [number, number, number] // [lat, lon, alt]
   cts: number
   date: string
 }
 
-export  interface GPS5Stream {
+export interface GPS5Stream {
   samples: GPS5Sample[]
   name: string
 }
 
-export  interface GoProStreams {
+export interface GoProStreams {
   GPS5?: GPS5Stream
   [key: string]: GPS5Stream | undefined
 }

@@ -3,10 +3,11 @@ import { FileSearch } from 'lucide-react';
 interface EmptyStateProps {
   hasQuery: boolean
   query?: string
+  hasPerformedSearch: boolean
 }
 
-export function EmptyState({ hasQuery, query }: EmptyStateProps) {
-  if (hasQuery) {
+export function EmptyState({ hasQuery, query, hasPerformedSearch }: EmptyStateProps) {
+  if (hasPerformedSearch && hasQuery) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20">
         <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-6">

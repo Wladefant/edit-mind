@@ -3,7 +3,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.background-jobs
-    image: edit-mind-background-jobs:latest
+    image: edit-mind-background-jobs
+    container_name: edit-mind-background-jobs
     ports:
       - "4000:4000"
       - "8765:8765"
@@ -16,13 +17,18 @@ services:
       - ../.env
     networks:
       - app-network
-    restart: unless-stopped
+    volumes:
+      - ${HOST_MEDIA_PATH}:/media/videos
+      - whisper-models:/app/models
+      - yolo-models:/app/models/yolo 
+      - background_jobs_node_modules:/app/node_modules
 
   web:
+    container_name: edit-mind-web
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    image: edit-mind-web:latest
+    image: edit-mind-web
     ports:
       - "3745:3745"
     depends_on:
@@ -32,53 +38,59 @@ services:
         condition: service_started
     env_file:
       - ../.env
+    volumes:
+      - web_node_modules:/app/node_modules
+      - ${HOST_MEDIA_PATH}:/media/videos
     networks:
       - app-network
-    restart: unless-stopped
 
   chroma:
     image: chromadb/chroma:latest
-    ports:
+    environment:
+      CHROMA_CORS_ALLOW_ORIGINS: '["http://localhost:3745", "http://localhost:4000", "http://web:3745", "http://background-jobs:4000"]'
+      CHROMA_HOST: "0.0.0.0" 
+      CHROMA_PORT: "8000"
+    ports:  
       - "8000:8000"
     volumes:
-      - chroma_data:/data
-    env_file:
-      - ../.env
+      - chroma_db:/data
     networks:
       - app-network
-    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+    - redis_data:/data
     networks:
       - app-network
-    restart: unless-stopped
 
   postgres:
     image: postgres:16
     ports:
       - "5433:5432"
-    env_file:
-      - ../.env
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d app"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - app-network
-    restart: unless-stopped
 
 volumes:
   pgdata:
-  chroma_data:
-  redis_data:
-
+  web_node_modules:
+  background_jobs_node_modules:
+  redis_data: 
+  whisper-models:
+  yolo-models: 
+  chroma_db: 
 networks:
   app-network:

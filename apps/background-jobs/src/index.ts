@@ -14,6 +14,7 @@ import './jobs/videoStitcher'
 
 import { pythonService } from '@shared/services/pythonService'
 import { initializeWatchers } from './watcher'
+import { suggestionCache } from '@shared/services/suggestion'
 
 const app = express()
 
@@ -45,6 +46,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }))
 app.listen(config.port, async () => {
   await pythonService.start()
   await initializeWatchers()
+  await suggestionCache.initialize()
   console.warn(`Server running on port ${config.port}`)
   if (process.env.NODE_ENV === 'development') {
     console.warn(`Bull Board UI available at http://localhost:${config.port}`)

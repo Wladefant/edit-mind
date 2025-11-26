@@ -182,7 +182,7 @@ export default function SearchPage() {
           </>
         )}
 
-        {!hasResults && hasSearched && !isLoading && <EmptyState hasQuery={hasQuery} query={query} />}
+        {!hasResults && !isSearching && <EmptyState hasQuery={hasQuery} query={query} hasPerformedSearch={hasSearched} />}
       </main>
     </DashboardLayout>
   )

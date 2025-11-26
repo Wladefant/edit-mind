@@ -21,11 +21,15 @@ All video files, frames, and extracted metadata remain fully **local**. The proj
 
 ---
 
-## 📺 See It In Action
+## 📺 Demo
 
-[![Edit Mind Demo](https://img.youtube.com/vi/Ky9v85Mk6aY/maxresdefault.jpg)](https://www.youtube.com/watch?v=Ky9v85Mk6aY)
+### YouTube Walkthrough
+[![Edit Mind Demo](https://img.youtube.com/vi/Ky9v85Mk6aY/maxresdefault.jpg)](https://www.youtube.com/watch?v=Ky9v85Mk6aY)  
+*Click to watch a walkthrough of Edit Mind's core features.*
 
-*Click to watch a walkthrough of Edit Mind's core features*
+### GIF Demo
+![Edit Mind Demo GIF](./demo.gif)  
+*Quick demonstration of the video prompting feature*
 
 ---
 
@@ -119,7 +123,7 @@ DATABASE_URL="postgresql://user:password@localhost:5432/editmind?schema=public"
 REDIS_HOST="localhost"
 REDIS_PORT=6379
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-PYTHON_PORT=5001 # Default port for Python service
+PYTHON_PORT=5001 
 
 HOST_MEDIA_PATH="/path/to/media/folder/in/your/server"
 
@@ -130,13 +134,7 @@ HOST_MEDIA_PATH="/path/to/media/folder/in/your/server"
 This command will build Docker images for all services and start them in detached mode.
 
 ```bash
-cd docker
-docker compose up --build -d
-```
-
-Verify all containers are running:
-```bash
-docker compose ps
+docker compose -f docker/docker-compose.yml --env-file .env up --build
 ```
 
 

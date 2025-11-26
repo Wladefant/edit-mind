@@ -3,10 +3,11 @@ import path from 'path'
 import { spawn, ChildProcess } from 'child_process'
 import WebSocket from 'ws'
 import { Analysis, AnalysisProgress } from '../types/analysis'
-import { IS_WIN, MAX_RESTARTS, PYTHON_SCRIPT, RESTART_BACKOFF_MS, VENV_PATH } from '../constants'
+import { IS_WIN, MAX_RESTARTS, PYTHON_PORT, PYTHON_SCRIPT, RESTART_BACKOFF_MS, VENV_PATH } from '../constants'
 import { FaceIndexingProgress, FaceMatchingProgress, FindMatchingFacesResponse } from '../types/face'
 import { TranscriptionProgress } from '../types/transcription'
 import { logger } from './logger'
+import { CallbackMap, PythonMessageType } from '../types/python'
 
 class PythonService {
   private static instance: PythonService
@@ -15,18 +16,15 @@ class PythonService {
   private serviceUrl: string
   private isRunning = false
   private restartCount = 0
-  private messageCallbacks: Map<
-    string,
-    (payload: AnalysisProgress | TranscriptionProgress | FaceIndexingProgress | FaceMatchingProgress) => void
-  > = new Map()
+  private messageCallbacks: CallbackMap = {}
   private port: string
   private startPromise: Promise<string> | null = null
 
   private constructor() {
-    if (!process.env.PYTHON_PORT) {
+    if (!PYTHON_PORT) {
       throw new Error('PYTHON_PORT is not defined in the environment variables.')
     }
-    this.port = process.env.PYTHON_PORT
+    this.port = PYTHON_PORT
     this.serviceUrl = `ws://localhost:${this.port}`
   }
 
@@ -169,13 +167,9 @@ class PythonService {
       return
     }
 
-    this.messageCallbacks.delete('analysis_progress')
-    this.messageCallbacks.delete('analysis_completed')
-    this.messageCallbacks.delete('analysis_error')
-
-    this.messageCallbacks.set('analysis_progress', onProgress)
-    this.messageCallbacks.set('analysis_completed', onResult)
-    this.messageCallbacks.set('analysis_error', onError)
+    this.messageCallbacks['analysis_progress'] = onProgress
+    this.messageCallbacks['analysis_completed'] = onResult
+    this.messageCallbacks['analysis_error'] = onError
 
     const message = {
       type: 'analyze',
@@ -203,17 +197,9 @@ class PythonService {
       return
     }
 
-    this.messageCallbacks.delete('transcription_progress')
-    this.messageCallbacks.delete('transcription_message')
-    this.messageCallbacks.delete('transcription_completed')
-    this.messageCallbacks.delete('transcription_error')
-
-    this.messageCallbacks.set('transcription_progress', (payload) => {
-      onProgress(payload)
-    })
-    this.messageCallbacks.set('transcription_message', onProgress)
-    this.messageCallbacks.set('transcription_completed', onComplete)
-    this.messageCallbacks.set('transcription_error', onError)
+    this.messageCallbacks['transcription_progress'] = onProgress
+    this.messageCallbacks['transcription_completed'] = onComplete
+    this.messageCallbacks['transcription_error'] = onError
 
     const message = {
       type: 'transcribe',
@@ -234,9 +220,9 @@ class PythonService {
       return
     }
 
-    this.messageCallbacks.set('reindex_progress', onProgress)
-    this.messageCallbacks.set('reindex_complete', onComplete)
-    this.messageCallbacks.set('reindex_error', onError)
+    this.messageCallbacks['reindex_progress'] = onProgress
+    this.messageCallbacks['reindex_complete'] = onComplete
+    this.messageCallbacks['reindex_error'] = onError
 
     const message = {
       type: 'reindex_faces',
@@ -263,14 +249,9 @@ class PythonService {
       return
     }
 
-    this.messageCallbacks.delete('face_matching_progress')
-    this.messageCallbacks.delete('face_matching_complete')
-    this.messageCallbacks.delete('face_matching_error')
-
-    this.messageCallbacks.set('face_matching_progress', onProgress)
-    this.messageCallbacks.set('face_matching_complete', onComplete)
-    this.messageCallbacks.set('face_matching_error', onError)
-
+    this.messageCallbacks['face_matching_progress'] = onProgress
+    this.messageCallbacks['face_matching_complete'] = onComplete
+    this.messageCallbacks['face_matching_error'] = onError
     const message = {
       type: 'find_matching_faces',
       payload: {
@@ -314,7 +295,7 @@ class PythonService {
           const message = JSON.parse(data.toString())
           const { type, payload, job_id } = message
 
-          const callback = this.messageCallbacks.get(type)
+          const callback = this.messageCallbacks[type as PythonMessageType]
 
           if (callback) {
             callback({ ...payload, job_id })

@@ -1,52 +1,88 @@
-FROM node:22.20.0
+FROM node:22.20.0-slim AS base
 
 # Configure pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
-# Install system dependencies for Python and native modules
-RUN apt-get update && apt-get install -y \
-    python3 python3-venv python3-pip \
-    build-essential cmake libopenblas-dev liblapack-dev \
-    libx11-dev libgtk-3-dev libboost-all-dev ffmpeg \
-    && ln -s /usr/bin/python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+# ============================================
+# Dependencies stage
+# ============================================
+FROM base AS dependencies
+
+# Install system dependencies in a single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3=3.11.* \
+    python3-venv \
+    python3-pip \
+    build-essential \
+    cmake \
+    libopenblas-dev \
+    liblapack-dev \
+    libx11-dev \
+    libgtk-3-dev \
+    libboost-all-dev \
+    ffmpeg \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 WORKDIR /app
 
-# Install Node.js dependencies
+# Copy package files for better layer caching
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json prisma.config.ts ./
-COPY apps/web/package.json ./apps/web/
-COPY apps/background-jobs/package.json ./apps/background-jobs/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/prisma/ ./packages/prisma/
-COPY scripts/ ./scripts
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/background-jobs/package.json ./apps/background-jobs/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/prisma ./packages/prisma
+COPY scripts ./scripts
+
+# Install dependencies
 RUN pnpm install --frozen-lockfile
 
+# ============================================
+# Python dependencies stage
+# ============================================
+FROM dependencies AS python-deps
 
-# Copy only Python requirements
-COPY python/requirements.txt /app/python/requirements.txt
+COPY python/requirements.txt ./python/requirements.txt
 
-# Create venv and install Python dependencies
+# Create and activate virtual environment
 RUN python3 -m venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
-RUN pip install --upgrade pip && pip install -r /app/python/requirements.txt
+ENV VIRTUAL_ENV="/app/.venv"
 
-# Copy Node/TS code
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r python/requirements.txt
+
+# ============================================
+# Build stage
+# ============================================
+FROM python-deps AS builder
+
+# Copy source code
 COPY apps ./apps
 COPY packages ./packages
+COPY python ./python
 COPY tsconfig.json ./
-RUN pnpm rebuild @tailwindcss/oxide && pnpm rebuild rollup && pnpm rebuild sharp
 
-# Copy the rest of Python code
-COPY python /app/python
+# Rebuild native modules for the target architecture
+RUN pnpm rebuild @tailwindcss/oxide rollup sharp
+
+# Build the application
+RUN pnpm --filter background-jobs build
+
+# ============================================
+# Development stage
+# ============================================
+FROM builder AS development
 
 WORKDIR /app/apps/background-jobs
-EXPOSE 4000 8765
 
-# Create cache directory for models
+# Create cache directory with proper permissions
 RUN mkdir -p /app/models
 
-# Dev CMD
-CMD ["sh", "-c", "pnpm --filter background-jobs build && pnpm --filter background-jobs dev"]
+EXPOSE 4000 8765
+
+CMD ["pnpm", "--filter", "background-jobs", "start"]

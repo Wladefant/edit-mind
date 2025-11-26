@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch -r tsconfig-paths/register  src/index.ts",
-    "build": "tsx -r tsconfig-paths/register src/index.ts",
-    "start": "node dist/index.js"
+    "build": "tsc --build",
+    "start": "tsx -r tsconfig-paths/register src/index.ts"
   },
   "dependencies": {
     "@bull-board/api": "^6.14.1",

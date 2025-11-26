@@ -12,6 +12,8 @@ import { extractGPS, getGoProDeviceName, getGoProVideoMetadata } from './gopro'
 import { gcd } from '.'
 import { getAspectRatioDescription } from './aspectRatio'
 import { logger } from '../services/logger'
+import { Metadata } from 'chromadb'
+import { GoProMetadataWithStreams } from '../types/gopro'
 
 export const embedScenes = async (scenes: Scene[], videoFullPath: string, category?: string): Promise<void> => {
   const metadata = await getVideoMetadata(videoFullPath)
@@ -37,7 +39,7 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
       initialCamera = getGoProDeviceName(goproTelemetry)
 
       const streamData = goproTelemetry['1']
-      const gpsCoordinates = extractGPS(streamData || {})
+      const gpsCoordinates = extractGPS(streamData as GoProMetadataWithStreams)
       if (gpsCoordinates.length > 0) {
         location = formatLocation(gpsCoordinates[0]?.lat, gpsCoordinates[0]?.lon, gpsCoordinates[0]?.alt)
       } else {
@@ -94,7 +96,13 @@ export const embedScenes = async (scenes: Scene[], videoFullPath: string, catego
       const newDocs = embeddingInputs.filter((doc) => !existingIds?.ids.includes(doc.id))
 
       if (newDocs.length > 0) {
-        await embedDocuments(newDocs)
+        await embedDocuments(
+          newDocs.map((doc) => ({
+            id: doc.id,
+            metadata: doc.metadata,
+            text: doc.text,
+          }))
+        )
       }
     }
   } catch (err) {
@@ -312,7 +320,7 @@ export const sceneToVectorFormat = async (scene: Scene) => {
 
   const text = await generateVectorDocumentText(scene)
 
-  const metadata: Record<string, string | number | boolean | undefined> = {
+  const metadata: Metadata = {
     source: scene.source,
     thumbnailUrl: scene.thumbnailUrl || '',
     startTime: scene.startTime,
@@ -327,11 +335,10 @@ export const sceneToVectorFormat = async (scene: Scene) => {
     detectedText: detectedText,
     createdAt: scene.createdAt,
     location: scene.location,
-    dominantColorHex: scene.dominantColorHex,
-    dominantColorName: scene.dominantColorName,
+    dominantColorHex: scene.dominantColorHex || null,
+    dominantColorName: scene.dominantColorName || null,
     camera: scene.camera,
-    duration: scene.duration,
-
+    duration: scene.duration || 0,
     facesData: JSON.stringify(scene.facesData || []),
     objectsData: JSON.stringify(scene.objectsData || []),
     detectedTextData: JSON.stringify(scene.detectedTextData || []),
