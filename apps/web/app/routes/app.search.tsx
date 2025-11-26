@@ -68,7 +68,7 @@ export async function action({ request }: { request: Request }) {
 
 export default function SearchPage() {
   const search = useVideoSearch()
-  const { query, results, stats, isLoading, isError, selectedSuggestion, isSearching } = search
+  const { query, results, stats, isLoading, isError, selectedSuggestion, isSearching, hasSearched } = search
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({})
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -182,7 +182,7 @@ export default function SearchPage() {
           </>
         )}
 
-        {!hasResults && !isSearching && <EmptyState hasQuery={hasQuery} query={query} />}
+        {!hasResults && hasSearched && !isLoading && <EmptyState hasQuery={hasQuery} query={query} />}
       </main>
     </DashboardLayout>
   )

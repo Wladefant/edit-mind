@@ -24,6 +24,7 @@ interface UseVideoSearchResult {
   setShowSuggestions: (show: boolean) => void
   handleSuggestionSelect: (suggestion: Suggestion) => void
   fetchSuggestions: (q: string) => void
+  hasSearched: boolean 
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
@@ -36,9 +37,10 @@ export function useVideoSearch(): UseVideoSearchResult {
   const [selectedSuggestion, setSelectedSuggestion] = useState<Record<string, string>>({})
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion[]>>({})
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
 
   const lastSearchQueryRef = useRef('')
-  const lastSuggestionQueryRef = useRef('') // Add this to prevent duplicate fetches
+  const lastSuggestionQueryRef = useRef('')
 
   const isSearching = searchFetcher.state === 'submitting' || searchFetcher.state === 'loading'
   const isLoading = isSearching
@@ -118,6 +120,7 @@ export function useVideoSearch(): UseVideoSearchResult {
       action: '/app/search',
     })
 
+    setHasSearched(true)
     setShowSuggestions(false)
   }, [query, searchFetcher, selectedSuggestion])
 
@@ -143,6 +146,7 @@ export function useVideoSearch(): UseVideoSearchResult {
           method: 'POST',
           action: '/app/search',
         })
+        setHasSearched(true) 
       }, 100)
     },
     [searchFetcher]
@@ -158,6 +162,7 @@ export function useVideoSearch(): UseVideoSearchResult {
     lastSearchQueryRef.current = ''
     lastSuggestionQueryRef.current = ''
     debouncedFetchRef.current.cancel()
+    setHasSearched(false) 
   }, [])
 
   return {
@@ -177,5 +182,6 @@ export function useVideoSearch(): UseVideoSearchResult {
     setShowSuggestions,
     handleSuggestionSelect,
     fetchSuggestions,
+    hasSearched
   }
 }
