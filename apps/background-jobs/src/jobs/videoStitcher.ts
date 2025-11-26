@@ -1,3 +1,4 @@
+import { generateCompilationResponse } from './../../../../packages/shared/services/modelRouter'
 import { Worker, Job } from 'bullmq'
 import { connection } from '../queue'
 import { stitchVideos } from '@shared/utils/sticher'
@@ -17,12 +18,26 @@ async function processVideoStitcherJob(job: Job<VideoStitcherJobData>) {
     }
 
     const stitchedVideoPath = await stitchVideos(outputScenes, `${messageId}-${new Date().getTime()}.mp4`)
+    const lastUserMessage = await prisma.chatMessage.findFirst({
+      where: {
+        chatId: chatId,
+        sender: 'user',
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    })
+    let text = 'Here’s your stitched video!'
+    
+    if (lastUserMessage) {
+      text = await generateCompilationResponse(lastUserMessage?.text, outputScenes.length)
+    }
 
     await prisma.chatMessage.create({
       data: {
         chatId: chatId,
         sender: 'assistant',
-        text: 'Here’s your stitched video!',
+        text,
         stitchedVideoPath,
       },
     })
