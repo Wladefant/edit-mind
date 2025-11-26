@@ -30,7 +30,8 @@ export function SearchResultsGrid({ videos, viewMode }: SearchResultsGridProps) 
               objects: video.objects,
               emotions: video.emotions,
             }}
-            initialStartTime={video.scenes[0].startTime}
+            initialStartTime={video.scenes[0]?.startTime}
+            forceMetadataLoad
           />
         </>
       ))}

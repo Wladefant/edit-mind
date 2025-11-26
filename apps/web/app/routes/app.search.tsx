@@ -77,7 +77,7 @@ export default function SearchPage() {
 
   const RESULTS_PER_PAGE = 20
 
-  const hasQuery = query.length > 0 || Object.keys(selectedSuggestion).length > 0
+  const hasQuery = query.length >= 2 || Object.keys(selectedSuggestion).length > 0
   const hasResults = results.length > 0
   const showHero = !isFocused && !hasQuery
 
