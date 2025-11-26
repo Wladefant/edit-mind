@@ -1,5 +1,11 @@
 import * as path from 'path'
-import 'dotenv/config'
+import dotenv from 'dotenv'
+
+if (process.env.NODE_ENV === 'testing') {
+  dotenv.config({ path: path.resolve('../../.env.testing') })
+} else {
+  dotenv.config({})
+}
 
 // General
 export const IS_WIN = process.platform === 'win32'
@@ -36,7 +42,8 @@ export const COLLECTION_NAME = 'video_content'
 export const EMBEDDING_MODEL = 'text-embedding-004'
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 export const SEARCH_AI_MODEL = process.env.SEARCH_AI_MODEL
-
+export const USE_LOCAL = process.env.USE_LOCAL_MODEL === 'true'
+export const GEMINI_MODEL_NAME = 'gemini-2.5-pro'
 // Files
 export const SUPPORTED_VIDEO_EXTENSIONS = /\.(mp4|mov|avi|mkv)$/i
 export const DEFAULT_FPS = 30
@@ -44,13 +51,13 @@ export const THUMBNAIL_SCALE = '320:-1'
 export const THUMBNAIL_QUALITY = '4'
 export const BATCH_THUMBNAIL_QUALITY = '3'
 
-
-export const PYTHON_SCRIPT = path.resolve(process.env.PYTHON_SCRIPT || "./python")
-export const VENV_PATH = path.resolve(process.env.VENV_PATH || "./venv")
+export const PYTHON_SCRIPT = path.resolve(process.env.PYTHON_SCRIPT || './python')
+export const VENV_PATH = path.resolve(process.env.VENV_PATH || './venv')
 
 export const MEDIA_BASE_PATH = '/media/videos'
 
-
 export const STITCHED_VIDEOS_DIR = process.env.STITCHED_VIDEOS_DIR
 
-export const PYTHON_PORT = process.env.PYTHON_PORT || '8765'; 
+export const PYTHON_PORT = process.env.PYTHON_PORT || '8765'
+
+export const IS_TESTING = process.env.NODE_ENV === 'testing'
