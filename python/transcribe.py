@@ -23,6 +23,14 @@ class Word:
     word: str
     confidence: Optional[float]
 
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "start": self.start,
+            "end": self.end,
+            "word": self.word,
+            "confidence": self.confidence
+        }
+
 
 @dataclass
 class Segment:
@@ -32,6 +40,16 @@ class Segment:
     text: str
     confidence: Optional[float]
     words: List[Word]
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "id": self.id,
+            "start": self.start,
+            "end": self.end,
+            "text": self.text,
+            "confidence": self.confidence,
+            "words": [word.to_dict() for word in self.words] 
+        }
 
 
 @dataclass
@@ -43,10 +61,9 @@ class TranscriptionResult:
     def to_dict(self) -> Dict[str, object]:
         return {
             "text": self.text,
-            "segments": [vars(seg) for seg in self.segments],
+            "segments": [seg.to_dict() for seg in self.segments],  
             "language": self.language
         }
-
 
 class ModelDownloadProgress:
     """Tracks model download progress"""
@@ -149,7 +166,7 @@ class TranscriptionService:
         self.model_name = model_name
         self.device: Literal["cuda", "cpu"] = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type: Literal["int8", "int8_float16"] = "int8"
-        self.cache_dir = cache_dir or os.getenv("WHISPER_CACHE_DIR", "/app/models")
+        self.cache_dir = cache_dir or os.getenv("WHISPER_CACHE_DIR", "../models")
         self.download_callback = download_callback
         self._model: Optional[WhisperModel] = None
         self._model_loading: bool = False
@@ -304,8 +321,9 @@ class TranscriptionService:
 
             total_duration = round(info.duration, 2) if info else 0.0
             processed_duration = 0.0
+            segments_list = list(segments)
 
-            for seg in segments:
+            for seg in segments_list:
                 segment_data = Segment(
                     id=seg.id,
                     start=seg.start,
@@ -370,6 +388,9 @@ class TranscriptionService:
             logger.info(f"Transcription saved: {output_path}")
         except IOError as e:
             logger.error(f"Failed to write transcription file: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error writing file: {e}")
             raise
 
 
