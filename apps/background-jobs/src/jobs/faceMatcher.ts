@@ -49,7 +49,7 @@ async function processFaceMatcherJob(job: Job<FaceLabelingJobData>) {
   try {
     logger.info({ jobId: job.id }, 'All matches processed successfully')
 
-    await reindexFaces(processedFaces)
+    if (job.id) await reindexFaces(processedFaces, job.id)
     logger.info({ jobId: job.id }, 'Face reindexing completed')
   } catch (error) {
     logger.error({ jobId: job.id, error: error instanceof Error ? error.message : error }, 'Error processing matches')

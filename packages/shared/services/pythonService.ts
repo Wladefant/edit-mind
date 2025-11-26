@@ -211,6 +211,7 @@ class PythonService {
 
   public reindexFaces(
     specificFaces: { name: string; image_path: string }[],
+    jobId: string,
     onProgress: (progress: FaceIndexingProgress) => void,
     onComplete: (result: void) => void,
     onError: (error: Error) => void
@@ -227,6 +228,7 @@ class PythonService {
     const message = {
       type: 'reindex_faces',
       specific_faces: specificFaces,
+      job_id: jobId
     }
 
     this.client.send(JSON.stringify(message))

@@ -6,11 +6,13 @@ type ProgressCallback = (progress: FaceIndexProgress) => Promise<void>
 
 export function reindexFaces(
   specificFaces: { name: string; image_path: string }[],
+  jobId: string,
   onProgress?: ProgressCallback
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     pythonService.reindexFaces(
       specificFaces,
+      jobId,
       async (progress) => {
         if (onProgress) {
           try {

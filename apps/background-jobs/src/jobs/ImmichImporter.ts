@@ -16,7 +16,7 @@ async function processImmichImporterJob(job: Job<ImmichImporterJobData>) {
     const apiKey = decryptApiKey(integration.immichApiKey)
     const facesFiles = await getAllImmichFaces({ baseUrl: integration.immichBaseUrl, apiKey })
     if (!pythonService.isServiceRunning) await pythonService.start()
-    await reindexFaces(facesFiles)
+    if (job.id) await reindexFaces(facesFiles, job.id)
   } catch (error) {
     console.error(error)
   }
