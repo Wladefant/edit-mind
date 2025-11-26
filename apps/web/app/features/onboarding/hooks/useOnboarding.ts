@@ -13,8 +13,9 @@ export function useOnboarding() {
     const storedStatus = localStorage.getItem('onboarding_complete')
     if (storedStatus === 'true') {
       setIsOnboardingComplete(true)
+      navigate('/auth/login')
     }
-  }, [])
+  }, [navigate])
 
   const completeOnboarding = useCallback(() => {
     localStorage.setItem('onboarding_complete', 'true')
@@ -29,7 +30,6 @@ export function useOnboarding() {
       completeOnboarding()
     }
   }, [completeOnboarding, currentStep, totalSteps])
-
 
   const handleSkip = useCallback(() => {
     completeOnboarding()

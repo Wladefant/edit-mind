@@ -25,6 +25,7 @@ export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef }:
             disabled={isLoading}
           />
           <button
+            aria-label="Send"
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
             className={`p-2 rounded-full transition-all duration-150 ${

@@ -1,1 +1,4 @@
 .react-router/*
+playwright-report/*
+test-results/*
+playwright-auth.json

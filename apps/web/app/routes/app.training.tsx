@@ -79,6 +79,7 @@ const Training: React.FC = () => {
                 className={`px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 ${
                   activeTab === 'unknown' ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white'
                 }`}
+                aria-label="Unknown"
               >
                 Unknown
                 {unknownFaces.length > 0 && (
@@ -92,6 +93,7 @@ const Training: React.FC = () => {
                 className={`px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 ${
                   activeTab === 'known' ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white'
                 }`}
+                aria-label="Known"
               >
                 Known
                 {knownFaces.length > 0 && (

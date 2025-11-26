@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
+import { Link, useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
 import { CustomVideoPlayer } from '~/features/customVideoPlayer/components'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
 import { getByVideoSource, updateMetadata, updateScenesSource } from '@shared/services/vectorDb'
@@ -10,7 +10,7 @@ import { getUser } from '~/services/user.sever'
 import { prisma } from '~/services/database'
 import fs from 'fs/promises'
 import { videoActionSchema } from '~/features/videos/schemas'
-import { Check, AlertCircle, Loader2 } from 'lucide-react'
+import { Check, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion'
 import ScenesList from '~/features/videos/components/ScenesList'
 
@@ -454,6 +454,77 @@ export default function Video() {
             </div>
           </div>
         </div>
+      </main>
+    </DashboardLayout>
+  )
+}
+
+export function ErrorBoundary() {
+  return (
+    <DashboardLayout sidebar={<Sidebar />}>
+      <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-16">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="max-w-2xl w-full text-center"
+        >
+          <motion.h1
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4"
+          >
+            Video Not Found
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto"
+          >
+            We couldn't find the video you're looking for. It may have been moved, deleted, or the link might be
+            incorrect.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+          >
+            <Link
+              to="/app/home"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-full font-medium hover:opacity-90 active:scale-95 transition-all shadow-lg"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Dashboard
+            </Link>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.1 }}
+            transition={{ delay: 0.6 }}
+            className="mt-16 flex items-center justify-center gap-8"
+          >
+            {[...Array(3)].map((_, i) => (
+              <motion.div
+                key={i}
+                animate={{
+                  y: [0, -10, 0],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: i * 0.2,
+                }}
+                className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-600"
+              />
+            ))}
+          </motion.div>
+        </motion.div>
       </main>
     </DashboardLayout>
   )
