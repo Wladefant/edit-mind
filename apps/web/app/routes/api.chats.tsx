@@ -5,7 +5,7 @@ import {
   generateAnalyticsResponse,
   generateCompilationResponse,
   generateGeneralResponse,
-} from '@shared/services/gemini'
+} from '@shared/services/modelRouter'
 import { hybridSearch } from '@shared/services/vectorDb'
 import { prisma } from '~/services/database'
 import { getVideoAnalytics } from '@shared/utils/analytics'

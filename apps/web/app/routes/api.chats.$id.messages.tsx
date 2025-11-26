@@ -4,7 +4,7 @@ import {
   generateAnalyticsResponse,
   generateCompilationResponse,
   generateGeneralResponse,
-} from '@shared/services/gemini'
+} from '@shared/services/modelRouter'
 import { getVideoWithScenesBySceneIds, hybridSearch } from '@shared/services/vectorDb'
 import type { ActionFunction, LoaderFunction } from 'react-router'
 import { prisma } from '~/services/database'
