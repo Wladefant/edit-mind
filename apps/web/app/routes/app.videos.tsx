@@ -12,6 +12,7 @@ import fs from 'fs/promises'
 import { videoActionSchema } from '~/features/videos/schemas'
 import { Check, AlertCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ScenesList from '~/features/videos/components/ScenesList'
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url)
@@ -441,48 +442,15 @@ export default function Video() {
           <div>
             <h2 className="text-2xl font-semibold text-black dark:text-white mb-4">Scenes ({data.scenes.length})</h2>
             <div className="space-y-4">
-              {data.scenes.map((scene, index) => {
-                const isActive = scene.id === activeScene?.id
-                return (
-                  <motion.div
-                    key={`${scene.startTime}_${scene.endTime}`}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.02 }}
-                    onClick={() => {
-                      setActiveScene(scene)
-                      setDefaultStartTime(scene.startTime + 0.1)
-                      setSelectedAspectRatio(scene.aspect_ratio || '16:9')
-                    }}
-                    className={`flex items-center gap-4 p-2 rounded-lg cursor-pointer transition
-                    ${
-                      isActive
-                        ? 'bg-blue-100 dark:bg-gray-900/40 border border-gray-400 shadow-sm'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-900 border border-transparent'
-                    }`}
-                  >
-                    <img
-                      src={'/thumbnails/' + scene.thumbnailUrl}
-                      alt={`Scene ${index + 1}`}
-                      className={`w-24 h-16 object-cover rounded-md transition ${
-                        isActive ? 'ring-2 ring-gray-400' : ''
-                      }`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={`font-medium transition truncate ${
-                          isActive ? 'text-gray-600 dark:text-gray-300' : 'text-black dark:text-white'
-                        }`}
-                      >
-                        {scene.description}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {scene.startTime}s - {scene.endTime}s
-                      </p>
-                    </div>
-                  </motion.div>
-                )
-              })}
+              <ScenesList
+                scenes={data.scenes}
+                activeScene={data.scenes.find((scene) => scene.id === activeScene.id)}
+                onSceneClick={(scene) => {
+                  setActiveScene(scene)
+                  setDefaultStartTime(scene.startTime + 0.1)
+                  setSelectedAspectRatio(scene.aspect_ratio || '16:9')
+                }}
+              />
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@
     "@react-router/fs-routes": "^7.9.5",
     "@react-router/node": "^7.9.2",
     "@react-router/serve": "^7.9.2",
+    "@tanstack/react-virtual": "^3.13.12",
     "bcryptjs": "^2.4.3",
     "chromadb": "^3.1.1",
     "cross-env": "^10.1.0",
