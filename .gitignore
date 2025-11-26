@@ -26,3 +26,4 @@ data/
 models/
 .pnpm-store/*
 test-results/*
+.env.testing
