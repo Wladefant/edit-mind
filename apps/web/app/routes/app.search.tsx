@@ -13,17 +13,15 @@ import { getUser } from '~/services/user.sever'
 import { SearchInput } from '~/features/search/components/SearchInput'
 import type { SearchQuery } from '@shared/types/search'
 import { generateActionFromPrompt } from '@shared/services/gemini'
-import { getSimpleSearchStats } from '@shared/utils/search';
-import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion';
+import { getSimpleSearchStats } from '@shared/utils/search'
+import { buildSearchQueryFromSuggestions } from '@shared/services/suggestion'
 import { logger } from '@shared/services/logger'
-import type { SimpleSearchStats, Video } from '@shared/types';
-
 
 export const meta: MetaFunction = () => {
   return [{ title: 'Search | Edit Mind' }]
 }
 
-export async function action({ request }: { request: Request }): Promise<{ success: boolean, videos?: Video[], stats?: SimpleSearchStats, error?: string }> {
+export async function action({ request }: { request: Request }) {
   try {
     const user = await getUser(request)
     const data = await request.formData()
@@ -48,7 +46,7 @@ export async function action({ request }: { request: Request }): Promise<{ succe
       console.debug('Generated search query from AI:', searchQuery)
     }
 
-    const videos: Video[] = await hybridSearch(searchQuery)
+    const videos = await hybridSearch(searchQuery)
 
     logger.debug(`We got ${videos.length} videos for your search`)
     const duration = Date.now() - startTime
