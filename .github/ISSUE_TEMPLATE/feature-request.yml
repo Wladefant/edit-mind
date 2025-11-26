@@ -16,9 +16,7 @@ body:
       options:
         - All Platforms (Core Experience)
         - Desktop App Specific
-        - Web App / Studio Specific
-        - AI / Analysis Plugins
-        - Developer Experience / API
+        - Web App Specific
     validations:
       required: true
 

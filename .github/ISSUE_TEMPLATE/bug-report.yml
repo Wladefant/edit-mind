@@ -67,6 +67,6 @@ body:
       label: Logs & Screenshots
       description: |
         Please copy and paste any relevant logs.
-        - **Desktop:** View -> Toggle Developer Tools -> Console
+        - **Desktop:** View -> Toggle Developer Tools -> Console (or Ctrl+Shift+I)
         - **Web/Docker:** `docker compose logs -f`
       render: shell
