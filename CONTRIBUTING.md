@@ -10,21 +10,22 @@ We are committed to fostering an open and welcoming environment. Please review o
 
 ### 1. Reporting Bugs
 
-If you find a bug, please open an issue on our [GitHub Issues page](https://github.com/your-username/electron-react-app/issues). When reporting a bug, please include:
+If you find a bug, please open an issue using our [Bug Report Form](https://github.com/Wladefant/edit-mind/issues/new?template=bug-report.yml). This form will guide you through providing all the necessary information, such as:
 
--   A clear and concise description of the bug.
--   Steps to reproduce the behavior.
+-   A clear description of the bug.
+-   Steps to reproduce.
 -   Expected behavior.
--   Screenshots or video recordings if applicable.
--   Your operating system and application version.
+-   Logs and screenshots.
+-   Platform details (Desktop vs Web).
 
 ### 2. Suggesting Enhancements
 
-We'd love to hear your ideas for improving Edit Mind! You can suggest enhancements by opening an issue on our [GitHub Issues page](https://github.com/your-username/electron-react-app/issues). Please include:
+We'd love to hear your ideas for improving Edit Mind! You can suggest enhancements using our [Feature Request Form](https://github.com/Wladefant/edit-mind/issues/new?template=feature-request.yml). Please include:
 
--   A clear and concise description of the proposed enhancement.
--   Why this enhancement would be useful.
--   Any mockups or examples if applicable.
+-   The problem you're trying to solve.
+-   Your proposed solution.
+-   The target platform (Desktop, Web, or All).
+-   The impact on your workflow.
 
 ### 3. Setting up Your Development Environment
 
