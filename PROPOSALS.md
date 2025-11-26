@@ -1,84 +1,130 @@
-# Codebase Improvement Proposals
+# Edit Mind: Evolution Proposals
 
-This document outlines suggested improvements for the Edit Mind project, covering architecture, libraries, code quality, and new features.
+This document outlines a detailed roadmap for evolving Edit Mind into a production-grade, collaborative video intelligence platform.
 
-## 1. Architecture & Structure
+---
 
-### 1.1 Shared UI Component Library (`packages/ui`)
-**Current Status:** Minimal implementation.
-**Proposal:**
-- Implement a robust component library using **shadcn/ui** within `packages/ui`.
-- Export components (Button, Input, Dialog, etc.) to be consumed by both `apps/web` and `apps/desktop`.
-- **Benefit:** Ensures visual consistency across platforms and reduces code duplication.
+## 1. Feature Deep Dive: "Working Together" (Real-Time Collaboration)
 
-### 1.2 Type-Safe API Client
-**Current Status:** Likely using `fetch` or `axios` directly.
-**Proposal:**
-- Create a shared API client package or utility in `packages/shared`.
-- Use **tRPC** (if backend can be adapted) or generate a client using **OpenAPI/Swagger** from the Express backend.
-- **Benefit:** End-to-end type safety, preventing API integration bugs.
+**Goal:** Transform Edit Mind from a single-user tool into a collaborative workspace where teams can index, tag, and search video libraries together in real-time.
 
-### 1.3 Monorepo Tooling
-**Current Status:** pnpm workspaces.
-**Proposal:**
-- Integrate **Turborepo** for high-performance build system.
-- Configure pipeline to cache builds and test results.
-- **Benefit:** Faster CI/CD and local development, especially as the project grows.
+### 1.1 The "Google Docs for Video" Experience
+- **Live Cursors:** See where other users are in the timeline.
+- **Collaborative Tagging:** User A names a face "John"; User B sees the label update instantly.
+- **Shared Search Sessions:** One user drives the search, results update for everyone.
 
-## 2. Libraries & Technologies
+### 1.2 Technical Solution: CRDTs & WebSockets
+We will use **Yjs** (Conflict-free Replicated Data Types) to handle state synchronization. This ensures eventual consistency even with network latency.
 
-### 2.1 State Management
-**Proposal:**
-- Standardize on **Zustand** or **Jotai** for global client-side state management.
-- **Why:** Simpler and less boilerplate than Redux; more flexible than Context API for complex state.
+#### Architecture
+```mermaid
+graph TD
+    UserA[User A (Web)] -->|WebSocket| SyncServer[Sync Server (Node.js)]
+    UserB[User B (Desktop)] -->|WebSocket| SyncServer
+    SyncServer -->|Persist| Redis[(Redis / Postgres)]
+    
+    subgraph "Client State (Yjs)"
+        Map[Y.Map: Metadata]
+        Array[Y.Array: TimelineTags]
+        Awareness[Y.Awareness: Cursors]
+    end
+```
 
-### 2.2 Data Fetching
-**Proposal:**
-- Adopt **TanStack Query (React Query)** for all server state management in `apps/web` and `apps/desktop`.
-- **Why:** Handles caching, deduplication, loading states, and error handling out of the box.
+#### Implementation Plan
+1.  **Shared Package (`packages/collaboration`)**:
+    *   Define Yjs document structure (schemas).
+    *   Export typed hooks (e.g., `useCollaborativeScene(sceneId)`).
+2.  **Backend (`apps/background-jobs`)**:
+    *   Integrate `y-websocket` or `hocuspocus` (a scalable Yjs server).
+    *   Bind Yjs updates to PostgreSQL for permanent storage.
+3.  **Frontend Integration**:
+    *   Replace local `useState` for tags/labels with Yjs hooks.
+    *   Add "Presence" UI (avatars in top bar).
 
-### 2.3 Python Performance
-**Proposal:**
-- Use **uv** or **Poetry** for Python dependency management (instead of just `requirements.txt`).
-- Explore **Celery** as an alternative to the custom Python service orchestration if complexity increases.
+---
 
-## 3. Code Quality & Testing
+## 2. Architecture 2.0: The "Edit Mind Core"
 
-### 3.1 Centralized Configuration
-**Proposal:**
-- Create a `@edit-mind/eslint-config` and `@edit-mind/tsconfig` package.
-- **Benefit:** Enforces consistent linting and coding standards across all apps and packages.
+**Goal:** Decouple business logic from the UI to support robust cross-platform development.
 
-### 3.2 Testing Strategy
-**Proposal:**
-- **Background Jobs:** Add **Jest** or **Vitest** for unit testing worker logic.
-- **Python:** Add **pytest** for testing analysis plugins and core logic.
-- **E2E:** Expand Playwright tests to cover critical user flows (indexing, searching).
+### 2.1 The "Core" Package (`packages/core`)
+Move all non-UI logic here. This ensures `apps/web` and `apps/desktop` share the exact same "brain".
 
-## 4. New Features
+*   **Structure:**
+    *   `src/services/`: API clients, Authentication.
+    *   `src/store/`: Global state (Zustand stores).
+    *   `src/models/`: Domain logic (e.g., `Video.getDuration()`, `Scene.formatTimestamp()`).
 
-### 4.1 Plugin Marketplace / Manager
-**Proposal:**
-- Create a UI in the Settings area to enable/disable specific Python analysis plugins.
-- Allow users to configure plugin parameters (e.g., confidence thresholds for face detection).
+### 2.2 Type-Safe API Layer (tRPC)
+Replace manual REST endpoints with **tRPC**.
+*   **Why:** You get full TypeScript autocomplete on the frontend for backend functions. No more `interface User` duplication.
+*   **How:**
+    *   Backend: Define routers (`videoRouter`, `searchRouter`).
+    *   Frontend: `trpc.video.get.useQuery({ id: 1 })`.
 
-### 4.2 Real-time Collaboration (Web)
-**Proposal:**
-- If the web app is hosted, allow multiple users to tag/annotate videos simultaneously.
-- Use **Socket.io** (already using `ws`) to sync state.
+---
 
-### 4.3 Smart Highlights / Auto-Editor
-**Proposal:**
-- Use the semantic search capabilities to automatically generate a "highlight reel" based on a text prompt (e.g., "Show me all funny moments with John").
-- Export the timeline as an `.edl` or `.xml` file for import into Premiere Pro/DaVinci Resolve.
+## 3. Plugin Marketplace Architecture
 
-## 5. Development Workflow
+**Goal:** Allow the community to build and share analysis models (e.g., "Golf Swing Analyzer", "Car Make Detector").
 
-### 5.1 Docker Dev Environment
-**Proposal:**
-- Create a `devcontainer.json` for VS Code to standardize the development environment.
-- Ensure all developers have the exact same Python and Node.js versions.
+### 3.1 Plugin Manifest (`plugin.json`)
+Every plugin defines its capabilities:
+```json
+{
+  "id": "com.example.golf-analyzer",
+  "name": "Golf Swing Pro",
+  "version": "1.0.0",
+  "inputs": ["video_frame"],
+  "outputs": ["pose_data", "swing_speed"],
+  "config": {
+    "confidence_threshold": { "type": "slider", "min": 0, "max": 1 }
+  }
+}
+```
 
-### 5.2 Pre-commit Hooks
-**Proposal:**
-- Use **Husky** and **lint-staged** to run linters and type checks before committing.
+### 3.2 The "Sandbox"
+Run Python plugins in isolated Docker containers or venvs to prevent crashing the main app.
+*   **Manager:** A new `PluginManager` class in the Python service that dynamically loads/unloads modules based on user settings.
+
+---
+
+## 4. Modern Tooling & Libraries
+
+### 4.1 Build System: Turborepo
+**Current:** Standard pnpm workspaces.
+**Proposed:** **Turborepo**.
+*   **Benefit:** Caches build artifacts. If you only change `apps/web`, it won't rebuild `packages/ui`.
+*   **Command:** `turbo run build test lint`
+
+### 4.2 State Management: Zustand + Immer
+**Current:** React Context?
+**Proposed:** **Zustand**.
+*   **Why:** Minimal boilerplate, works outside React components (great for the IPC layer in Electron).
+*   **Pattern:**
+    ```typescript
+    const useStore = create((set) => ({
+      videos: [],
+      addVideo: (v) => set(produce(state => { state.videos.push(v) }))
+    }))
+    ```
+
+### 4.3 UI Component System: shadcn/ui
+**Current:** Ad-hoc Tailwind.
+**Proposed:** **shadcn/ui** (Radix UI + Tailwind).
+*   **Strategy:**
+    1.  Initialize in `packages/ui`.
+    2.  Export components: `<Button>`, `<Dialog>`, `<DataTable>`.
+    3.  Theme: Use CSS variables for easy "Dark Mode" and "Brand Theming".
+
+### 4.4 Testing: Vitest & Playwright
+*   **Unit:** Switch Jest to **Vitest** (native Vite support, faster).
+*   **E2E:** **Playwright** is perfect. Add visual regression testing to catch UI breaks.
+
+---
+
+## 5. Immediate "Quick Wins"
+
+1.  **Strict Types:** Enable `strict: true` in all `tsconfig.json` files.
+2.  **Pre-commit Hooks:** Install `husky` to run `tsc --noEmit` before every commit.
+3.  **Absolute Imports:** Configure paths `@/components`, `@/lib` in all apps for cleaner imports.
