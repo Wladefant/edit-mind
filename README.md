@@ -11,7 +11,16 @@
 
 
 
+## 🐳 Docker Support Branch
 
+If you want to use the **Docker-enabled version** of Edit Mind, check out the [`feat/add-docker-and-immich-support`](https://github.com/iliashad/edit-mind/tree/feat/add-docker-and-immich-support) branch.  
+
+This branch includes:
+
+- Pre-configured Dockerfiles for running Edit Mind in containers
+- Automatic Python environment setup
+- Easier cross-platform setup without installing dependencies locally
+  
 
 
 ### 🧠 Your Video Library, Reimagined
