@@ -57,8 +57,6 @@ export interface ProgressBarProps {
   duration: number
   currentTime: number
   onSeek: (time: number) => void
-  onHoverScene: (scene: Scene | null) => void
-  onHoverPosition: (x: number) => void
 }
 
 export interface OverlayManagerProps {

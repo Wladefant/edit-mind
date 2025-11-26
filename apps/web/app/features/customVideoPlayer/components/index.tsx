@@ -1,13 +1,12 @@
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useMemo, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useVideoDimensions } from '../hooks/useVideoDimensions'
+import { useVideoDimensions, type ObjectFit } from '../hooks/useVideoDimensions'
 import type { CustomVideoPlayerProps } from '../types'
 
 import { useVideoControls } from '../hooks/useVideoControls'
 import { useVideoProgress } from '../hooks/useVideoProgress'
 import { useOverlayState } from '../hooks/useOverlayState'
 import { useAutoHideControls } from '../hooks/useAutoHideControls'
-import { useTranscription } from '../hooks/useTranscription'
 
 import { OverlayManager } from './OverlayManager'
 import { AIVisionBadge } from './AIVisionBadge'
@@ -17,6 +16,12 @@ import { VolumeControl } from './VolumeControl'
 import { FullscreenButton } from './FullscreenButton'
 import { ProgressBar } from './ProgressBar'
 import { LiveCaptions } from './LiveCaptions'
+import { CaptionsButton } from './CaptionsButton'
+import { FitButton } from './FitButton'
+
+interface ExtendedCustomVideoPlayerProps extends CustomVideoPlayerProps {
+  objectFit?: ObjectFit
+}
 
 export function CustomVideoPlayer({
   source,
@@ -24,12 +29,15 @@ export function CustomVideoPlayer({
   title,
   defaultStartTime,
   onTimeUpdate,
-}: CustomVideoPlayerProps) {
+  objectFit = 'contain',
+}: ExtendedCustomVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const overlayRef = useRef<HTMLDivElement | null>(null)
 
-  const { videoDimensions, updateVideoDimensions } = useVideoDimensions(videoRef, overlayRef)
+  const [currentObjectFit, setCurrentObjectFit] = useState<ObjectFit>(objectFit)
+
+  const { videoDimensions, updateVideoDimensions } = useVideoDimensions(videoRef, overlayRef, currentObjectFit)
 
   const { isPlaying, setIsPlaying, volume, isMuted, togglePlay, toggleMute, handleVolumeChange, toggleFullscreen } =
     useVideoControls(videoRef)
@@ -44,8 +52,6 @@ export function CustomVideoPlayer({
     () => scenes.find((s) => currentTime >= s.startTime && currentTime <= s.endTime) || null,
     [scenes, currentTime]
   )
-
-  const activeTranscriptionWord = useTranscription(currentTime, currentScene)
 
   useEffect(() => {
     const video = videoRef.current
@@ -73,6 +79,16 @@ export function CustomVideoPlayer({
     }
   }, [defaultStartTime, skipTo])
 
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'o' || e.key === 'O') {
+        setCurrentObjectFit((prev) => (prev === 'contain' ? 'cover' : 'contain'))
+      }
+    }
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [])
+
   return (
     <div
       ref={containerRef}
@@ -84,7 +100,8 @@ export function CustomVideoPlayer({
         ref={videoRef}
         src={source}
         poster={scenes[0]?.thumbnailUrl ? '/thumbnails/' + scenes[0].thumbnailUrl : undefined}
-        className="w-full h-full object-contain bg-black"
+        className="w-full h-full bg-black"
+        style={{ objectFit: currentObjectFit }}
         onClick={togglePlay}
       />
 
@@ -119,8 +136,8 @@ export function CustomVideoPlayer({
       />
 
       {overlayMode === 'all' ||
-        (overlayMode === 'captions' && (
-          <LiveCaptions currentScene={currentScene} activeTranscriptionWord={activeTranscriptionWord} />
+        (overlayMode === 'captions' && currentScene?.transcription && (
+          <LiveCaptions transcription={currentScene?.transcription} />
         ))}
 
       <motion.div
@@ -139,8 +156,6 @@ export function CustomVideoPlayer({
           duration={duration}
           currentTime={currentTime}
           onSeek={seekTo}
-          onHoverScene={() => {}}
-          onHoverPosition={() => {}}
         />
       </motion.div>
 
@@ -159,6 +174,16 @@ export function CustomVideoPlayer({
         />
 
         <div className="flex-1" />
+
+        <FitButton
+          onToggle={() => setCurrentObjectFit((prev) => (prev === 'contain' ? 'cover' : 'contain'))}
+          currentObjectFit={currentObjectFit}
+        />
+
+        <CaptionsButton
+          onToggle={() => setOverlayMode(overlayMode === 'captions' || overlayMode === 'all' ? 'none' : 'captions')}
+          active={overlayMode === 'captions'}
+        />
 
         <FullscreenButton onToggleFullscreen={() => toggleFullscreen(containerRef)} />
       </motion.div>

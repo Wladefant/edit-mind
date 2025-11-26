@@ -2,7 +2,7 @@ export const OVERLAY_COLORS = {
   face: 'border-blue-500 bg-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.5)]',
   object: 'border-green-500 bg-green-500/20 shadow-[0_0_20px_rgba(34,197,94,0.5)]',
   text: 'border-purple-500 bg-purple-500/20 shadow-[0_0_20px_rgba(168,85,247,0.5)]',
-  caption: 'border-yellow-500 bg-yellow-500/20 shadow-[0_0_20px_rgba(234,179,8,0.5)]',
+  captions: 'border-yellow-500 bg-yellow-500/20 shadow-[0_0_20px_rgba(234,179,8,0.5)]',
 } as const
 
 export const OVERLAY_MODE_COLORS = {

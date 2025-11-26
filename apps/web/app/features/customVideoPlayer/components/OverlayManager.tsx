@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
 import { BoundingBox } from './BoundingBox'
 import type { OverlayManagerProps } from '../types'
-import { shouldShowOverlay } from '../utils/boundingBox'
+import { shouldShowOverlay } from '../utils/overlays'
 
 export function OverlayManager({
   currentScene,
