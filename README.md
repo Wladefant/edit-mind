@@ -1,33 +1,23 @@
-# 🎬 Edit Mind — AI-Powered Video Indexing & Semantic Search
+### 🧠 Edit Mind:  AI-Powered Video Indexing & Search
+
+Edit Mind lets you **search your videos by content, not just filenames**. Recognize faces, transcribe speech, detect objects, and explore your library with natural language search. All **locally and securely**.  
+
+Perfect for creators, editors, and researchers who need smarter video management.
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Made with Electron](https://img.shields.io/badge/Built%20with-Electron-blue.svg)](https://www.electronjs.org/)
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg)](https://www.trychroma.com/)
+[![Docker](https://img.shields.io/badge/Containerized-Docker-blue.svg)](https://www.docker.com/)
 
-> ⚠️ **Development Status:** Edit Mind is currently in **active development** and **not yet production-ready**.  
+> ⚠️ **Development Status:** Edit Mind is currently in **active development** and **not yet production-ready**.
 > Expect incomplete features and occasional bugs. We welcome contributors to help us reach **v1.0**!
-
-
-
-
-
 
 ### 🧠 Your Video Library, Reimagined
 
-**Edit Mind** is a cross-platform desktop app that acts as an **editor’s second brain**.  
+**Edit Mind** is a comprehensive, cross-platform application (with both Desktop and Web interfaces) designed for intelligent video analysis, management, and search. It leverages a sophisticated backend system to process video files, extracting a rich set of metadata through AI-powered analysis. This allows users to perform deep searches on their video library, not just by filename, but by the actual content within the videos, such as recognized faces, spoken words, detected objects, and events.
 
-<img width="1197" height="1000" alt="Screenshot 2025-10-26 at 21 51 30" src="https://github.com/user-attachments/assets/25a6710c-e414-45f0-a258-21bdbd1dd352" />
-
-It locally indexes your entire video library, generating deep metadata using **AI analysis** — including:
-
-- 🎙 Full transcriptions  
-- 👤 Recognized faces  
-- 🎨 Dominant colors  
-- 📦 Detected objects  
-- 🔤 On-screen text (OCR)  
-
-This creates a **fully searchable, offline-first video database**, letting you find the exact shot you need in seconds.
+All video files, frames, and extracted metadata remain fully **local**. The project emphasizes a **Docker-first development and deployment strategy**, ensuring a consistent environment across various platforms.
 
 ---
 
@@ -39,227 +29,152 @@ This creates a **fully searchable, offline-first video database**, letting you f
 
 ---
 
-## ⚙️ How It Works
+## ⚡ Why Edit Mind?
+- Search videos by spoken words, objects, faces, and events.
+- Runs fully **locally**, respecting privacy.
+- Works on **desktop and web**.
+- Uses AI for rich metadata extraction and semantic search.
 
-When you add a video, Edit Mind runs a complete **AI-powered local analysis pipeline**:
 
-1. **🎙 Full Transcription** — Extracts and transcribes the audio track using a local [OpenAI Whisper](https://github.com/openai/whisper) model for time-stamped dialogue.  
-2. **🎞 Scene Segmentation** — Splits the video into 2-second “Scenes” for precise frame-level indexing.  
-3. **🧩 Deep Frame Analysis** — Each Scene is analyzed by Python plugins to:
-   - Recognize faces  
-   - Detect objects  
-   - Perform OCR (on-screen text)  
-   - Analyze colors and composition  
-4. **🧠 Data Consolidation** — Aligns spoken text with visual content using timestamps.  
-5. **🔍 Vector Embedding & Storage** — All extracted data (transcripts, tags, and metadata) are embedded using **Google Text Embedding Models** and stored locally in **[ChromaDB](https://www.trychroma.com/)**.  
-6. **🗣 Semantic Search Parsing** — When you search in natural language (e.g. _“show me all clips where Ilias looks happy”_), Edit Mind uses **Google Gemini 2.5 Pro** to convert your search prompt into a structured JSON query.  
-   This query is then executed locally against the ChromaDB vector store to retrieve relevant scenes.
+## ✨ Core Features
+
+*   **Video Indexing and Processing:** A background service watches for new video files and queues them for AI-powered analysis.
+*   **AI-Powered Video Analysis:** Extracts metadata like face recognition, transcription, object & text detection, scene analysis, and more.
+*   **Vector-Based Semantic Search:** Powerful natural language search capabilities on video content using ChromaDB and Google Gemini.
+*   **Dual Interfaces:** Access your video library through a native **Desktop App** (Electron) or a **Web App** (Docker).
 
 ---
 
-> 💡 **Privacy by Design:**  
-> All video files, frames, and extracted metadata remain fully **local**.  
-> The only cloud-based component is the **Gemini API call for search prompt interpretation** and **Google text embedding generation** — no raw video are ever uploaded.  
-> In a future update, Edit Mind will include the option to use **offline embedding and query models** for completely disconnected operation.
+## ⚙️ Monorepo Architecture & Tech Stack
 
+This project is structured as a `pnpm` monorepo, separating concerns into distinct applications and shared packages.
 
----
+### Applications
 
-## ✨ Features
+*   **`apps/desktop`**: The native Electron application, providing a rich user experience.
+*   **`apps/web`**: A full-stack web application for browser-based access.
+*   **`apps/background-jobs`**: The core backend service managing video processing, AI analysis orchestration, and job queues. (Used for the Docker setup)
 
-| Category | Description |
-|-----------|-------------|
-| 🔒 **Privacy-First** | 100% local AI processing. Your videos never leave your device. |
-| 🧠 **Deep Indexing** | Extracts transcription, faces, objects, text, and colors automatically. |
-| 🔍 **Semantic Search** | Search your videos by meaning, not just filenames — e.g. “scenes with two people talking at a table.” |
-| 🎬 **AI-Generated Rough Cuts** | Describe your desired sequence in natural language: <br>`“Give me all clips where @ilias looks happy.”` <br> Edit Mind finds matching scenes and assembles a rough cut. |
-| 💻 **Cross-Platform** | Runs on macOS, Windows, and Linux (Electron). |
-| 🧩 **Plugin-Based Architecture** | Easily extend analysis capabilities with Python plugins (e.g. logo detection, emotion analysis). |
-| 🪄 **Modern UI** | Built with React, TypeScript, and [shadcn/ui](https://ui.shadcn.com/) for a clean, responsive experience. |
+### Shared Packages
 
----
+*   **`packages/prisma`**: Database schema and migration management.
+*   **`packages/shared`**: (Under refactoring) Contains utilities, types, and services shared across applications.
+*   **`packages/ui`**: A shared UI component library (Under construction to share components between web and the desktop application).
 
-## 🧭 Roadmap
+### AI/ML Services
 
-### **v0.2.0**
-- [ ] Advanced search filters (date range, camera type)
-- [ ] Export rough cuts as an Adobe Premiere Pro and Final Cut Pro project
-- [ ] Improved indexing performance
+*   **`python/`**: Contains Python scripts for various AI-powered video analysis plugins, transcription, face matching and face reindexing. It's communicating via WebSockets.
 
-### **v0.3.0**
-- [ ] New analysis plugins (e.g., audio event detection)
-- [ ] Plugin documentation and examples
-
-### **Future**
-- [ ] Optional cloud sync for indexes
-- [ ] Collaborative tagging and shared libraries
-- [ ] Plugin marketplace
-
----
-
-## 🛠️ Tech Stack
+### Core Technologies
 
 | Area | Technology |
-|-------|-------------|
-| **App Framework** | [Electron](https://www.electronjs.org/) |
-| **Frontend** | [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/) |
-| **UI / Styling** | [shadcn/ui](https://ui.shadcn.com/), [Tailwind CSS](https://tailwindcss.com/) |
-| **Backend (Main)** | [Node.js](https://nodejs.org/) |
-| **AI / ML** | [Python](https://www.python.org/), [OpenCV](https://opencv.org/), [PyTorch](https://pytorch.org/), Whisper |
-| **Vector Database** | [ChromaDB](https://www.trychroma.com/) |
-| **Packaging** | [Electron Builder](https://www.electron.build/) |
-| **Linting / Formatting** | [ESLint](https://eslint.org/), [Prettier](https://prettier.io/) |
+| :---------------- | :------------------------------------------------ |
+| **Monorepo**      | [pnpm workspaces](https://pnpm.io/workspaces)   |
+| **Containerization** | [Docker](https://www.docker.com/), [Docker Compose](https://docs.docker.com/compose/) |
+| **Frontend**      | [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/) |
+| **UI / Styling**  | [shadcn/ui](https://ui.shadcn.com/), [Tailwind CSS](https://tailwindcss.com/) |
+| **Backend (Node.js)** | [Node.js](https://nodejs.org/), [Express.js](https://expressjs.com/), [BullMQ](https://bullmq.io/) |
+| **AI / ML**       | [Python](https://www.python.org/), [OpenCV](https://opencv.org/), [PyTorch](https://pytorch.org/), OpenAI Whisper, Google Gemini (Used for NLP) |
+| **Vector Database** | [ChromaDB](https://www.trychroma.com/)           |
+| **Relational DB** | [PostgreSQL](https://www.postgresql.org/) (via [Prisma ORM](https://www.prisma.io/)) |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Docker-first Setup)
+
+The recommended way to get started with Edit Mind is using Docker Compose, which will set up all necessary services (Node.js backend, Python analysis, PostgreSQL, ChromaDB).
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en/download/) **v22+**
-- [Python](https://www.python.org/downloads/) **v3.9+**
-- **Recommended Hardware:** Multi-core CPU, modern GPU, and at least 8GB RAM.
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+*   [pnpm](https://pnpm.io/installation) installed.
 
----
-
-## Installation
+### 1. Clone the repository
 
 ```bash
-# Clone the repo
 git clone https://github.com/iliashad/edit-mind
 cd edit-mind
 ```
-### Install Node.js dependencies
-```bash
-npm install
-```
 
-### Set up the Python environment
-```bash
-cd python
-python3.12 -m venv .venv                                                  
-source .venv/bin/activate   # (macOS/Linux)
-# .\.venv\Scripts\activate  # (Windows)
-pip install -r requirements.txt
-pip install chromadb
-chroma run --host localhost --port 8000 --path .chroma_db
-```
-
-### Configuration
-
-Create a `.env` file in the project root:
-```bash
-GEMINI_API_KEY=your_api_key_here
-```
-
-
-### Running the Application
-
-With the setup complete, you can start the application.
+### 2. Install Node.js Dependencies
 
 ```bash
-npm run start
+pnpm install
 ```
 
-## 🏗️ Building for Production
+### 3. Configure Environment Variables
 
-To create a distributable package for your operating system, use the build command:
+Create a `.env` file in the project root (`edit-mind/.env`).
+You can start by copying the example:
 
 ```bash
-npm run build:mac
+cp .env.example .env
 ```
 
-This will generate an installer or executable in the `out/` directory, configured according to `electron-builder.yml`.
+**Important:** Set your `HOST_MEDIA_PATH` in the `.env` file for accessing your media folder from the docker setup and make sure over Docker settings to make this folder shareable over Docker.
+
+```ini
+# .env example
+DATABASE_URL="postgresql://user:password@localhost:5432/editmind?schema=public"
+REDIS_HOST="localhost"
+REDIS_PORT=6379
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+PYTHON_PORT=5001 # Default port for Python service
+
+HOST_MEDIA_PATH="/path/to/media/folder/in/your/server"
+
+```
+
+### 4. Start the Services with Docker Compose
+
+This command will build Docker images for all services and start them in detached mode.
+
+```bash
+cd docker
+docker compose up --build -d
+```
+
+Verify all containers are running:
+```bash
+docker compose ps
+```
+
+
+### 5. Access the Applications
+
+*   **Web App:** Open your browser to `http://localhost:3745` (or the port configured for the web service).
+*   **Desktop App:** The Electron desktop application can be built and run separately. Refer to `apps/desktop/README.md` for specific instructions.
+*   **BullMQ Dashboard:** (Development only) Access the job queue monitoring dashboard at `http://localhost:4000` (or the port configured for `background-jobs`).
+
+---
 
 ## 📂 Project Structure
 
-The project is organized to maintain a clear separation of concerns:
+```
+.
+├── apps/                 # Individual applications (desktop, web, background-jobs)
+│   ├── background-jobs/  # Node.js service for AI analysis orchestration & job queue
+│   ├── desktop/          # Electron desktop application
+│   └── web/              # Full-stack web application
+├── packages/             # Shared libraries and packages
+│   ├── prisma/           # Prisma schema, migrations, and database utilities
+│   ├── shared/           # Cross-application constants, types, and utilities
+│   └── ui/               # Reusable UI components
+├── python/               # Core Python AI/ML analysis services and plugins
+├── docker/               # Dockerfiles and docker-compose configurations
+└── ...                   # Other configuration files (pnpm-workspace.yaml, .env.example, etc.)
+```
 
-- `app/`: Contains all the React frontend code (pages, components, hooks, styles). This is the renderer process.
-- `lib/`: Contains the core Electron application logic.
-  - `main/`: The Electron main process entry point and core backend services.
-  - `preload/`: The preload script for securely bridging the main and renderer processes.
-  - `conveyor/`: A custom-built, type-safe IPC (Inter-Process Communication) system.
-  - `services/`: Node.js services that orchestrate tasks like calling Python scripts.
-- `python/`: Home to all Python scripts for AI/ML analysis, transcription, and more.
-- `resources/`: Static assets that are not part of the web build, like the application icon.
+For detailed instructions on each application, refer to their respective `README.md` files:
+*   [**`apps/desktop/README.md`**](apps/desktop/README.md)
+*   [**`apps/web/README.md`**](apps/web/README.md)
+*   [**`apps/background-jobs/README.md`**](apps/background-jobs/README.md)
 
-
-## 📊 Performance Benchmarks
-
-To help you understand Edit Mind's resource requirements, here are real-world performance metrics from analyzing large video files.
-
-### Test Environment
-
-- **Hardware:** M1 MacBook Max with 64 GB RAM
-- **Enabled Plugins:**
-  - ObjectDetectionPlugin
-  - FaceRecognitionPlugin
-  - ShotTypePlugin
-  - EnvironmentPlugin
-  - DominantColorPlugin
-
-> **Note:** The metrics below reflect frame analysis time and peak memory usage. Transcription and embedding score processing stages are not included in these measurements.
-
-*(Lower is better - 1.0× means processing takes the same time as video duration)*
-
-| File Size (MB) | Video Codec | Frame Analysis Time (s) | Video Duration (s) | Processing Rate | Peak Memory (MB) |
-|---------------:|:------------|------------------------:|-------------------:|----------------:|-----------------:|
-| 20150.38 | h264 | 7707.29 | 3372.75 | 2.29× | 4995.45 |
-| 11012.64 | hevc | 3719.77 | 1537.54 | 2.42× | 10356.77 |
-| 11012.24 | hevc | 3326.29 | 1537.54 | 2.16× | 11363.27 |
-| 11001.07 | hevc | 1576.47 | 768.77 | 2.05× | 10711.09 |
-| 11000.95 | hevc | 1592.94 | 768.77 | 2.07× | 11250.42 |
-| 11000.55 | hevc | 1598.97 | 768.77 | 2.08× | 10797.03 |
-| 11000.15 | hevc | 2712.68 | 768.77 | 3.53× | 5127.25 |
-| 10999.96 | hevc | 1592.72 | 768.77 | 2.07× | 11328.47 |
-| 10755.45 | hevc | 3762.24 | 751.65 | 5.01× | 5196.98 |
-### Key Takeaways
-
-- **Processing Speed:** Approximately **2-3 hours** of analysis time per hour of video content with all plugins enabled
-- **Memory Usage:** Peak memory consumption ranges from **5-11 GB** depending on video complexity and codec
-- **Codec Impact:** HEVC videos show varied performance, likely due to differences in encoding parameters and scene complexity
-
-> 💡 **Performance Tips:**  
-> - Disable unused plugins to reduce processing time and memory usage
-> - Consider processing large files during off-hours
-> - Ensure sufficient RAM (16GB+ recommended for optimal performance)
-> - SSD storage significantly improves I/O performance during analysis
-
-
-## 🧑‍💻 How to Contribute
-
-We welcome contributions of all kinds! Here are a few ways you can help:
-
-- **Reporting Bugs:** If you find a bug, please open an issue.
-- **Improving the UI:** Have ideas to make the interface better? We'd love to hear them.
-- **Creating a Plugin:** The analysis pipeline is built on plugins. If you have an idea for a new analyzer (e.g., logo detection, audio event classification), this is a great place to start. Check out the existing plugins in the `python/plugins/` directory to see how they work.
+---
 
 ## 🤝 Contributing
 
-As an open-source project in its early stages, we are actively looking for contributors. Whether it's fixing bugs, adding new analysis plugins, or improving the UI, your help is invaluable.
-
-Please read `CONTRIBUTING.md` for details on our code of conduct and the process for submitting pull requests.
-
-## 🙏 Acknowledgements
-
-This project was bootstrapped from the excellent [guasam/electron-react-app](https://github.com/guasam/electron-react-app) template. It provided a solid foundation with a modern Electron, React, and Vite setup, which allowed us to focus on building the core features of Edit Mind.
-
-## ⚠️ Known Challenges & Areas for Contribution
-
-While the core architecture is robust, the project is still in early development. Contributions are welcome in solving these key challenges to make the app production-ready.
-
-1.  **Application Packaging & Distribution:**
-    The current setup is developer-focused. A major goal is to create a seamless, one-click installer for non-technical users. This involves bundling the Python environment, ML models, and all dependencies into the final Electron application for macOS, Windows, and Linux. Contributions in this area (e.g., using PyInstaller, managing model downloads) are highly welcome.
-
-2.  **Performance on Consumer Hardware:**
-    The analysis pipeline is resource-intensive. While the code includes memory monitoring and optimizations, further work is needed to ensure smooth operation on a variety of consumer-grade machines. Key areas for improvement include:
-    *   Implementing a robust background queuing system for video processing.
-    *   Adding user-configurable "analysis levels" (e.g., "transcription only" vs. "full analysis").
-    *   Further optimization of the frame processing and ML inference steps.
-
-3.  **Data Schema Evolution:**
-    As new plugins and features are added, the metadata schema for scenes will evolve. A long-term challenge is to implement a strategy for handling data migrations, allowing users to "upgrade" their existing indexed data to a new schema without having to re-index their entire library from scratch.
+We welcome contributions of all kinds! Please read `CONTRIBUTING.md` for details on our code of conduct and the process for submitting pull requests.
 
 ---
 
