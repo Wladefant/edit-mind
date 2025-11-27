@@ -35,7 +35,7 @@ COPY apps/web/package.json ./apps/web/package.json
 COPY apps/background-jobs/package.json ./apps/background-jobs/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY packages/prisma ./packages/prisma
-COPY scripts ./scripts
+COPY prisma.config.ts ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -86,4 +86,4 @@ RUN mkdir -p /app/models
 
 EXPOSE 4000 8765
 
-CMD ["pnpm", "--filter", "background-jobs", "start"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy --schema=/app/packages/prisma/schema.prisma && pnpm prisma generate --schema=/app/packages/prisma/schema.prisma && pnpm --filter background-jobs start"]
