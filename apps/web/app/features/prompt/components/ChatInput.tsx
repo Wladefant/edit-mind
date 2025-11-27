@@ -1,4 +1,4 @@
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send } from 'lucide-react'
 import type { RefObject } from 'react'
 
 interface ChatInputProps {
@@ -7,9 +7,10 @@ interface ChatInputProps {
   sendMessage: () => void
   isLoading: boolean
   inputRef: RefObject<HTMLInputElement | null>
+  isLocked?: boolean
 }
 
-export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef }: ChatInputProps) {
+export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef, isLocked }: ChatInputProps) {
   return (
     <footer className="sticky bottom-0 z-100 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-t border-black/5 dark:border-white/10">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5">
@@ -22,12 +23,12 @@ export function ChatInput({ input, setInput, sendMessage, isLoading, inputRef }:
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            disabled={isLoading}
+            disabled={isLoading || isLocked}
           />
           <button
             aria-label="Send"
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || isLocked}
             className={`p-2 rounded-full transition-all duration-150 ${
               input.trim() && !isLoading
                 ? 'bg-black dark:bg-white text-white dark:text-black hover:opacity-80 active:scale-95'

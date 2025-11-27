@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@prisma/client'
+import type { Chat, ChatMessage } from '@prisma/client'
 import type { Scene } from '@shared/schemas'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useFetcher, useNavigate } from 'react-router-dom'
@@ -8,6 +8,7 @@ interface ChatMessageWithScenes extends ChatMessage {
 }
 
 export function useChat(chatId?: string) {
+  const [chat, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<ChatMessageWithScenes[]>([])
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set())
   const [input, setInput] = useState('')
@@ -15,7 +16,7 @@ export function useChat(chatId?: string) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const messagesFetcher = useFetcher<{ messages: ChatMessageWithScenes[] }>()
+  const messagesFetcher = useFetcher<{ messages: ChatMessageWithScenes[]; chat: Chat }>()
   const sendMessageFetcher = useFetcher<{ chatId?: string; message?: ChatMessageWithScenes }>()
   const stitchFetcher = useFetcher<{ message: ChatMessageWithScenes }>()
 
@@ -50,6 +51,9 @@ export function useChat(chatId?: string) {
     if (messagesFetcher.data?.messages) {
       setMessages(messagesFetcher.data.messages)
     }
+    if (messagesFetcher.data?.chat) {
+      setChat(messagesFetcher.data.chat)
+    }
   }, [messagesFetcher.data])
 
   useEffect(() => {
@@ -69,9 +73,7 @@ export function useChat(chatId?: string) {
       setIsStitchingState(false)
       const stitchedMessage = stitchFetcher.data?.message
       if (stitchedMessage) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === stitchedMessage.id ? stitchedMessage : m))
-        )
+        setMessages((prev) => prev.map((m) => (m.id === stitchedMessage.id ? stitchedMessage : m)))
       }
     }
   }, [stitchFetcher.data])
@@ -94,6 +96,8 @@ export function useChat(chatId?: string) {
       updatedAt: new Date(),
       outputScenes: [],
       stitchedVideoPath: null,
+      isError: false,
+      tokensUsed: BigInt(0),
     }
 
     setMessages((prev) => [...prev, tempUserMessage])
@@ -204,5 +208,6 @@ export function useChat(chatId?: string) {
     isStitching: isStitchingState,
     isSending: sendMessageFetcher.state !== 'idle',
     isRefreshing: messagesFetcher.state === 'loading',
+    chat
   }
 }

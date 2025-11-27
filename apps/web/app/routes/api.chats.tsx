@@ -39,54 +39,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const recentMessages: ChatMessage[] = []
 
-  const intent = await classifyIntent(prompt)
+  const intentResult = await classifyIntent(prompt, recentMessages)
 
+  if (intentResult.error || !intentResult.data) {
+    await prisma.chatMessage.create({
+      data: {
+        chatId: chat.id,
+        sender: 'assistant',
+        text: 'Failed to classify intent.',
+        tokensUsed: intentResult.tokens,
+        isError: true,
+      },
+    })
+
+    return new Response(JSON.stringify({ chatId: chat.id }), {
+      status: 201,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
+  const intent = intentResult.data
   let assistantText: string
   let outputSceneIds: string[] = []
+  let tokensUsed = intentResult.tokens
 
   switch (intent.type) {
     case 'analytics': {
-      // User wants statistics/information
       const analytics = await getVideoAnalytics(prompt)
-      assistantText = await generateAnalyticsResponse(prompt, analytics)
+      const response = await generateAnalyticsResponse(prompt, analytics, recentMessages)
+      assistantText = response.data || 'Sorry, I could not generate an analytics response.'
+      tokensUsed += response.tokens
       outputSceneIds = analytics.sceneIds
       break
     }
 
     case 'compilation': {
-      // User wants to create a video compilation
-      const {
-        shot_type,
-        emotions,
-        description,
-        aspect_ratio,
-        objects,
-        camera,
-        transcriptionQuery,
-        faces,
-        semanticQuery,
-      } = await generateActionFromPrompt(prompt)
+      const { data: searchParams, tokens, error } = await generateActionFromPrompt(prompt, recentMessages)
+      tokensUsed += tokens
 
-      const results = await hybridSearch({
-        faces,
-        shot_type,
-        emotions,
-        description,
-        aspect_ratio,
-        objects,
-        camera,
-        transcriptionQuery,
-        semanticQuery,
-      })
+      if (error || !searchParams) {
+        assistantText = 'Sorry, I could not understand your request.'
+        break
+      }
+
+      const results = await hybridSearch(searchParams)
 
       outputSceneIds = results.flatMap((result) => result.scenes.map((scene) => scene.id))
-      assistantText = await generateCompilationResponse(prompt, outputSceneIds.length)
+      const response = await generateCompilationResponse(prompt, outputSceneIds.length, recentMessages)
+      assistantText = response.data || 'Sorry, I could not generate a compilation response.'
+      tokensUsed += response.tokens
       break
     }
 
     case 'general':
     default: {
-      assistantText = await generateGeneralResponse(prompt, recentMessages)
+      const response = await generateGeneralResponse(prompt, recentMessages)
+      assistantText = response.data || 'Sorry, I could not generate a response.'
+      tokensUsed += response.tokens
       break
     }
   }
@@ -97,6 +108,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       sender: 'assistant',
       text: assistantText,
       outputSceneIds,
+      tokensUsed,
     },
   })
 

@@ -61,3 +61,5 @@ export const STITCHED_VIDEOS_DIR = process.env.STITCHED_VIDEOS_DIR
 export const PYTHON_PORT = process.env.PYTHON_PORT || '8765'
 
 export const IS_TESTING = process.env.NODE_ENV === 'testing'
+
+export const MAX_MESSAGES_PER_CHAT = 50

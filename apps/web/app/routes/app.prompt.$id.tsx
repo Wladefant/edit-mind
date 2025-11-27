@@ -49,6 +49,7 @@ export default function ChatPage() {
     toggleSceneSelection,
     stitchSelectedScenes,
     isStitching,
+    chat,
   } = useChat(id)
 
   return (
@@ -66,6 +67,7 @@ export default function ChatPage() {
                   handleSelectScene={toggleSceneSelection}
                   stitchSelectedScenes={stitchSelectedScenes}
                   isStitching={isStitching}
+                  chat={chat}
                 />
                 {isLoading && <LoadingIndicator />}
                 <div ref={messagesEndRef} />
@@ -80,6 +82,7 @@ export default function ChatPage() {
           sendMessage={sendMessage}
           isLoading={isLoading}
           inputRef={inputRef}
+          isLocked={chat?.isLocked}
         />
       </div>
     </DashboardLayout>
