@@ -2,17 +2,20 @@ import { useEffect, useState } from 'react'
 import { Link, useFetcher, useLoaderData, useNavigate, type MetaFunction } from 'react-router'
 import { CustomVideoPlayer } from '~/features/customVideoPlayer/components'
 import { DashboardLayout } from '~/layouts/DashboardLayout'
-import { getByVideoSource, updateMetadata, updateScenesSource } from '@shared/services/vectorDb'
+import { deleteByVideoSource, getByVideoSource, updateMetadata, updateScenesSource } from '@shared/services/vectorDb'
 import { Sidebar } from '~/features/shared/components/Sidebar'
 import { existsSync } from 'fs'
 import { RelinkVideo } from '~/features/videos/components/RelinkVideo'
+import { DeleteVideo } from '~/features/videos/components/DeleteVideo'
 import { getUser } from '~/services/user.sever'
 import { prisma } from '~/services/database'
 import fs from 'fs/promises'
 import { videoActionSchema } from '~/features/videos/schemas'
-import { Check, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { Check, AlertCircle, Loader2, ArrowLeft, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ScenesList from '~/features/videos/components/ScenesList'
+import { PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
+import path from 'path'
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url)
@@ -80,6 +83,39 @@ export async function action({ request }: { request: Request }) {
         return { success: false, error: 'Failed to access or create folder/video' }
       }
     }
+    if (action.intent === 'delete-video') {
+      const { source } = action
+      try {
+        const scenes = await getByVideoSource(source)
+
+        const thumbnailDir = THUMBNAILS_DIR
+        for (const scene of scenes) {
+          if (scene.thumbnailUrl) {
+            const thumbPath = path.join(thumbnailDir, scene.thumbnailUrl)
+            if (existsSync(thumbPath)) {
+              await fs.unlink(thumbPath)
+            }
+          }
+        }
+
+        await deleteByVideoSource(source)
+
+        await prisma.job.deleteMany({
+          where: { videoPath: source },
+        })
+
+        const videoFileName = path.basename(source)
+        const analysisResultDir = path.join(PROCESSED_VIDEOS_DIR, videoFileName)
+        if (existsSync(analysisResultDir)) {
+          await fs.rm(analysisResultDir, { recursive: true, force: true })
+        }
+
+        return { success: true }
+      } catch (e) {
+        console.error('Error deleting video:', e)
+        return { success: false, error: 'Failed to delete video and its assets.' }
+      }
+    }
   } catch (error) {
     console.error(error)
     return { success: false, error: 'Failed to update video' }
@@ -104,6 +140,7 @@ export default function Video() {
   const data = useLoaderData<typeof loader>()
   const relinkFetcher = useFetcher()
   const aspectFetcher = useFetcher()
+  const deleteFetcher = useFetcher()
 
   const navigate = useNavigate()
 
@@ -111,12 +148,17 @@ export default function Video() {
   const [currentTime, setCurrentTime] = useState(0)
   const [activeScene, setActiveScene] = useState(data.scenes[0])
   const [relinkModalOpen, setRelinkModalOpen] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [relinkSuccess, setRelinkSuccess] = useState(false)
 
   const [selectedAspectRatio, setSelectedAspectRatio] = useState(activeScene?.aspect_ratio || '16:9')
 
   const onRelink = (oldSource: string, newSource: string) => {
     relinkFetcher.submit({ oldSource, newSource, intent: 'relink-video' }, { method: 'post', action: '/app/videos' })
+  }
+
+  const onDelete = (source: string) => {
+    deleteFetcher.submit({ source, intent: 'delete-video' }, { method: 'post', action: '/app/videos' })
   }
 
   useEffect(() => {
@@ -131,6 +173,17 @@ export default function Video() {
       }
     }
   }, [navigate, relinkFetcher.data])
+
+  useEffect(() => {
+    if (deleteFetcher.data) {
+      if (deleteFetcher.data.success) {
+        setDeleteModalOpen(false)
+        navigate('/app/home')
+      } else if (deleteFetcher.data.error) {
+        alert(deleteFetcher.data.error)
+      }
+    }
+  }, [deleteFetcher.data, navigate])
 
   useEffect(() => {
     if (aspectFetcher.data) {
@@ -221,7 +274,16 @@ export default function Video() {
     <DashboardLayout sidebar={<Sidebar />}>
       <main className="max-w-7xl mx-auto px-6 py-16">
         <section>
-          <h3 className="text-xl font-semibold text-black dark:text-white mb-6">Your video</h3>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-semibold text-black dark:text-white">Your video</h3>
+            <button
+              onClick={() => setDeleteModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-full font-medium text-sm hover:bg-red-700 active:scale-95 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Video
+            </button>
+          </div>
         </section>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-2 flex max-h-full flex-col gap-4">
@@ -230,6 +292,13 @@ export default function Video() {
               oldSource={data.source}
               onClose={() => setRelinkModalOpen(false)}
               onRelink={onRelink}
+            />
+
+            <DeleteVideo
+              isOpen={deleteModalOpen}
+              source={data.source}
+              onClose={() => setDeleteModalOpen(false)}
+              onDelete={onDelete}
             />
 
             <AnimatePresence>
