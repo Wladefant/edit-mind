@@ -16,9 +16,8 @@ import {
   queryCollection,
   updateMetadata,
 } from '@shared/services/vectorDb'
-import { generateActionFromPrompt } from '@shared/services/gemini'
+import { generateActionFromPrompt } from '@shared/services/modelRouter'
 import { stitchVideos } from '@shared/utils/sticher'
-import { exportToFcpXml } from '@shared/utils/fcpxml'
 import { convertTimeToWords } from '@shared/utils/time'
 import { getLocationName } from '@shared/utils/location'
 import { FACES_DIR, PROCESSED_VIDEOS_DIR, THUMBNAILS_DIR } from '@shared/constants'
@@ -78,16 +77,6 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
     await stitchVideos(scenes, outputPath, aspectRatio, fps)
   })
 
-  handle('exportToFcpXml', async (scenes, prompt, outputFilename) => {
-    const outputDir = path.join(process.cwd(), 'output-videos')
-    await fs.mkdir(outputDir, { recursive: true })
-    const finalJsonPath = path.join(outputDir, `${outputFilename}.json`)
-    const finalXmlPath = path.join(outputDir, `${outputFilename}`)
-
-    await fs.writeFile(finalJsonPath, JSON.stringify({ scenes, prompt }, null, 2))
-
-    await exportToFcpXml(finalJsonPath, finalXmlPath)
-  })
   handle('generateSearchSuggestions', (metadata) => {
     try {
       const suggestions = generateSearchSuggestions(metadata)
@@ -260,6 +249,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
     try {
       const jsonPath = path.join(unknownFacesDir, jsonFile)
+      const jobId = ''
 
       try {
         await fs.unlink(jsonPath)
@@ -267,7 +257,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
         console.error(error)
       }
 
-      return await reindexFaces()
+      return await reindexFaces([], jobId)
 
       return { success: true }
     } catch (error) {
@@ -282,6 +272,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
       const thumbnailName = `${path.basename(video)}.jpg`
       const thumbnailPath = path.join(THUMBNAILS_DIR, thumbnailName)
       const thumbnailUrl = `thumbnail://${thumbnailName}`
+      const jobId = ''
 
       if (!existsSync(path.resolve(PROCESSED_VIDEOS_DIR))) {
         mkdirSync(path.resolve(PROCESSED_VIDEOS_DIR))
@@ -402,7 +393,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
               thumbnailUrl,
             })
 
-            await transcribeAudio(video, transcriptionPath, ({ progress, elapsed }) => {
+            await transcribeAudio(video, transcriptionPath, jobId, ({ progress, elapsed }) => {
               send('indexing-progress', {
                 video,
                 progress,
@@ -459,6 +450,7 @@ export const registerAppHandlers = (app: App, webContents: WebContents) => {
 
             const { analysis, category } = await analyzeVideo(
               video,
+              jobId,
               ({ progress, elapsed, frames_analyzed, total_frames }) => {
                 send('indexing-progress', {
                   video,

@@ -195,10 +195,6 @@ export const appIpcSchema = {
     args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string(), z.number()]),
     return: z.void(),
   },
-  exportToFcpXml: {
-    args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string()]),
-    return: z.void(),
-  },
   openFile: {
     args: z.tuple([z.string()]),
     return: z.object({ success: z.boolean() }),

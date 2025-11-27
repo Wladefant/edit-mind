@@ -13,8 +13,6 @@ export class AppApi extends ConveyorApi {
   searchDocuments = (prompt: string) => this.invoke('searchDocuments', prompt)
   stitchVideos = (scenesToStitch: ExportedScene[], videoFilename: string, aspectRatio: string, fps: number) =>
     this.invoke('stitchVideos', scenesToStitch, videoFilename, aspectRatio, fps)
-  exportToFcpXml = (scenesToStitch: ExportedScene[], prompt: string, fcpxmlFilename: string) =>
-    this.invoke('exportToFcpXml', scenesToStitch, prompt, fcpxmlFilename)
   openFile = (filePath: string) => this.invoke('openFile', filePath)
   showInFolder = (filePath: string) => this.invoke('showInFolder', filePath)
   getSettings = () => this.invoke('getSettings')
