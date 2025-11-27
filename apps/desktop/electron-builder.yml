@@ -13,8 +13,6 @@ files:
 
 asarUnpack:
   - resources/**
-  - node_modules/ffmpeg-static/**/*
-  - node_modules/ffprobe-static/**/*
   - node_modules/exiftool-vendored/**/*
 win:
   executableName: ElectronReactApp
