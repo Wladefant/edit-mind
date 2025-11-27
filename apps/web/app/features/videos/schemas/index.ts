@@ -11,4 +11,8 @@ export const videoActionSchema = z.discriminatedUnion('intent', [
     oldSource: z.string(),
     newSource: z.string(),
   }),
+  z.object({
+    intent: z.literal('delete-video'),
+    source: z.string(),
+  }),
 ])

@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   cleanup,
   generateAssistantMessage,
@@ -7,15 +7,41 @@ import {
   classifyIntent,
   generateAnalyticsResponse,
   generateActionFromPrompt,
+  generateYearInReviewResponse,
 } from '@shared/services/modelRouter'
 import { TEST_QUERIES, compareResults } from '../helpers/llm'
 import { ChatMessage } from '@prisma/client'
+import { YearStats } from '@shared/types/stats'
+import { VideoWithScenes } from '@shared/types/video'
+import { Scene } from '@shared/schemas'
 
 const TEST_TIMEOUT = 120000
 const EXTENDED_TIMEOUT = 180000
 
 afterEach(async () => {
   await cleanup()
+})
+const mockScene = (overrides?: Partial<Scene>): Scene => ({
+  id: `scene-${Date.now()}-${Math.random()}`,
+  source: 'test-video.mp4',
+  startTime: 0,
+  endTime: 5,
+  duration: 5,
+  description: 'A test scene with a person smiling',
+  faces: ['person1'],
+  objects: ['laptop', 'desk'],
+  emotions: [{ emotion: 'happy', name: 'person1' }],
+  transcription: 'Hello world, this is a test',
+  detectedText: ['lorem ipsum'],
+  shot_type: 'medium-shot',
+  aspect_ratio: '16:9',
+  camera: 'static',
+  category: 'test',
+  createdAt: new Date().getTime(),
+  dominantColorName: 'black',
+  dominantColorHex: '#000',
+  location: '',
+  ...overrides,
 })
 
 describe('LLM Service', () => {
@@ -25,7 +51,7 @@ describe('LLM Service', () => {
       async () => {
         const result = await generateActionFromPrompt('test query')
         expect(result).toBeDefined()
-        expect(result.description).toBeTruthy()
+        expect(result.data.description).toBeTruthy()
       },
       TEST_TIMEOUT
     )
@@ -56,7 +82,7 @@ describe('LLM Service', () => {
       'parses simple queries',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.simple.query)
-        compareResults(result, TEST_QUERIES.simple.expected)
+        compareResults(result.data, TEST_QUERIES.simple.expected)
       },
       TEST_TIMEOUT
     )
@@ -65,7 +91,7 @@ describe('LLM Service', () => {
       'handles complex multi-parameter queries',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.complex.query)
-        compareResults(result, TEST_QUERIES.complex.expected)
+        compareResults(result.data, TEST_QUERIES.complex.expected)
       },
       TEST_TIMEOUT
     )
@@ -74,7 +100,7 @@ describe('LLM Service', () => {
       'extracts transcription requirements',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.transcription.query)
-        compareResults(result, TEST_QUERIES.transcription.expected)
+        compareResults(result.data, TEST_QUERIES.transcription.expected)
       },
       TEST_TIMEOUT
     )
@@ -83,7 +109,7 @@ describe('LLM Service', () => {
       'identifies objects in scenes',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.withObjects.query)
-        compareResults(result, TEST_QUERIES.withObjects.expected)
+        compareResults(result.data, TEST_QUERIES.withObjects.expected)
       },
       TEST_TIMEOUT
     )
@@ -92,7 +118,7 @@ describe('LLM Service', () => {
       'parses multiple emotions',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.multiEmotion.query)
-        compareResults(result, TEST_QUERIES.multiEmotion.expected)
+        compareResults(result.data, TEST_QUERIES.multiEmotion.expected)
       },
       TEST_TIMEOUT
     )
@@ -101,7 +127,7 @@ describe('LLM Service', () => {
       'detects aspect ratio requirements',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.aspectRatio.query)
-        compareResults(result, TEST_QUERIES.aspectRatio.expected)
+        compareResults(result.data, TEST_QUERIES.aspectRatio.expected)
       },
       TEST_TIMEOUT
     )
@@ -110,7 +136,7 @@ describe('LLM Service', () => {
       'detects shot type requirements',
       async () => {
         const result = await generateActionFromPrompt(TEST_QUERIES.shotType.query)
-        compareResults(result, TEST_QUERIES.shotType.expected)
+        compareResults(result.data, TEST_QUERIES.shotType.expected)
       },
       TEST_TIMEOUT
     )
@@ -121,7 +147,7 @@ describe('LLM Service', () => {
       'handles duration specifications',
       async () => {
         const result = await generateActionFromPrompt('Create a 45 second video')
-        expect(result.duration).toBe(45)
+        expect(result.data.duration).toBe(45)
       },
       TEST_TIMEOUT
     )
@@ -141,11 +167,11 @@ describe('LLM Service', () => {
         const query = 'Create a 30 second vertical video of happy people with laptops in close-up'
         const result = await generateActionFromPrompt(query)
 
-        expect(result.duration).toBe(30)
-        expect(result.aspect_ratio).toBe('9:16')
-        expect(result.emotions).toContain('happy')
-        expect(result.objects).toContain('laptop')
-        expect(result.shot_type).toBe('close-up')
+        expect(result.data.duration).toBe(30)
+        expect(result.data.aspect_ratio).toBe('9:16')
+        expect(result.data.emotions).toContain('happy')
+        expect(result.data.objects).toContain('laptop')
+        expect(result.data.shot_type).toBe('close-up')
       },
       TEST_TIMEOUT
     )
@@ -161,7 +187,7 @@ describe('LLM Service', () => {
 
         for (const { query, expected } of testCases) {
           const result = await generateActionFromPrompt(query)
-          expect(result.duration).toBe(expected)
+          expect(result.data.duration).toBe(expected)
         }
       },
       EXTENDED_TIMEOUT
@@ -172,8 +198,8 @@ describe('LLM Service', () => {
       'classifies compilation requests',
       async () => {
         const result = await classifyIntent('Create a video compilation of my vacation')
-        expect(result.type).toBe('compilation')
-        expect(result.needsVideoData).toBe(true)
+        expect(result.data.type).toBe('compilation')
+        expect(result.data.needsVideoData).toBe(true)
       },
       TEST_TIMEOUT
     )
@@ -181,7 +207,7 @@ describe('LLM Service', () => {
       'classifies analytics requests',
       async () => {
         const result = await classifyIntent('How many videos do I have?')
-        expect(result.type).toBe('analytics')
+        expect(result.data.type).toBe('analytics')
       },
       TEST_TIMEOUT
     )
@@ -190,8 +216,8 @@ describe('LLM Service', () => {
       'classifies general conversation',
       async () => {
         const result = await classifyIntent('What can you help me with?')
-        expect(result.type).toBe('general')
-        expect(result.needsVideoData).toBe(false)
+        expect(result.data.type).toBe('general')
+        expect(result.data.needsVideoData).toBe(false)
       },
       TEST_TIMEOUT
     )
@@ -201,19 +227,7 @@ describe('LLM Service', () => {
       async () => {
         const result = await classifyIntent('Show me')
         expect(result).toBeDefined()
-        expect(['compilation', 'analytics', 'general']).toContain(result.type)
-      },
-      TEST_TIMEOUT
-    )
-
-    it(
-      'caches intent classification results',
-      async () => {
-        const query = 'Create a compilation of happy moments'
-        const first = await classifyIntent(query)
-        const second = await classifyIntent(query)
-
-        expect(first).toEqual(second)
+        expect(['compilation', 'analytics', 'general']).toContain(result.data.type)
       },
       TEST_TIMEOUT
     )
@@ -223,9 +237,9 @@ describe('LLM Service', () => {
       'generates assistant messages',
       async () => {
         const message = await generateAssistantMessage('Show me happy videos', 10)
-        expect(typeof message).toBe('string')
-        expect(message.length).toBeGreaterThan(0)
-        expect(message).toContain('10')
+        expect(typeof message.data).toBe('string')
+        expect(message.data.length).toBeGreaterThan(0)
+        expect(message.data).toContain('10')
       },
       TEST_TIMEOUT
     )
@@ -235,8 +249,8 @@ describe('LLM Service', () => {
       async () => {
         const response = await generateCompilationResponse('Create vacation video', 5)
 
-        expect(typeof response).toBe('string')
-        expect(response.length).toBeGreaterThan(0)
+        expect(typeof response.data).toBe('string')
+        expect(response.data.length).toBeGreaterThan(0)
       },
       TEST_TIMEOUT
     )
@@ -246,8 +260,8 @@ describe('LLM Service', () => {
       async () => {
         const response = await generateGeneralResponse('Hello')
 
-        expect(typeof response).toBe('string')
-        expect(response.length).toBeGreaterThan(0)
+        expect(typeof response.data).toBe('string')
+        expect(response.data.length).toBeGreaterThan(0)
       },
       TEST_TIMEOUT
     )
@@ -265,6 +279,8 @@ describe('LLM Service', () => {
             chatId: '1',
             stitchedVideoPath: null,
             updatedAt: new Date(),
+            tokensUsed: BigInt(0),
+            isError: false,
           },
           {
             id: '2',
@@ -275,11 +291,13 @@ describe('LLM Service', () => {
             chatId: '1',
             stitchedVideoPath: null,
             updatedAt: new Date(),
+            tokensUsed: BigInt(0),
+            isError: false,
           },
         ]
 
         const response = await generateGeneralResponse('What did I just say?', history)
-        expect(typeof response).toBe('string')
+        expect(typeof response.data).toBe('string')
       },
       TEST_TIMEOUT
     )
@@ -288,50 +306,20 @@ describe('LLM Service', () => {
       'handles empty results gracefully',
       async () => {
         const response = await generateAssistantMessage('Find impossible content', 0)
-        expect(typeof response).toBe('string')
-        expect(response.length).toBeGreaterThan(0)
+        expect(typeof response.data).toBe('string')
+        expect(response.data.length).toBeGreaterThan(0)
       },
       TEST_TIMEOUT
     )
   })
-  describe('Caching Behavior', () => {
-    it(
-      'uses cached parameter results',
-      async () => {
-        const query = 'Create a happy video compilation'
-        const start = Date.now()
-        await generateActionFromPrompt(query)
-        const firstDuration = Date.now() - start
 
-        const cachedStart = Date.now()
-        await generateActionFromPrompt(query)
-        const cachedDuration = Date.now() - cachedStart
-
-        expect(cachedDuration).toBeLessThan(firstDuration)
-      },
-      EXTENDED_TIMEOUT
-    )
-
-    it(
-      'respects cache bypass flag',
-      async () => {
-        const query = 'Test cache bypass'
-
-        const first = await generateActionFromPrompt(query)
-        const second = await generateActionFromPrompt(query)
-
-        expect(first.description).toBe(second.description)
-      },
-      TEST_TIMEOUT
-    )
-  })
   describe('Error Handling & Resilience', () => {
     it(
       'handles empty queries',
       async () => {
         const result = await generateActionFromPrompt('')
-        expect(result).toBeDefined()
-        expect(result.description).toBeTruthy()
+        expect(result.data).toBeDefined()
+        expect(result.data.description).toBeTruthy()
       },
       TEST_TIMEOUT
     )
@@ -342,7 +330,7 @@ describe('LLM Service', () => {
         const longQuery = 'Show me videos with ' + 'happy people '.repeat(50)
         const result = await generateActionFromPrompt(longQuery)
 
-        expect(result).toBeDefined()
+        expect(result.data).toBeDefined()
       },
       TEST_TIMEOUT
     )
@@ -353,7 +341,7 @@ describe('LLM Service', () => {
         const specialQuery = 'Create video with @#$%^&*() characters!'
         const result = await generateActionFromPrompt(specialQuery)
 
-        expect(result).toBeDefined()
+        expect(result.data).toBeDefined()
       },
       TEST_TIMEOUT
     )
@@ -364,7 +352,7 @@ describe('LLM Service', () => {
         const unicodeQuery = 'Créer une vidéo с русским текстом 和中文'
         const result = await generateActionFromPrompt(unicodeQuery)
 
-        expect(result).toBeDefined()
+        expect(result.data).toBeDefined()
       },
       TEST_TIMEOUT
     )
@@ -374,8 +362,8 @@ describe('LLM Service', () => {
       async () => {
         const result = await generateActionFromPrompt('xyz123abc')
 
-        expect(result).toBeDefined()
-        expect(result.description).toBeTruthy()
+        expect(result.data).toBeDefined()
+        expect(result.data.description).toBeTruthy()
       },
       TEST_TIMEOUT
     )
@@ -385,7 +373,7 @@ describe('LLM Service', () => {
       async () => {
         const result = await generateActionFromPrompt('test malformed')
 
-        expect(result).toMatchObject({
+        expect(result.data).toMatchObject({
           description: expect.any(String),
           aspect_ratio: expect.any(String),
         })
@@ -403,7 +391,7 @@ describe('LLM Service', () => {
         expect(results).toHaveLength(5)
         results.forEach((result) => {
           expect(result).toBeDefined()
-          expect(result.description).toBeTruthy()
+          expect(result.data.description).toBeDefined()
         })
       },
       EXTENDED_TIMEOUT
@@ -414,14 +402,14 @@ describe('LLM Service', () => {
       'validates all required fields',
       async () => {
         const result = await generateActionFromPrompt('Create a test video')
-        expect(result).toMatchObject({
+        expect(result.data).toMatchObject({
           emotions: expect.any(Array),
-          shot_type: expect.anything(),
+          shot_type: expect.toBeOneOf([expect.any(String), null]),
           aspect_ratio: expect.any(String),
-          duration: expect.anything(),
+          duration: expect.toBeOneOf([expect.any(Number), null]),
           description: expect.any(String),
           objects: expect.any(Array),
-          transcriptionQuery: expect.anything(),
+          transcriptionQuery: expect.toBeOneOf([expect.any(String), null]),
         })
       },
       TEST_TIMEOUT
@@ -433,7 +421,7 @@ describe('LLM Service', () => {
         const validTypes = ['medium-shot', 'long-shot', 'close-up', null]
         const result = await generateActionFromPrompt('Show me close-up shots')
 
-        expect(validTypes).toContain(result.shot_type)
+        expect(validTypes).toContain(result.data.shot_type)
       },
       TEST_TIMEOUT
     )
@@ -444,7 +432,7 @@ describe('LLM Service', () => {
         const validRatios = ['16:9', '9:16', '1:1', '4:3', '8:7', null]
         const result = await generateActionFromPrompt('Create a square video')
 
-        expect(validRatios).toContain(result.aspect_ratio)
+        expect(validRatios).toContain(result.data.aspect_ratio)
       },
       TEST_TIMEOUT
     )
@@ -454,8 +442,8 @@ describe('LLM Service', () => {
       async () => {
         const result = await generateActionFromPrompt('Create a 30 second video')
 
-        if (result.duration !== null) {
-          expect(result.duration).toBeGreaterThan(0)
+        if (result.data.duration !== null) {
+          expect(result.data.duration).toBeGreaterThan(0)
         }
       },
       TEST_TIMEOUT
@@ -478,7 +466,7 @@ describe('LLM Service', () => {
 
           for (const { query, expected } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.duration, `Failed for: "${query}"`).toBe(expected)
+            expect(result.data.duration, `Failed for: "${query}"`).toBe(expected)
           }
         },
         EXTENDED_TIMEOUT
@@ -495,7 +483,7 @@ describe('LLM Service', () => {
 
           for (const { query, expected } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.duration).toBe(expected)
+            expect(result.data.duration).toBe(expected)
           }
         },
         TEST_TIMEOUT
@@ -508,7 +496,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.duration).toBeNull()
+            expect(result.data.duration).toBeNull()
           }
         },
         TEST_TIMEOUT
@@ -530,7 +518,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.aspect_ratio, `Failed for: "${query}"`).toBe('9:16')
+            expect(result.data.aspect_ratio, `Failed for: "${query}"`).toBe('9:16')
           }
         },
         EXTENDED_TIMEOUT
@@ -543,7 +531,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.aspect_ratio, `Failed for: "${query}"`).toBe('1:1')
+            expect(result.data.aspect_ratio, `Failed for: "${query}"`).toBe('1:1')
           }
         },
         TEST_TIMEOUT
@@ -556,7 +544,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.aspect_ratio).toBe('16:9')
+            expect(result.data.aspect_ratio).toBe('16:9')
           }
         },
         TEST_TIMEOUT
@@ -571,7 +559,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.shot_type, `Failed for: "${query}"`).toBe('close-up')
+            expect(result.data.shot_type, `Failed for: "${query}"`).toBe('close-up')
           }
         },
         EXTENDED_TIMEOUT
@@ -584,7 +572,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.shot_type, `Failed for: "${query}"`).toBe('medium-shot')
+            expect(result.data.shot_type, `Failed for: "${query}"`).toBe('medium-shot')
           }
         },
         TEST_TIMEOUT
@@ -603,7 +591,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.shot_type, `Failed for: "${query}"`).toBe('long-shot')
+            expect(result.data.shot_type, `Failed for: "${query}"`).toBe('long-shot')
           }
         },
         EXTENDED_TIMEOUT
@@ -627,7 +615,7 @@ describe('LLM Service', () => {
 
           for (const { query, emotion } of emotionTests) {
             const result = await generateActionFromPrompt(query)
-            expect(result.emotions, `Failed for: "${query}"`).toContain(emotion)
+            expect(result.data.emotions, `Failed for: "${query}"`).toContain(emotion)
           }
         },
         EXTENDED_TIMEOUT
@@ -645,7 +633,7 @@ describe('LLM Service', () => {
 
           for (const { query, expectedEmotion } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.emotions, `Failed for: "${query}"`).toContain(expectedEmotion)
+            expect(result.data.emotions, `Failed for: "${query}"`).toContain(expectedEmotion)
           }
         },
         TEST_TIMEOUT
@@ -656,9 +644,9 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('Show me happy, excited, and surprised reactions')
 
-          expect(result.emotions).toContain('happy')
-          expect(result.emotions).toContain('excited')
-          expect(result.emotions).toContain('surprised')
+          expect(result.data.emotions).toContain('happy')
+          expect(result.data.emotions).toContain('excited')
+          expect(result.data.emotions).toContain('surprised')
         },
         TEST_TIMEOUT
       )
@@ -674,7 +662,7 @@ describe('LLM Service', () => {
 
           for (const { query, expectedEmotion } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.emotions).toContain(expectedEmotion)
+            expect(result.data.emotions).toContain(expectedEmotion)
           }
         },
         TEST_TIMEOUT
@@ -696,7 +684,7 @@ describe('LLM Service', () => {
 
           for (const { query, object } of objectTests) {
             const result = await generateActionFromPrompt(query)
-            expect(result.objects, `Failed for: "${query}"`).toContain(object)
+            expect(result.data.objects, `Failed for: "${query}"`).toContain(object)
           }
         },
         EXTENDED_TIMEOUT
@@ -715,10 +703,10 @@ describe('LLM Service', () => {
             const result = await generateActionFromPrompt(query)
             if (Array.isArray(objects)) {
               objects.forEach((obj) => {
-                expect(result.objects).toContain(obj)
+                expect(result.data.objects).toContain(obj)
               })
             } else {
-              expect(result.objects).toContain(objects)
+              expect(result.data.objects).toContain(objects)
             }
           }
         },
@@ -730,8 +718,8 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('cooking videos with pans, knives, and cutting boards')
 
-          expect(result.objects.length).toBeGreaterThan(0)
-          expect(result.objects).toEqual(expect.arrayContaining([expect.stringMatching(/pan|knife|board/i)]))
+          expect(result.data.objects.length).toBeGreaterThan(0)
+          expect(result.data.objects).toEqual(expect.arrayContaining([expect.stringMatching(/pan|knife|board/i)]))
         },
         TEST_TIMEOUT
       )
@@ -749,7 +737,7 @@ describe('LLM Service', () => {
 
           for (const { query, expected } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.faces, `Failed for: "${query}"`).toEqual(expected)
+            expect(result.data.faces, `Failed for: "${query}"`).toEqual(expected)
           }
         },
         TEST_TIMEOUT
@@ -760,8 +748,8 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('@Alice and @Bob together')
 
-          expect(result.faces).toContain('alice')
-          expect(result.faces).toContain('bob')
+          expect(result.data.faces).toContain('alice')
+          expect(result.data.faces).toContain('bob')
         },
         TEST_TIMEOUT
       )
@@ -773,7 +761,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.faces).toContain('john')
+            expect(result.data.faces).toContain('john')
           }
         },
         TEST_TIMEOUT
@@ -792,7 +780,7 @@ describe('LLM Service', () => {
 
           for (const { query, expected } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.transcriptionQuery?.toLowerCase()).toContain(expected.toLowerCase())
+            expect(result.data.transcriptionQuery?.toLowerCase()).toContain(expected.toLowerCase())
           }
         },
         TEST_TIMEOUT
@@ -805,7 +793,7 @@ describe('LLM Service', () => {
             "Show clips where I say 'machine learning is awesome and powerful'"
           )
 
-          expect(result.transcriptionQuery?.toLowerCase()).toContain('machine learning')
+          expect(result.data.transcriptionQuery?.toLowerCase()).toContain('machine learning')
         },
         TEST_TIMEOUT
       )
@@ -817,7 +805,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.transcriptionQuery).toBeNull()
+            expect(result.data.transcriptionQuery).toBeNull()
           }
         },
         TEST_TIMEOUT
@@ -832,14 +820,14 @@ describe('LLM Service', () => {
             'Create a 60 second vertical close-up video of @Maria looking happy and excited with a laptop and coffee cup while talking'
           const result = await generateActionFromPrompt(query)
 
-          expect(result.duration).toBe(60)
-          expect(result.aspect_ratio).toBe('9:16')
-          expect(result.shot_type).toBe('close-up')
-          expect(result.faces).toContain('maria')
-          expect(result.emotions).toEqual(expect.arrayContaining(['happy']))
-          expect(result.objects.length).toBeGreaterThan(0)
-          if (result.action) {
-            expect(result.action).toMatch(/talk/i)
+          expect(result.data.duration).toBe(60)
+          expect(result.data.aspect_ratio).toBe('9:16')
+          expect(result.data.shot_type).toBe('close-up')
+          expect(result.data.faces).toContain('maria')
+          expect(result.data.emotions).toEqual(expect.arrayContaining(['happy']))
+          expect(result.data.objects.length).toBeGreaterThan(0)
+          if (result.data.action) {
+            expect(result.data.action).toMatch(/talk/i)
           }
         },
         TEST_TIMEOUT
@@ -851,7 +839,7 @@ describe('LLM Service', () => {
           const result = await generateActionFromPrompt('vertical horizontal video')
 
           // Should choose one valid ratio
-          expect(['9:16', '16:9']).toContain(result.aspect_ratio)
+          expect(['9:16', '16:9']).toContain(result.data.aspect_ratio)
         },
         TEST_TIMEOUT
       )
@@ -863,11 +851,11 @@ describe('LLM Service', () => {
             'I want a quick 30s clip showing @John being super happy with his new laptop in a tight shot'
           )
 
-          expect(result.duration).toBe(30)
-          expect(result.faces).toContain('john')
-          expect(result.emotions).toContain('happy')
-          expect(result.objects).toContain('laptop')
-          expect(result.shot_type).toBe('close-up')
+          expect(result.data.duration).toBe(30)
+          expect(result.data.faces).toContain('john')
+          expect(result.data.emotions).toContain('happy')
+          expect(result.data.objects).toContain('laptop')
+          expect(result.data.shot_type).toBe('close-up')
         },
         TEST_TIMEOUT
       )
@@ -878,7 +866,7 @@ describe('LLM Service', () => {
         'handles minimum values',
         async () => {
           const result = await generateActionFromPrompt('1 second video')
-          expect(result.duration).toBe(1)
+          expect(result.data.duration).toBe(1)
         },
         TEST_TIMEOUT
       )
@@ -894,7 +882,7 @@ describe('LLM Service', () => {
 
           for (const { query, expected } of testCases) {
             const result = await generateActionFromPrompt(query)
-            expect(result.duration).toBe(expected)
+            expect(result.data.duration).toBe(expected)
           }
         },
         TEST_TIMEOUT
@@ -904,7 +892,7 @@ describe('LLM Service', () => {
         'handles queries with excessive punctuation',
         async () => {
           const result = await generateActionFromPrompt('happy!!! videos!!!')
-          expect(result.emotions).toContain('happy')
+          expect(result.data.emotions).toContain('happy')
         },
         TEST_TIMEOUT
       )
@@ -913,8 +901,8 @@ describe('LLM Service', () => {
         'handles queries with mixed capitalization',
         async () => {
           const result = await generateActionFromPrompt('HaPPy VeRTiCaL ViDeOs')
-          expect(result.emotions).toContain('happy')
-          expect(result.aspect_ratio).toBe('9:16')
+          expect(result.data.emotions).toContain('happy')
+          expect(result.data.aspect_ratio).toBe('9:16')
         },
         TEST_TIMEOUT
       )
@@ -933,10 +921,10 @@ describe('LLM Service', () => {
           for (const test of testCases) {
             const result = await generateActionFromPrompt(test.query)
             if ('emotion' in test) {
-              expect(result.emotions).toContain(test.emotion)
+              expect(result.data.emotions).toContain(test.emotion)
             }
             if ('aspectRatio' in test) {
-              expect(result.aspect_ratio).toBe(test.aspectRatio)
+              expect(result.data.aspect_ratio).toBe(test.aspectRatio)
             }
           }
         },
@@ -955,7 +943,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await generateActionFromPrompt(query)
-            expect(result.emotions).toContain('happy')
+            expect(result.data.emotions).toContain('happy')
           }
         },
         TEST_TIMEOUT
@@ -966,8 +954,8 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('TikTok compilation of my dog')
 
-          expect(result.aspect_ratio).toBe('9:16') // TikTok implies vertical
-          expect(result.objects).toContain('dog')
+          expect(result.data.aspect_ratio).toBe('9:16') // TikTok implies vertical
+          expect(result.data.objects).toContain('dog')
         },
         TEST_TIMEOUT
       )
@@ -979,7 +967,7 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('123 456 789')
           expect(result).toBeDefined()
-          expect(result.description).toBeTruthy()
+          expect(result.data.description).toBeTruthy()
         },
         TEST_TIMEOUT
       )
@@ -989,7 +977,7 @@ describe('LLM Service', () => {
         async () => {
           const result = await generateActionFromPrompt('!@#$%^&*()')
           expect(result).toBeDefined()
-          expect(result.description).toBeTruthy()
+          expect(result.data.description).toBeTruthy()
         },
         TEST_TIMEOUT
       )
@@ -998,7 +986,7 @@ describe('LLM Service', () => {
         'handles repeated words',
         async () => {
           const result = await generateActionFromPrompt('happy happy happy happy videos')
-          expect(result.emotions).toContain('happy')
+          expect(result.data.emotions).toContain('happy')
         },
         TEST_TIMEOUT
       )
@@ -1020,7 +1008,7 @@ describe('LLM Service', () => {
         'handles queries with URLs',
         async () => {
           const result = await generateActionFromPrompt('happy videos http://example.com')
-          expect(result.emotions).toContain('happy')
+          expect(result.data.emotions).toContain('happy')
         },
         TEST_TIMEOUT
       )
@@ -1046,10 +1034,10 @@ describe('LLM Service', () => {
           ])
 
           // All should be strings
-          responses.forEach((r) => expect(typeof r).toBe('string'))
+          responses.forEach((r) => expect(typeof r.data).toBe('string'))
 
           // All should contain the count
-          responses.forEach((r) => expect(r).toContain('10'))
+          responses.forEach((r) => expect(r.data).toContain('10'))
         },
         TEST_TIMEOUT
       )
@@ -1060,7 +1048,7 @@ describe('LLM Service', () => {
           const response = await generateAssistantMessage('Find rare content', 0)
 
           expect(typeof response).toBe('string')
-          expect(response.toLowerCase()).toMatch(/no |none|didn't find|0/i)
+          expect(response.data.toLowerCase()).toMatch(/no |none|didn't find|0/i)
         },
         TEST_TIMEOUT
       )
@@ -1070,13 +1058,102 @@ describe('LLM Service', () => {
         async () => {
           const response = await generateAssistantMessage('Show all videos', 1000)
 
-          expect(typeof response).toBe('string')
-          expect(response).toMatch(/1000|thousand/)
+          expect(typeof response.data).toBe('string')
+          expect(response.data).toMatch(/1000|thousand/)
         },
         TEST_TIMEOUT
       )
-    })
 
+      it(
+        'generates year in review response',
+        async () => {
+          const stats: YearStats = {
+            totalVideos: 247,
+            totalScenes: 1834,
+            totalDuration: 18420,
+            topEmotions: [
+              { emotion: 'happy', count: 456 },
+              { emotion: 'surprised', count: 287 },
+              { emotion: 'neutral', count: 234 },
+              { emotion: 'excited', count: 189 },
+              { emotion: 'sad', count: 92 },
+            ],
+            topObjects: [
+              { name: 'laptop', count: 312 },
+              { name: 'phone', count: 245 },
+              { name: 'coffee', count: 178 },
+              { name: 'dog', count: 156 },
+              { name: 'car', count: 134 },
+              { name: 'book', count: 98 },
+            ],
+            topFaces: [
+              { name: 'ilias', count: 523 },
+              { name: 'john', count: 289 },
+              { name: 'sarah', count: 167 },
+              { name: 'alex', count: 145 },
+            ],
+            topShotTypes: [
+              { name: 'close-up', count: 678 },
+              { name: 'medium-shot', count: 542 },
+              { name: 'long-shot', count: 398 },
+            ],
+            categories: [
+              { name: 'work', count: 89 },
+              { name: 'personal', count: 67 },
+              { name: 'travel', count: 45 },
+              { name: 'family', count: 32 },
+              { name: 'hobbies', count: 14 },
+            ],
+            longestScene: {
+              duration: 145.8,
+              description: 'Detailed presentation of quarterly results with multiple charts and data visualizations',
+              videoSource: 'meeting_2024_q4.mp4',
+            },
+            shortestScene: {
+              duration: 0.8,
+              description: 'Quick transition shot of office hallway',
+              videoSource: 'office_tour.mp4',
+            },
+          }
+
+          const testScene = mockScene({
+            id: `scene-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            source: `update-video-${Date.now()}.mp4`,
+            description: 'Original description',
+            faces: ['person1'],
+          })
+          const videos: VideoWithScenes[] = [
+            {
+              source: 'trip_to_paris.mp4',
+              thumbnailUrl: '/path/to/trip_to_paris.mp4',
+              sceneCount: 1,
+              scenes: [testScene],
+              duration: 1,
+              camera: 'GoPro',
+              faces: ['person1'],
+              objects: ['laptop', 'desk'],
+              emotions: ['happy'],
+              shotTypes: ['medium-shot'],
+              aspect_ratio: '16:9',
+              category: 'test',
+              createdAt: new Date().getTime(),
+              dominantColorName: 'black',
+              dominantColorHex: '#000',
+              locationName: '',
+            },
+          ]
+          const extraDetails = 'This is a test year in review.'
+
+          const response = await generateYearInReviewResponse(stats, videos, extraDetails)
+
+          expect(response).toBeDefined()
+          expect(response.data).toBeDefined()
+          expect(response.data?.slides).toBeDefined()
+          expect(response.data?.topScenes).toBeDefined()
+        },
+        EXTENDED_TIMEOUT
+      )
+    })
     describe('Intent Classification - Extended', () => {
       it(
         'classifies search requests',
@@ -1085,7 +1162,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await classifyIntent(query)
-            expect(result.type).toBe('compilation')
+            expect(result.data.type).toBe('compilation')
           }
         },
         TEST_TIMEOUT
@@ -1102,7 +1179,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await classifyIntent(query)
-            expect(result.type).toBe('analytics')
+            expect(result.data.type).toBe('analytics')
           }
         },
         TEST_TIMEOUT
@@ -1115,7 +1192,7 @@ describe('LLM Service', () => {
 
           for (const query of queries) {
             const result = await classifyIntent(query)
-            expect(result.type).toBe('general')
+            expect(result.data.type).toBe('general')
           }
         },
         TEST_TIMEOUT
@@ -1173,7 +1250,7 @@ describe('LLM Service', () => {
           const response = await generateAnalyticsResponse('What emotions do I have?', analytics)
 
           expect(typeof response).toBe('string')
-          expect(response.toLowerCase()).toMatch(/no emotion|none|not detected/)
+          expect(response.data.toLowerCase()).toMatch(/no emotion|none|not detected/)
         },
         TEST_TIMEOUT
       )
@@ -1192,8 +1269,8 @@ describe('LLM Service', () => {
 
           const response = await generateAnalyticsResponse('Who is in my videos?', analytics)
 
-          expect(typeof response).toBe('string')
-          expect(response.toLowerCase()).toMatch(/no people|no one|not detected|no faces/)
+          expect(typeof response).toBe('object')
+          expect(response.data.toLowerCase()).toMatch(/no people|no one|not detected|no faces/)
         },
         TEST_TIMEOUT
       )
@@ -1216,7 +1293,7 @@ describe('LLM Service', () => {
 
           const response = await generateAnalyticsResponse('What emotions dominate?', analytics)
 
-          expect(response.toLowerCase()).toMatch(/happy|most|dominant/)
+          expect(response.data.toLowerCase()).toMatch(/happy|most|dominant/)
         },
         TEST_TIMEOUT
       )

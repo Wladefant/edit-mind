@@ -276,11 +276,6 @@ const generateVectorDocumentText = async (scene: Scene) => {
     }
   }
 
-  // Description
-  if (scene.description) {
-    textParts.push(`. The scene depicts ${scene.description}`)
-  }
-
   // Objects detected
   if (objects) {
     const objectList = scene.objects || []
@@ -365,7 +360,7 @@ export const sceneToVectorFormat = async (scene: Scene) => {
     objectsData: JSON.stringify(scene.objectsData || []),
     detectedTextData: JSON.stringify(scene.detectedTextData || []),
     transcriptionWords: JSON.stringify(scene.transcriptionWords || []),
-    aspect_ratio: scene.aspect_ratio
+    aspect_ratio: scene.aspect_ratio,
   }
 
   return {

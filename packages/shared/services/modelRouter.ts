@@ -4,6 +4,9 @@ import { logger } from './logger'
 import path from 'path'
 import { GEMINI_API_KEY, GEMINI_MODEL_NAME, SEARCH_AI_MODEL, USE_LOCAL } from '@shared/constants'
 import { AIModel } from '@shared/types/ai'
+import type { ChatMessage } from '@prisma/client'
+import { YearStats } from '@shared/types/stats'
+import { VideoWithScenes } from '@shared/types/video'
 
 let activeModel: AIModel
 
@@ -27,25 +30,32 @@ async function runWithLogging<T>(fn: () => Promise<T>, query: string): Promise<T
   }
 }
 
-export const generateActionFromPrompt = async (query: string) =>
-  runWithLogging(() => activeModel.generateActionFromPrompt(query), query)
+export const generateActionFromPrompt = async (query: string, chatHistory?: ChatMessage[]) =>
+  runWithLogging(() => activeModel.generateActionFromPrompt(query, chatHistory), query)
 
 export const generateAssistantMessage = async (userPrompt: string, resultsCount: number) =>
   runWithLogging(() => activeModel.generateAssistantMessage(userPrompt, resultsCount), userPrompt)
 
-export const generateCompilationResponse = async (userPrompt: string, resultsCount: number) =>
-  runWithLogging(() => activeModel.generateCompilationResponse(userPrompt, resultsCount), userPrompt)
+export const generateCompilationResponse = async (
+  userPrompt: string,
+  resultsCount: number,
+  chatHistory?: ChatMessage[]
+) => runWithLogging(() => activeModel.generateCompilationResponse(userPrompt, resultsCount, chatHistory), userPrompt)
 
-export const generateGeneralResponse = async (userPrompt: string, chatHistory?: any[]) =>
+export const generateGeneralResponse = async (userPrompt: string, chatHistory?: ChatMessage[]) =>
   runWithLogging(() => activeModel.generateGeneralResponse(userPrompt, chatHistory), userPrompt)
 
-export const classifyIntent = async (prompt: string) => runWithLogging(() => activeModel.classifyIntent(prompt), prompt)
+export const classifyIntent = async (prompt: string, chatHistory?: ChatMessage[]) =>
+  runWithLogging(() => activeModel.classifyIntent(prompt, chatHistory), prompt)
 
-export const generateAnalyticsResponse = async (userPrompt: string, analytics: any) =>
-  runWithLogging(() => activeModel.generateAnalyticsResponse(userPrompt, analytics), userPrompt)
+export const generateAnalyticsResponse = async (userPrompt: string, analytics: any, chatHistory?: ChatMessage[]) =>
+  runWithLogging(() => activeModel.generateAnalyticsResponse(userPrompt, analytics, chatHistory), userPrompt)
 
 export const cleanup = async () => {
   if (activeModel.cleanUp) {
     await activeModel.cleanUp()
   }
 }
+
+export const generateYearInReviewResponse = async (stats: YearStats, videos: VideoWithScenes[], extraDetails: string) =>
+  runWithLogging(() => activeModel.generateYearInReviewResponse(stats, videos, extraDetails), extraDetails)

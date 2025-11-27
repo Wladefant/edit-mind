@@ -124,6 +124,7 @@ export const createScenes = async (
         bbox: text.bbox,
         confidence: text.confidence,
       })),
+      aspect_ratio: '16:9',
     }
 
     scenes.push(currentScene)

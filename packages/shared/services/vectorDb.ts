@@ -2,13 +2,15 @@ import { ChromaClient, Collection, Metadata, Where, WhereDocument } from 'chroma
 import { EmbeddingInput, CollectionStatistics, Filters } from '../types/vector'
 import { Video, VideoWithScenes } from '../types/video'
 import { Scene } from '../types/scene'
-import { SearchQuery, VideoMetadataSummary } from '../types/search'
+import { VideoSearchParams, VideoMetadataSummary } from '../types/search'
 import { metadataToScene, sanitizeMetadata, sceneToVectorFormat } from '../utils/embed'
 import { CHROMA_HOST, CHROMA_PORT, COLLECTION_NAME, IS_TESTING } from '../constants'
 import { getEmbeddings } from '../services/embedding'
 import { suggestionCache } from './suggestion'
 import { getCache, setCache } from './cache'
 import { logger } from './logger'
+import { getLocationName } from '@shared/utils/location'
+import { YearStats } from '@shared/types/stats'
 
 export const createVectorDbClient = async (
   collectionName: string = COLLECTION_NAME
@@ -336,7 +338,7 @@ const getAllVideosWithScenes = async (
   }
 }
 
-const queryCollection = async (query: SearchQuery, nResults = 500): Promise<VideoWithScenes[]> => {
+const queryCollection = async (query: VideoSearchParams, nResults = 500): Promise<VideoWithScenes[]> => {
   try {
     const { collection } = await createVectorDbClient()
 
@@ -502,7 +504,6 @@ async function updateMetadata(scene: Scene): Promise<void> {
       documents: [vector.text],
       embeddings: embeddings,
     })
-
 
     if (!IS_TESTING) {
       // Refresh suggestions cache after update exciting videos
@@ -704,8 +705,15 @@ async function updateScenesSource(oldSource: string, newSource: string): Promise
     metadatas,
   })
 }
+async function deleteByVideoSource(source: string): Promise<void> {
+  const { collection } = await createVectorDbClient()
 
-const hybridSearch = async (query: SearchQuery, nResults = undefined): Promise<VideoWithScenes[]> => {
+  if (!collection) throw new Error('Collection not initialized')
+
+  await collection.delete({ where: { source: source } })
+}
+
+const hybridSearch = async (query: VideoSearchParams, nResults = undefined): Promise<VideoWithScenes[]> => {
   try {
     const { collection } = await createVectorDbClient()
 
@@ -818,7 +826,7 @@ const hybridSearch = async (query: SearchQuery, nResults = undefined): Promise<V
   }
 }
 
-function applyFilters(query: SearchQuery): {
+function applyFilters(query: VideoSearchParams): {
   where: Where | WhereDocument
   whereDocument: WhereDocument | undefined
 } {
@@ -915,17 +923,29 @@ async function getVideosNotEmbedded(videoSources: string[]): Promise<string[]> {
     throw error
   }
 }
-
-async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos: VideoWithScenes[] }> {
+async function getScenesByYear(year: number): Promise<{
+  videos: VideoWithScenes[]
+  stats: YearStats
+}> {
   try {
+    const cacheKey = `videos:yearly:${year}`
+
     const { collection } = await createVectorDbClient()
 
     if (!collection) {
       throw new Error('Collection not initialized')
     }
 
+    if (!IS_TESTING) {
+      const cached = await getCache<{ videos: VideoWithScenes[]; stats: YearStats }>(cacheKey)
+      if (cached) {
+        logger.debug('Cache hit for metadata:' + cacheKey)
+        return cached
+      }
+    }
+
     const start = new Date(`${year}-01-01T00:00:00.000Z`).getTime()
-    const end = new Date(`${year}-01-31T23:59:59.999Z`).getTime()
+    const end = new Date(`${year}-12-31T23:59:59.999Z`).getTime()
 
     const allDocs = await collection.get({
       include: ['metadatas'],
@@ -934,8 +954,17 @@ async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos:
       },
     })
 
-    const scenesInYear: Scene[] = []
     const videosDict: Record<string, VideoWithScenes> = {}
+    const globalStats = {
+      totalEmotions: new Map<string, number>(),
+      totalObjects: new Map<string, number>(),
+      totalFaces: new Map<string, number>(),
+      totalShotTypes: new Map<string, number>(),
+      totalCategories: new Map<string, number>(),
+      longestScene: { duration: 0, description: '', videoSource: '' },
+      shortestScene: { duration: Infinity, description: '', videoSource: '' },
+      totalDuration: 0,
+    }
 
     if (allDocs && allDocs.metadatas && allDocs.ids) {
       for (let i = 0; i < allDocs.metadatas.length; i++) {
@@ -946,12 +975,59 @@ async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos:
         if (!createdAt) continue
 
         const scene: Scene = metadataToScene(metadata, allDocs.ids[i])
-        scenesInYear.push(scene)
+        const sceneDuration = scene.endTime - scene.startTime
 
-        // Build videos dictionary
+        if (sceneDuration > globalStats.longestScene.duration) {
+          globalStats.longestScene = {
+            duration: sceneDuration,
+            description: scene.description || '',
+            videoSource: metadata.source?.toString() || '',
+          }
+        }
+
+        if (sceneDuration < globalStats.shortestScene.duration && sceneDuration > 0) {
+          globalStats.shortestScene = {
+            duration: sceneDuration,
+            description: scene.description || '',
+            videoSource: metadata.source?.toString() || '',
+          }
+        }
+
+        globalStats.totalDuration += sceneDuration
+
+        scene.emotions?.forEach((e) => {
+          const emotion = e.emotion
+          if (emotion.toLocaleLowerCase().includes('n/a')) return
+          globalStats.totalEmotions.set(emotion, (globalStats.totalEmotions.get(emotion) || 0) + 1)
+        })
+
+        scene.objects?.forEach((obj) => {
+          if (obj.toLocaleLowerCase().includes('person')) return
+          globalStats.totalObjects.set(obj, (globalStats.totalObjects.get(obj) || 0) + 1)
+        })
+
+        scene.faces?.forEach((face) => {
+          if (face.toLocaleLowerCase().includes('unknown')) return
+          globalStats.totalFaces.set(face, (globalStats.totalFaces.get(face) || 0) + 1)
+        })
+
+        if (scene.shot_type) {
+          globalStats.totalShotTypes.set(scene.shot_type, (globalStats.totalShotTypes.get(scene.shot_type) || 0) + 1)
+        }
+
+        if (metadata.category) {
+          const category = metadata.category.toString()
+          globalStats.totalCategories.set(category, (globalStats.totalCategories.get(category) || 0) + 1)
+        }
+
         const source = metadata.source?.toString()
         if (source) {
           if (!videosDict[source]) {
+            let locationName
+            if (metadata.location?.toString()) {
+              locationName = await getLocationName(metadata.location?.toString())
+            }
+
             videosDict[source] = {
               source,
               duration: parseFloat(metadata.duration?.toString() || '0.00'),
@@ -966,23 +1042,23 @@ async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos:
               emotions: [],
               objects: [],
               shotTypes: [],
+              locationName,
             }
           }
 
           videosDict[source].scenes.push(scene)
 
-          // Collect per-video faces, emotions, objects, shot types
           if (scene.faces)
             scene.faces.forEach((f) => {
-              if (!videosDict[source].faces?.includes(f)) videosDict[source].faces.push(f)
+              if (!videosDict[source].faces?.includes(f) && !f.toLocaleLowerCase().includes("unknown")) videosDict[source].faces.push(f)
             })
           if (scene.emotions)
             scene.emotions.forEach((e) => {
-              if (!videosDict[source].emotions?.includes(e.emotion)) videosDict[source].emotions.push(e.emotion)
+              if (!videosDict[source].emotions?.includes(e.emotion)  && !e.emotion.toLocaleLowerCase().includes("n/a")) videosDict[source].emotions.push(e.emotion)
             })
           if (scene.objects)
             scene.objects.forEach((o) => {
-              if (!videosDict[source].objects?.includes(o)) videosDict[source].objects.push(o)
+              if (!videosDict[source].objects?.includes(o)  && !o.toLocaleLowerCase().includes("person")) videosDict[source].objects.push(o)
             })
           if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
             videosDict[source].shotTypes.push(scene.shot_type)
@@ -990,31 +1066,54 @@ async function getScenesByYear(year: number): Promise<{ scenes: Scene[]; videos:
       }
     }
 
-    // Sort scenes by timestamp
-    scenesInYear.sort((a, b) => {
-      const timeA = new Date(a.createdAt || 0).getTime()
-      const timeB = new Date(b.createdAt || 0).getTime()
-      return timeA - timeB
-    })
-
-    // Finalize videos
     const videosList = Object.values(videosDict).map((video) => {
       video.scenes.sort((a, b) => a.startTime - b.startTime)
       video.sceneCount = video.scenes.length
       return video
     })
 
-    // Sort videos by date
     videosList.sort((a, b) => {
       const timeA = new Date(a.createdAt).getTime()
       const timeB = new Date(b.createdAt).getTime()
       return timeA - timeB
     })
 
-    return {
-      scenes: scenesInYear,
-      videos: videosList,
+    const stats: YearStats = {
+      totalVideos: videosList.length,
+      totalScenes: allDocs.ids?.length || 0,
+      totalDuration: globalStats.totalDuration,
+      topEmotions: Array.from(globalStats.totalEmotions.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([emotion, count]) => ({ emotion, count })),
+      topObjects: Array.from(globalStats.totalObjects.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([name, count]) => ({ name, count })),
+      topFaces: Array.from(globalStats.totalFaces.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([name, count]) => ({ name, count })),
+      topShotTypes: Array.from(globalStats.totalShotTypes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count })),
+      categories: Array.from(globalStats.totalCategories.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count })),
+      longestScene: globalStats.longestScene,
+      shortestScene: globalStats.shortestScene.duration !== Infinity ? globalStats.shortestScene : null,
     }
+
+    const result = {
+      videos: videosList,
+      stats,
+    }
+
+    if (!IS_TESTING) {
+      await setCache(cacheKey, result, 300)
+    }
+
+    return result
   } catch (error) {
     logger.error('Error getting scenes by year: ' + error)
     throw error
@@ -1039,4 +1138,5 @@ export {
   getAllDocs,
   getVideosNotEmbedded,
   getScenesByYear,
+  deleteByVideoSource,
 }

@@ -6,9 +6,8 @@ import { Scene } from '../types/scene'
 export async function getVideoAnalytics(prompt: string) {
   const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
 
-  const { shot_type, emotions, description, aspect_ratio, objects, transcriptionQuery } =
-    await generateActionFromPrompt(prompt)
-
+  const { data } = await generateActionFromPrompt(prompt)
+  const { shot_type, emotions, description, aspect_ratio, objects, transcriptionQuery } = data
   const videosWithScenes = await queryCollection({
     faces,
     shot_type,

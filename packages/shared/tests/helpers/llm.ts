@@ -1,4 +1,5 @@
 import { VideoSearchParamsSchema } from '@shared/schemas/search'
+import { logger } from '@shared/services/logger'
 import { AspectRatio, ShotType } from '@shared/types'
 import { VideoSearchParams } from '@shared/types/search'
 import { expect } from 'vitest'
@@ -58,11 +59,11 @@ export const TEST_QUERIES = {
 
 export function compareResults(result: VideoSearchParams, expected: Partial<VideoSearchParams>): void {
   const validated = VideoSearchParamsSchema.safeParse(result)
-  
+
   if (!validated.success) {
-    console.error('Schema validation failed:', validated.error)
+    logger.error('Schema validation failed: ' + validated.error)
   }
-  
+
   expect(validated.success).toBe(true)
 
   Object.entries(expected).forEach(([key, expectedValue]) => {

@@ -1,17 +1,23 @@
-import { Llama, LlamaModel, LlamaContext } from 'node-llama-cpp'
+import { Llama, LlamaModel, LlamaContext, LlamaChatSession, LlamaJsonSchemaGrammar, LlamaGrammar } from 'node-llama-cpp'
 import { SEARCH_AI_MODEL } from '../constants'
 import {
   GENERAL_RESPONSE_PROMPT,
   ANALYTICS_RESPONSE_PROMPT,
-  ASSISTANT_MESSAGE_PROMPT,
-  SEARCH_PROMPT,
   CLASSIFY_INTENT_PROMPT,
   VIDEO_COMPILATION_MESSAGE_PROMPT,
+  YEAR_IN_REVIEW,
+  SEARCH_PROMPT,
+  ASSISTANT_MESSAGE_PROMPT,
 } from '../constants/prompts'
 import type { VideoSearchParams } from '../types/search'
 import { VideoSearchParamsSchema } from '@shared/schemas/search'
 import { getVideoAnalytics } from '@shared/utils/analytics'
-import { ChatMessage } from '@prisma/client'
+import type { ChatMessage } from '@prisma/client'
+import { ModelResponse } from './gemini'
+import { logger } from './logger'
+import { YearStats } from '@shared/types/stats'
+import { YearInReviewData, YearInReviewDataSchema } from '@shared/schemas/yearInReview'
+import { VideoWithScenes } from '@shared/types/video'
 
 class LocalLLM {
   private llama: Llama | null = null
@@ -20,13 +26,12 @@ class LocalLLM {
   private initPromise: Promise<void> | null = null
 
   async init() {
-    // Prevent multiple simultaneous initializations
     if (this.initPromise) {
       return this.initPromise
     }
 
     if (this.context) {
-      return // Already initialized
+      return
     }
 
     this.initPromise = this._doInit()
@@ -51,45 +56,43 @@ class LocalLLM {
     if (!this.context) {
       this.context = await this.model!.createContext({
         contextSize: 4096,
-        sequences: 10, // Support concurrent requests
+        sequences: 10,
       })
     }
   }
 
-  async generate(prompt: string, max = 512): Promise<string> {
+  async generate(prompt: string, max = 512, grammar?: LlamaGrammar): Promise<ModelResponse<string>> {
     await this.init()
 
-    const { LlamaChatSession } = await import('node-llama-cpp')
     const seq = this.context!.getSequence()
     const session = new LlamaChatSession({ contextSequence: seq })
 
     try {
       const res = await session.prompt(prompt, {
         maxTokens: max,
-        temperature: 0.1,
-        topP: 0.9,
+        temperature: 0.4,
+        topP: 0.95,
+        grammar,
       })
-      return res.trim()
+      const tokens = seq.tokenMeter.usedOutputTokens
+      return { data: res.trim(), tokens, error: undefined }
+    } catch (err) {
+      logger.error('LLM generation failed: ' + err)
+      return {
+        data: '',
+        tokens: 0,
+        error: 'Failed to generate response from local model.',
+      }
     } finally {
       session.dispose()
       seq.dispose()
     }
   }
 
-  parseResponse(raw: string, fallback: VideoSearchParams): VideoSearchParams {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const match = cleaned.match(/\{[\s\S]*\}/)
-
-    if (!match) return fallback
-
-    try {
-      return VideoSearchParamsSchema.parse(JSON.parse(match[0]))
-    } catch {
-      return fallback
-    }
-  }
-
-  async generateActionFromPrompt(query: string): Promise<VideoSearchParams> {
+  async generateActionFromPrompt(
+    query: string,
+    chatHistory?: ChatMessage[]
+  ): Promise<ModelResponse<VideoSearchParams>> {
     const fallback: VideoSearchParams = {
       action: null,
       emotions: [],
@@ -99,40 +102,260 @@ class LocalLLM {
       aspect_ratio: '16:9',
       transcriptionQuery: null,
       description: query || 'No query provided',
+      faces: [],
+      semanticQuery: query,
+      locations: [],
+      camera: null,
+      detectedText: null,
     }
 
     if (!query || query.trim() === '') {
-      return fallback
+      return { data: fallback, tokens: 0, error: undefined }
+    }
+    await this.init()
+
+    const grammar = new LlamaJsonSchemaGrammar(this.llama!, {
+      type: 'object',
+      properties: {
+        action: { type: ['string', 'null'] },
+        emotions: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['happy', 'sad', 'angry', 'surprised', 'excited', 'neutral', 'fearful', 'disgusted'],
+          },
+        },
+        objects: { type: 'array', items: { type: 'string' } },
+        duration: { type: ['number', 'null'] },
+        shot_type: {
+          type: ['string', 'null'],
+          enum: ['close-up', 'medium-shot', 'long-shot', null],
+        },
+        aspect_ratio: {
+          type: 'string',
+          enum: ['16:9', '9:16', '1:1', '4:3', '8:7'],
+        },
+        transcriptionQuery: { type: ['string', 'null'] },
+        description: { type: 'string' },
+        faces: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['emotions', 'objects', 'duration', 'aspect_ratio', 'description', 'faces'],
+    } as const)
+
+    const history = chatHistory?.length ? chatHistory.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
+
+    const { data: raw, tokens, error } = await this.generate(SEARCH_PROMPT(query, history), 1024, grammar)
+
+    if (error || !raw) {
+      return { data: fallback, tokens: 0, error }
     }
 
-    const raw = await this.generate(SEARCH_PROMPT(query), 1024)
-    return this.parseResponse(raw, fallback)
+    try {
+      const parsed = JSON.parse(raw.trim())
+      return {
+        data: VideoSearchParamsSchema.parse({
+          ...parsed,
+          semanticQuery: query,
+          locations: [],
+          camera: null,
+          detectedText: null,
+        }),
+        tokens,
+        error: undefined,
+      }
+    } catch (parseError) {
+      logger.error('Failed to parse JSON:' + parseError)
+      return { data: fallback, tokens: 0, error: 'Invalid JSON' }
+    }
+  }
+  async generateAssistantMessage(
+    userPrompt: string,
+    count: number,
+    chatHistory?: ChatMessage[]
+  ): Promise<ModelResponse<string>> {
+    const history = chatHistory?.length ? chatHistory.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
+
+    return await this.generate(ASSISTANT_MESSAGE_PROMPT(userPrompt, count, history))
   }
 
-  async generateAssistantMessage(userPrompt: string, count: number): Promise<string> {
-    return await this.generate(ASSISTANT_MESSAGE_PROMPT(userPrompt, count))
+  async generateCompilationResponse(
+    userPrompt: string,
+    count: number,
+    chatHistory?: ChatMessage[]
+  ): Promise<ModelResponse<string>> {
+    const history = chatHistory?.length ? chatHistory.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
+    return await this.generate(VIDEO_COMPILATION_MESSAGE_PROMPT(userPrompt, count, history))
   }
+  async generateYearInReviewResponse(
+    stats: YearStats,
+    videos: VideoWithScenes[],
+    extraDetails: string
+  ): Promise<ModelResponse<YearInReviewData | null>> {
+    try {
+      const limitedVideos = videos.slice(0, 10)
 
-  async generateCompilationResponse(userPrompt: string, count: number): Promise<string> {
-    return await this.generate(VIDEO_COMPILATION_MESSAGE_PROMPT(userPrompt, count))
+      const prompt = YEAR_IN_REVIEW(stats, limitedVideos, extraDetails)
+
+      const promptLength = prompt.length
+      const estimatedTokens = Math.ceil(promptLength / 4)
+
+      if (estimatedTokens > 1500) {
+        logger.warn(`Prompt too long (${estimatedTokens} tokens), truncating scenes`)
+        return await this.generateYearInReviewResponse(stats, videos.slice(0, 5), extraDetails)
+      }
+
+      await this.init()
+
+      const grammar = new LlamaJsonSchemaGrammar(this.llama!, {
+        type: 'object',
+        properties: {
+          slides: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['hero', 'scenes', 'categories', 'objects', 'funFacts', 'locations', 'share'],
+                },
+                title: { type: 'string' },
+                content: { type: 'string' },
+                interactiveElements: { type: 'string' },
+              },
+              required: ['type', 'title', 'content', 'interactiveElements'],
+            },
+          },
+          topScenes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                videoSource: { type: 'string' },
+                thumbnailUrl: { type: 'string' },
+                duration: { type: 'number' },
+                description: { type: 'string' },
+                faces: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                emotions: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                objects: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                location: { type: 'string' },
+                dateDisplay: { type: 'string' },
+              },
+              required: ['videoSource', 'thumbnailUrl', 'duration', 'faces', 'emotions', 'objects'],
+            },
+          },
+          topObjects: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                count: { type: 'number' },
+              },
+              required: ['name', 'count'],
+            },
+          },
+          topFaces: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                count: { type: 'number' },
+              },
+              required: ['name', 'count'],
+            },
+          },
+          topEmotions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                emotion: { type: 'string' },
+                count: { type: 'number' },
+              },
+              required: ['emotion', 'count'],
+            },
+          },
+          topLocations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                count: { type: 'number' },
+              },
+              required: ['name', 'count'],
+            },
+          },
+        },
+        required: ['slides', 'topObjects', 'topFaces', 'topEmotions', 'topLocations'],
+      } as const)
+
+      const { data: raw, tokens, error } = await this.generate(prompt, 2048, grammar)
+
+      if (error || !raw) {
+        logger.error('Failed to generate year in review: ' + error)
+        return { data: null, tokens: 0, error }
+      }
+
+      try {
+        const parsed = JSON.parse(raw.trim())
+        const validated = YearInReviewDataSchema.parse(parsed)
+        return { data: validated, tokens, error: undefined }
+      } catch (parseError) {
+        logger.error('Failed to parse year in review JSON: ' + parseError)
+        return { data: null, tokens: 0, error: 'Invalid JSON response from AI' }
+      }
+    } catch (parseError) {
+      logger.error('Failed to parse year in review JSON: ' + parseError)
+      return { data: null, tokens: 0, error: 'Invalid JSON response from AI' }
+    }
   }
-  async generateGeneralResponse(prompt: string, history?: ChatMessage[]): Promise<string> {
+  async generateGeneralResponse(prompt: string, history?: ChatMessage[]): Promise<ModelResponse<string>> {
     const context = history?.length ? history.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
 
     return await this.generate(GENERAL_RESPONSE_PROMPT(prompt, context))
   }
 
-  async classifyIntent(prompt: string) {
-    const raw = await this.generate(CLASSIFY_INTENT_PROMPT(prompt))
+  async classifyIntent(prompt: string, chatHistory?: ChatMessage[]): Promise<ModelResponse<any>> {
+    const history = chatHistory?.length ? chatHistory.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
+    const { data: raw, tokens, error } = await this.generate(CLASSIFY_INTENT_PROMPT(prompt, history))
+
+    if (error || !raw) {
+      return { data: null, tokens: 0, error }
+    }
+
     try {
-      return JSON.parse(raw.replace(/```json|```/g, '').trim())
+      return {
+        data: JSON.parse(raw.replace(/```json|```/g, '').trim()),
+        tokens,
+        error: undefined,
+      }
     } catch {
-      return { type: 'compilation', needsVideoData: true }
+      return {
+        data: null,
+        tokens: 0,
+        error: 'Failed to parse intent from local model.',
+      }
     }
   }
 
-  async generateAnalyticsResponse(prompt: string, analytics: Awaited<ReturnType<typeof getVideoAnalytics>>) {
-    return await this.generate(ANALYTICS_RESPONSE_PROMPT(prompt, analytics))
+  async generateAnalyticsResponse(
+    prompt: string,
+    analytics: Awaited<ReturnType<typeof getVideoAnalytics>>,
+    chatHistory?: ChatMessage[]
+  ): Promise<ModelResponse<string>> {
+    const history = chatHistory?.length ? chatHistory.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
+    return await this.generate(ANALYTICS_RESPONSE_PROMPT(prompt, analytics, history))
   }
 
   async cleanup(): Promise<void> {

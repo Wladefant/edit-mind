@@ -21,7 +21,7 @@ import {
 } from '@shared/services/vectorDb'
 import { EmbeddingInput } from '@shared/types/vector'
 import { Scene } from '@shared/types/scene'
-import { SearchQuery } from '@shared/types/search'
+import { VideoSearchParams } from '@shared/types/search'
 
 const TEST_TIMEOUT = 40000
 
@@ -48,16 +48,20 @@ const mockScene = (overrides?: Partial<Scene>): Scene => ({
   ...overrides,
 })
 
-const baseQuery: SearchQuery = {
+const baseQuery: VideoSearchParams = {
   faces: [],
   emotions: [],
   shot_type: null,
   aspect_ratio: '16:9',
   description: '',
   objects: [],
-  camera: undefined,
+  camera: null,
   transcriptionQuery: null,
-  detectedText: undefined,
+  detectedText: null,
+  semanticQuery: null,
+  action: null,
+  duration: 0,
+  locations: [],
 }
 
 const mockEmbedding = (overrides?: Partial<EmbeddingInput>): EmbeddingInput => ({
@@ -397,7 +401,7 @@ describe('VectorDB Service', () => {
     it(
       'filters by aspect ratio',
       async () => {
-        const query: SearchQuery = { ...baseQuery, aspect_ratio: '16:9' }
+        const query: VideoSearchParams = { ...baseQuery, aspect_ratio: '16:9' }
         const results = await queryCollection(query)
 
         results.forEach((video) => {
@@ -410,7 +414,7 @@ describe('VectorDB Service', () => {
     it(
       'filters by shot type',
       async () => {
-        const query: SearchQuery = { ...baseQuery, shot_type: 'close-up' }
+        const query: VideoSearchParams = { ...baseQuery, shot_type: 'close-up' }
         const results = await queryCollection(query)
 
         results.forEach((video) => {
@@ -423,7 +427,7 @@ describe('VectorDB Service', () => {
     it(
       'filters by emotions',
       async () => {
-        const query: SearchQuery = { ...baseQuery, emotions: ['happy'] }
+        const query: VideoSearchParams = { ...baseQuery, emotions: ['happy'] }
         const results = await queryCollection(query)
 
         results.forEach((video) => {
@@ -437,7 +441,7 @@ describe('VectorDB Service', () => {
     it(
       'filters by objects',
       async () => {
-        const query: SearchQuery = { ...baseQuery, objects: ['dog'] }
+        const query: VideoSearchParams = { ...baseQuery, objects: ['dog'] }
         const results = await queryCollection(query)
 
         results.forEach((video) => {
@@ -460,7 +464,7 @@ describe('VectorDB Service', () => {
         })
 
         await embedDocuments([doc])
-        const query: SearchQuery = { ...baseQuery, transcriptionQuery: 'hello world' }
+        const query: VideoSearchParams = { ...baseQuery, transcriptionQuery: 'hello world' }
         const results = await queryCollection(query)
 
         expect(results.length).toBeGreaterThan(0)
@@ -471,7 +475,7 @@ describe('VectorDB Service', () => {
     it(
       'combines multiple filters',
       async () => {
-        const query: SearchQuery = {
+        const query: VideoSearchParams = {
           ...baseQuery,
           aspect_ratio: '16:9',
           emotions: ['happy'],
@@ -500,7 +504,7 @@ describe('VectorDB Service', () => {
     it(
       'performs hybrid search with semantic query',
       async () => {
-        const query: SearchQuery = {
+        const query: VideoSearchParams = {
           ...baseQuery,
           semanticQuery: 'happy smiling person',
         }
@@ -514,7 +518,7 @@ describe('VectorDB Service', () => {
     it(
       'performs metadata-only search without semantic query',
       async () => {
-        const query: SearchQuery = {
+        const query: VideoSearchParams = {
           ...baseQuery,
           emotions: ['happy'],
         }
@@ -528,7 +532,7 @@ describe('VectorDB Service', () => {
     it(
       'returns empty array for no matches',
       async () => {
-        const query: SearchQuery = {
+        const query: VideoSearchParams = {
           ...baseQuery,
           emotions: ['nonexistent-emotion-xyz'],
         }
@@ -831,9 +835,8 @@ describe('VectorDB Service', () => {
         })
 
         await embedDocuments([doc])
-        const { scenes, videos } = await getScenesByYear(currentYear)
+        const { videos } = await getScenesByYear(currentYear)
 
-        expect(Array.isArray(scenes)).toBe(true)
         expect(Array.isArray(videos)).toBe(true)
       },
       TEST_TIMEOUT
@@ -843,9 +846,8 @@ describe('VectorDB Service', () => {
       'returns empty for year with no data',
       async () => {
         const futureYear = new Date().getFullYear() + 10
-        const { scenes, videos } = await getScenesByYear(futureYear)
+        const { videos } = await getScenesByYear(futureYear)
 
-        expect(scenes).toEqual([])
         expect(videos).toEqual([])
       },
       TEST_TIMEOUT
@@ -1212,7 +1214,7 @@ describe('VectorDB Service', () => {
     it(
       'handles null or undefined values in search',
       async () => {
-        const query: SearchQuery = {
+        const query: VideoSearchParams = {
           ...baseQuery,
           emotions: null as any,
           objects: undefined as any,

@@ -62,7 +62,7 @@ export const sceneSchema = z.object({
   createdAt: z.number(),
   location: z.string(),
   category: z.string().optional(),
-  aspect_ratio: z.string()
+  aspect_ratio: z.string(),
 })
 
 export type Scene = z.infer<typeof sceneSchema>
@@ -113,6 +113,7 @@ export const videoSchema = z.object({
   objects: z.array(z.string()),
   emotions: z.array(z.string()),
   shotTypes: z.array(z.string()),
+  locationName: z.string().optional(),
 })
 
 export const searchSuggestionSchema = z.object({
@@ -132,23 +133,6 @@ export const exportedSceneSchema = z.object({
   startTime: z.number(),
   endTime: z.number(),
   source: z.string(),
-})
-
-const settingsSchema = z.object({
-  sample_interval_seconds: z.number(),
-  max_workers: z.number(),
-  batch_size: z.number(),
-  yolo_confidence: z.number(),
-  yolo_iou: z.number(),
-  resize_to_1080p: z.boolean(),
-  yolo_model: z.string(),
-  output_dir: z.string(),
-})
-
-const faceDataSchema = z.object({
-  name: z.string(),
-  thumbnail: z.string().optional(),
-  count: z.number(),
 })
 
 const NameCountSchema = z.object({
@@ -227,100 +211,3 @@ export const unknownFace = z.object({
     aspect_ratio: z.number(),
   }),
 })
-
-export const appIpcSchema = {
-  version: {
-    args: z.tuple([]),
-    return: z.string(),
-  },
-  selectFolder: {
-    args: z.tuple([]),
-    return: z
-      .object({
-        folderPath: z.string(),
-        videos: z.array(z.string()),
-      })
-      .nullable(),
-  },
-  startIndexing: {
-    args: z.tuple([z.array(z.string())]),
-    return: z.void(),
-  },
-  getAllVideos: {
-    args: z.tuple([]),
-    return: z.array(videoSchema),
-  },
-  generateSearchSuggestions: {
-    args: z.array(VideoMetadataSummarySchema),
-    return: z.array(searchSuggestionSchema),
-  },
-  searchDocuments: {
-    args: z.tuple([z.string()]),
-    return: z.object({
-      results: z.array(sceneSchema),
-      duration: z.number().nullable(),
-      aspect_ratio: z.string().nullable(),
-      faces: z.array(z.string()).nullable(),
-    }),
-  },
-  stitchVideos: {
-    args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string(), z.number()]),
-    return: z.void(),
-  },
-  exportToFcpXml: {
-    args: z.tuple([z.array(exportedSceneSchema), z.string(), z.string()]),
-    return: z.void(),
-  },
-  openFile: {
-    args: z.tuple([z.string()]),
-    return: z.object({ success: z.boolean() }),
-  },
-  showInFolder: {
-    args: z.tuple([z.string()]),
-    return: z.object({ success: z.boolean() }),
-  },
-  getSettings: {
-    args: z.tuple([]),
-    return: settingsSchema,
-  },
-  saveSettings: {
-    args: z.tuple([settingsSchema]),
-    return: z.object({ success: z.boolean() }),
-  },
-  getKnownFaces: {
-    args: z.tuple([]),
-    return: z.record(z.string(), z.array(z.string())),
-  },
-  getUnknownFaces: {
-    args: z.tuple([]),
-    return: z.array(unknownFace),
-  },
-  deleteUnknownFace: {
-    args: z.tuple([z.string(), z.string()]),
-    return: z.object({ success: z.boolean() }),
-  },
-  labelUnknownFace: {
-    args: z.tuple([z.string(), z.string(), z.string()]),
-    return: z.object({ success: z.boolean() }),
-  },
-  reindexAllFaces: {
-    args: z.tuple([z.string(), z.string(), z.string()]),
-    return: z.object({ success: z.boolean() }),
-  },
-  getAllFaces: {
-    args: z.tuple([]),
-    return: z.array(faceDataSchema),
-  },
-  getLocationName: {
-    args: z.tuple([z.string()]),
-    return: z.string(),
-  },
-  labelFace: {
-    args: z.tuple([z.string(), z.string()]),
-    return: z.void(),
-  },
-  mergeFaces: {
-    args: z.tuple([z.array(z.string())]),
-    return: z.promise(z.string()),
-  },
-}
