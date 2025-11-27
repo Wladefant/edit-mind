@@ -11,6 +11,7 @@ export function useChat(chatId?: string) {
   const [messages, setMessages] = useState<ChatMessageWithScenes[]>([])
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set())
   const [input, setInput] = useState('')
+  const [isStitchingState, setIsStitchingState] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -62,6 +63,18 @@ export function useChat(chatId?: string) {
       }
     }
   }, [sendMessageFetcher.data, navigate])
+
+  useEffect(() => {
+    if (stitchFetcher.data) {
+      setIsStitchingState(false)
+      const stitchedMessage = stitchFetcher.data?.message
+      if (stitchedMessage) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === stitchedMessage.id ? stitchedMessage : m))
+        )
+      }
+    }
+  }, [stitchFetcher.data])
 
   const isLoading = sendMessageFetcher.state === 'submitting' || sendMessageFetcher.state === 'loading'
 
@@ -133,6 +146,7 @@ export function useChat(chatId?: string) {
     async (messageId: string) => {
       if (selectedScenes.size === 0) return
 
+      setIsStitchingState(true)
       stitchFetcher.submit(
         { selectedSceneIds: Array.from(selectedScenes) },
         {
@@ -187,7 +201,7 @@ export function useChat(chatId?: string) {
     selectAllScenes,
     pauseRevalidation,
     resumeRevalidation,
-    isStitching: stitchFetcher.state !== 'idle',
+    isStitching: isStitchingState,
     isSending: sendMessageFetcher.state !== 'idle',
     isRefreshing: messagesFetcher.state === 'loading',
   }
