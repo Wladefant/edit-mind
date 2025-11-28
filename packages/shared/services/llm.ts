@@ -192,16 +192,21 @@ class LocalLLM {
     extraDetails: string
   ): Promise<ModelResponse<YearInReviewData | null>> {
     try {
-      const limitedVideos = videos.slice(0, 10)
+      let prompt = YEAR_IN_REVIEW(stats, videos, extraDetails)
+      let promptLength = prompt.length
+      let estimatedTokens = Math.ceil(promptLength / 4)
 
-      const prompt = YEAR_IN_REVIEW(stats, limitedVideos, extraDetails)
+      while (estimatedTokens > 2048 && videos.length > 1) {
+        videos = videos.slice(0, Math.floor(videos.length / 2))
+        prompt = YEAR_IN_REVIEW(stats, videos, extraDetails)
+        promptLength = prompt.length
+        estimatedTokens = Math.ceil(promptLength / 4)
+        logger.warn(`Prompt too long, truncating videos to ${videos.length} items`)
+      }
 
-      const promptLength = prompt.length
-      const estimatedTokens = Math.ceil(promptLength / 4)
-
-      if (estimatedTokens > 1500) {
-        logger.warn(`Prompt too long (${estimatedTokens} tokens), truncating scenes`)
-        return await this.generateYearInReviewResponse(stats, videos.slice(0, 5), extraDetails)
+      if (estimatedTokens > 2048) {
+        logger.error('Prompt too long even after truncation')
+        return { data: null, tokens: 0, error: 'Prompt too long even after truncation' }
       }
 
       await this.init()
@@ -234,18 +239,9 @@ class LocalLLM {
                 thumbnailUrl: { type: 'string' },
                 duration: { type: 'number' },
                 description: { type: 'string' },
-                faces: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                emotions: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                objects: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
+                faces: { type: 'array', items: { type: 'string' } },
+                emotions: { type: 'array', items: { type: 'string' } },
+                objects: { type: 'array', items: { type: 'string' } },
                 location: { type: 'string' },
                 dateDisplay: { type: 'string' },
               },
@@ -256,10 +252,7 @@ class LocalLLM {
             type: 'array',
             items: {
               type: 'object',
-              properties: {
-                name: { type: 'string' },
-                count: { type: 'number' },
-              },
+              properties: { name: { type: 'string' }, count: { type: 'number' } },
               required: ['name', 'count'],
             },
           },
@@ -267,10 +260,7 @@ class LocalLLM {
             type: 'array',
             items: {
               type: 'object',
-              properties: {
-                name: { type: 'string' },
-                count: { type: 'number' },
-              },
+              properties: { name: { type: 'string' }, count: { type: 'number' } },
               required: ['name', 'count'],
             },
           },
@@ -278,10 +268,7 @@ class LocalLLM {
             type: 'array',
             items: {
               type: 'object',
-              properties: {
-                emotion: { type: 'string' },
-                count: { type: 'number' },
-              },
+              properties: { emotion: { type: 'string' }, count: { type: 'number' } },
               required: ['emotion', 'count'],
             },
           },
@@ -289,15 +276,12 @@ class LocalLLM {
             type: 'array',
             items: {
               type: 'object',
-              properties: {
-                name: { type: 'string' },
-                count: { type: 'number' },
-              },
+              properties: { name: { type: 'string' }, count: { type: 'number' } },
               required: ['name', 'count'],
             },
           },
         },
-        required: ['slides', 'topObjects', 'topFaces', 'topEmotions', 'topLocations'],
+        required: ['slides', 'topObjects', 'topFaces', 'topEmotions', 'topLocations', 'topScenes'],
       } as const)
 
       const { data: raw, tokens, error } = await this.generate(prompt, 2048, grammar)
@@ -315,11 +299,12 @@ class LocalLLM {
         logger.error('Failed to parse year in review JSON: ' + parseError)
         return { data: null, tokens: 0, error: 'Invalid JSON response from AI' }
       }
-    } catch (parseError) {
-      logger.error('Failed to parse year in review JSON: ' + parseError)
-      return { data: null, tokens: 0, error: 'Invalid JSON response from AI' }
+    } catch (err) {
+      logger.error('Unexpected error in generateYearInReviewResponse: ' + err)
+      return { data: null, tokens: 0, error: 'Unexpected error' }
     }
   }
+
   async generateGeneralResponse(prompt: string, history?: ChatMessage[]): Promise<ModelResponse<string>> {
     const context = history?.length ? history.map((h) => `${h.sender}: ${h.text}`).join('\n') : ''
 

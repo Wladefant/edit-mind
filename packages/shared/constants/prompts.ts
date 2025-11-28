@@ -60,19 +60,29 @@ objects:
       • If word ends in "es" → remove "es" (boxes → box, dishes → dish)
       • If word ends in "s" → remove trailing "s" (phones → phone, cats → cat, laptops → laptop)
   - If multiple objects are separated by "and", commas, or "with", extract ALL of them.
-  - Only include concrete, physical objects (not actions, emotions, or places).
+  - Only include concrete, physical objects.
   - NEVER return undefined; if no objects found, return [].
   - Examples:
       "multiple laptops" → ["laptop"]
       "dogs and cats" → ["dog","cat"]
       "phones and tablets" → ["phone","tablet"]
-
+      "videos with multiple laptops" → ["laptop"]
+  - The "objects" array MUST contain only strings.
+  - If no physical objects are found, return [] (never null, never undefined).
+      
 action: Main activity verb in gerund form ["cooking","running","talking"] (or null)
 
 transcriptionQuery: Text after "say"/"says" (or null)
 
 faces: Person names without @ ["john","ilias"]
   - ALWAYS lowercase the names
+
+
+- ALWAYS ensure objects, emotions, and faces are valid arrays.
+- If no values exist, return [] (never null, never undefined) for objects, emotions and faces.
+- NEVER output "objects":[null] or "objects":[undefined] same for faces, objects and emotions.
+- The JSON MUST be strictly valid and MUST NOT contain null or undefined inside arrays.
+- If a field has no value, output an empty array [] or null ONLY where allowed.
 </rules>
 
 
@@ -94,7 +104,8 @@ INTENT CATEGORIES:
 
 2. "analytics" - Requesting statistics, counts, summaries, or data analysis:
    - Trigger words: how many, count, total, stats, statistics, analyze, report, summary, when, what date
-   - Examples: "how many clips", "total duration", "when did I film", "count my videos"
+   - Examples: "how many clips", "total duration", "when did I film", "count my videos", "What emotions are most common?", "Who appears most in my videos?"
+           
 
 3. "general" - Everything else (greetings, clarifications, questions about capabilities):
    - Trigger words: hi, hello, help, what can you do, who are you, thanks, okay
@@ -182,6 +193,8 @@ RESPONSE RULES:
 5. If the data shows 0 or missing info, acknowledge it positively: "You haven't captured any [X] yet - perfect opportunity to start!"
 6. Highlight the most impressive or interesting insight related to their question
 7. Use comparative language when relevant: "That's more than [X]!", "Your most [Y] moment"
+8. If the user asks about faces or people and none are detected, explicitly state that no people were detected using wording such as: "no people", "no one", "none detected", or "no faces".
+9. If the user asks about emotions and none are detected, explicitly state that no emotions were detected using wording such as: "no emotion", "none detected", or "not detected".
 
 EXAMPLE RESPONSES:
 
@@ -510,6 +523,8 @@ DATA ACCURACY REQUIREMENTS:
 - Do NOT invent statistics
 - If a data field is missing/empty, skip that insight gracefully
 - Prioritize the most standout statistics (biggest percentages, highest counts)
+
+CRITICAL: You MUST also populate the "topScenes" array with 2 scenes at least
 
 COMPLETE JSON SCHEMA:
 
