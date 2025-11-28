@@ -1,23 +1,9 @@
 import z from 'zod'
-import { ShotType, AspectRatio } from '.'
+import { AspectRatio } from '.';
 import { searchSuggestionSchema, VideoMetadataSummarySchema } from '../schemas'
 import { VideoSearchParamsSchema } from '@shared/schemas/search'
 
 export type VideoSearchParams = z.infer<typeof VideoSearchParamsSchema>
-export type SearchQuery = {
-  faces?: string[]
-  emotions?: string[]
-  shot_type?: ShotType | null
-  aspect_ratio?: AspectRatio | null
-  description?: string
-  objects?: string[]
-  camera?: string
-  transcriptionQuery?: string  | null
-  detectedText?: string
-  locations?: string[]
-  semanticQuery?: string
-}
-
 export type SearchSuggestion = z.infer<typeof searchSuggestionSchema>
 
 export type VideoMetadataSummary = z.infer<typeof VideoMetadataSummarySchema>

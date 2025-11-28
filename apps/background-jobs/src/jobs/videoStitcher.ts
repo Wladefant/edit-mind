@@ -1,4 +1,4 @@
-import { generateCompilationResponse } from './../../../../packages/shared/services/modelRouter'
+import { generateCompilationResponse } from '@shared/services/modelRouter'
 import { Worker, Job } from 'bullmq'
 import { connection } from '../queue'
 import { stitchVideos } from '@shared/utils/sticher'
@@ -28,9 +28,9 @@ async function processVideoStitcherJob(job: Job<VideoStitcherJobData>) {
       },
     })
     let text = 'Here’s your stitched video!'
-    
+
     if (lastUserMessage) {
-      text = await generateCompilationResponse(lastUserMessage?.text, outputScenes.length)
+      text = (await generateCompilationResponse(lastUserMessage?.text, outputScenes.length)).data
     }
 
     await prisma.chatMessage.create({

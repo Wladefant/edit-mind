@@ -221,7 +221,7 @@ class LocalLLM {
               properties: {
                 type: {
                   type: 'string',
-                  enum: ['hero', 'scenes', 'categories', 'objects', 'funFacts', 'locations', 'share'],
+                  enum: ['hero', 'scenes', 'categories', 'objects', 'funFacts', 'locations', 'share', 'mostSpokenWords', 'faces'],
                 },
                 title: { type: 'string' },
                 content: { type: 'string' },

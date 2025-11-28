@@ -314,7 +314,6 @@ Response: "I'm sorry to hear that! Can you tell me what you're trying to do? I'l
 
 Now respond to the user naturally.
 Response:`
-
 export const YEAR_IN_REVIEW = (stats: YearStats, topVideos: VideoWithScenes[], extraDetails: string) => {
   const enrichedVideos = topVideos.map((v) => {
     const date = v.createdAt ? new Date(v.createdAt) : new Date()
@@ -400,6 +399,23 @@ export const YEAR_IN_REVIEW = (stats: YearStats, topVideos: VideoWithScenes[], e
 
   const dominantEmotion = topEmotions[0]
 
+  const faceCounts = enrichedVideos
+    .flatMap((v) => v.faces || [])
+    .reduce(
+      (acc, face) => {
+        acc[face] = (acc[face] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>
+    )
+
+  const topFaces = Object.entries(faceCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }))
+
+  const words = stats.topWords.filter((f) => f.word.length > 0).join(',')
+
   const contextData = {
     userHabits: {
       totalVideos: stats.totalVideos,
@@ -416,7 +432,7 @@ export const YEAR_IN_REVIEW = (stats: YearStats, topVideos: VideoWithScenes[], e
       avgDurationSeconds: Math.round(avgDuration),
       longestVideoMinutes: longestVideo ? Math.round(parseInt(longestVideo.duration.toString()) / 60) : 0,
       topObjects: stats.topObjects,
-      topFaces: stats.topFaces,
+      topFaces: topFaces,
       topEmotions: topEmotions,
       dominantEmotion: dominantEmotion,
     },
@@ -427,11 +443,15 @@ export const YEAR_IN_REVIEW = (stats: YearStats, topVideos: VideoWithScenes[], e
       location: v.locationName || 'Unknown Location',
       when: `${v.meta.season} • ${v.meta.formattedDate} at ${v.meta.formattedTime}`,
       emotions: v.emotions,
+      faces: v.faces,
+      objects: v.objects,
       context: v.scenes
         .slice(0, 5)
         .map((s) => s.description)
         .join('. '),
+      aspect_ratio: v.aspect_ratio,
     })),
+    mostSpokenWords: words,
   }
 
   return `
@@ -449,89 +469,63 @@ Generate a valid JSON object matching this exact schema. Every field is REQUIRED
 GENERATION RULES:
 
 1. **HERO SLIDE** (type: "hero"):
-   - title: Create a punchy, personalized headline (e.g., "Your 2024 in Moments")
-   - content: One sentence summary of their year (total videos, standout theme)
+   - title: Create a punchy, personalized headline
+   - content: One sentence summary of their year
    - interactiveElements: Empty string ""
 
 2. **SCENES SLIDE** (type: "scenes"):
-   - title: "Your Best Moments" or similar
-   - content: Brief intro to the top scenes (1 sentence)
+   - title: "Your Best Moments"
+   - content: Brief intro to the top scenes
    - interactiveElements: Empty string ""
-   - CRITICAL: You MUST also populate the "topScenes" array with 5 scenes (see schema below)
+   - CRITICAL: Include "topScenes" array with 5 scenes, and use 9:16 videos as much as you can but if you don't find them use the videos that you have 
 
-3. **CATEGORIES SLIDE** (type: "categories") - THE PIE CHART:
+3. **CATEGORIES SLIDE** (type: "categories") - PIE CHART:
    - title: "What You Captured Most"
-   - content: **CRITICAL FORMAT** - A comma-separated string showing category distribution
-     * Format: "Category1 XX%, Category2 YY%, Category3 ZZ%"
-     * Example: "Friends 35%, Travel 25%, Food 20%, Work 12%, Nature 8%"
-     * Percentages MUST sum to exactly 100%
-     * Use 1-2 word labels only
-     * Infer categories from topObjects, topFaces, emotions, and video contexts
+   - content: Comma-separated string of top categories summing to 100%
    - interactiveElements: Empty string ""
 
 4. **OBJECTS SLIDE** (type: "objects"):
    - title: "Your Most Filmed Items"
-   - content: Narrative about their most common objects (e.g., "You captured your coffee mug in 47 videos!")
+   - content: Narrative about most common objects
    - interactiveElements: Empty string ""
 
-5. **FUN FACTS SLIDE** (type: "funFacts"):
-   - title: "Your Filming Habits" or "Your Year by the Numbers"
-   - content: 4-6 insights as a single string with line breaks (\\n), derived from:
-     * **Time of Day:**
-       - If percentNight > 40% → "🌙 Night Owl: XX% of your videos were filmed after dark!"
-       - If percentMorning > 40% → "☀️ Early Bird: XX% captured in the morning!"
-       - If percentAfternoon > 40% → "🌤️ Afternoon Enthusiast: Most filming happened in the afternoon!"
-     * **Day of Week:**
-       - If percentWeekend > 50% → "📅 Weekend Warrior: XX% filmed on Saturdays & Sundays!"
-       - If percentWeekend < 30% → "💼 Weekday Documenter: Most videos were weekday moments!"
-     * **Locations:**
-       - If locationsVisited > 5 → "✈️ Globetrotter: You filmed in X different locations!"
-       - Show top location → "📍 Favorite Spot: [Location Name] with XX videos!"
-     * **Seasons:**
-       - "🍂 [Season] Vibes: Your most active season with XX videos!"
-     * **Duration:**
-       - "⏱️ Content Creator: You filmed XX minutes of footage this year!"
-       - If longestVideoMinutes > 10 → "🎬 Epic Moment: Your longest video was XX minutes!"
-     * **People:**
-       - "👥 [Name] appeared in XX videos - your most frequent co-star!"
-       - If topFaces.length > 5 → "🎭 Star-Studded: Captured X different people this year!"
-     * **Emotions:**
-       - "😊 Mood of the Year: [Emotion] was captured in XX% of your videos!"
-     * **Activity:**
-       - "📸 Busiest Month: [Month] with XX videos!"
+5. **FACES SLIDE** (type: "faces"):
+   - title: "Your Most Frequent Co-Stars"
+   - content: Comma-separated topFaces with counts
    - interactiveElements: Empty string ""
 
-6. **LOCATIONS SLIDE** (type: "locations"):
+6. **FUN FACTS SLIDE** (type: "funFacts"):
+   - title: "Your Filming Habits"
+   - content: Insights with line breaks (\\n)
+   - interactiveElements: Empty string ""
+
+7. **LOCATIONS SLIDE** (type: "locations"):
    - title: "Where You Filmed"
-   - content: Narrative about their top filming locations with counts
+   - content: Narrative about top filming locations
    - interactiveElements: Empty string ""
 
-7. **SHARE SLIDE** (type: "share"):
+8. **MOST SPOKEN WORDS SLIDE** (type: "mostSpokenWords"):
+   - title: "Words You Used Most"
+   - content: Comma-separated words from user input
+   - interactiveElements: Empty string ""
+
+9. **SHARE SLIDE** (type: "share"):
    - title: "Share Your Story"
    - content: Call-to-action message
    - interactiveElements: Empty string ""
 
 TONE & STYLE:
 - Friendly, celebratory, slightly playful
-- Use emojis sparingly (1-2 per slide max), add whitespace after the emojis
-- Make statistics feel personal and meaningful
-- Avoid generic corporate language
-- Focus on the MOST interesting/unique stats for each user
-
-DATA ACCURACY REQUIREMENTS:
-- All counts and percentages MUST be derived from the provided data
-- Do NOT invent statistics
-- If a data field is missing/empty, skip that insight gracefully
-- Prioritize the most standout statistics (biggest percentages, highest counts)
-
-CRITICAL: You MUST also populate the "topScenes" array with 2 scenes at least
+- Use emojis sparingly
+- Focus on most unique stats
+- All counts and percentages must match the data
 
 COMPLETE JSON SCHEMA:
 
 {
   "slides": [
     {
-      "type": "hero" | "scenes" | "categories" | "objects" | "funFacts" | "locations" | "share",
+      "type": "hero" | "scenes" | "categories" | "objects" | "faces" | "funFacts" | "locations" | "mostSpokenWords" | "share",
       "title": string,
       "content": string,
       "interactiveElements": string
@@ -542,18 +536,19 @@ COMPLETE JSON SCHEMA:
       "videoSource": string,
       "thumbnailUrl": string,
       "duration": number,
-      "description": string (punchy 1-sentence caption),
+      "description": string,
       "faces": string[],
       "emotions": string[],
       "objects": string[],
       "location": string,
-      "dateDisplay": string (use "when" field from video meta)
+      "dateDisplay": string
     }
   ],
   "topObjects": [{ "name": string, "count": number }],
   "topFaces": [{ "name": string, "count": number }],
   "topEmotions": [{ "emotion": string, "count": number }],
-  "topLocations": [{ "name": string, "count": number }]
+  "topLocations": [{ "name": string, "count": number }],
+  "mostSpokenWords": string[]
 }
 
 CRITICAL: Return ONLY valid JSON with NO markdown, NO explanations, NO extra text.

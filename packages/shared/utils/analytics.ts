@@ -4,19 +4,9 @@ import { queryCollection } from '../services/vectorDb'
 import { Scene } from '../types/scene'
 
 export async function getVideoAnalytics(prompt: string) {
-  const faces = prompt?.match(/@(\w+)/g)?.map((name: string) => name.substring(1)) || []
 
   const { data } = await generateActionFromPrompt(prompt)
-  const { shot_type, emotions, description, aspect_ratio, objects, transcriptionQuery } = data
-  const videosWithScenes = await queryCollection({
-    faces,
-    shot_type,
-    emotions,
-    description,
-    aspect_ratio,
-    objects,
-    transcriptionQuery,
-  })
+  const videosWithScenes = await queryCollection(data)
 
   const allScenes: Scene[] = videosWithScenes.flatMap((video) => video.scenes)
   const sceneIds = allScenes.map((scene) => scene.id)

@@ -1,8 +1,9 @@
 import { getAllDocs } from './vectorDb'
 import { logger } from './logger'
 import { getCache, setCache, invalidateCache } from './cache'
-import { SearchQuery } from '../types/search'
+import { VideoSearchParams } from '../types/search'
 import { ShotType } from '../types'
+import { VideoSearchParamsSchema } from '@shared/schemas/search'
 
 export interface Suggestion {
   text: string
@@ -281,10 +282,10 @@ export async function refreshSuggestionCache(): Promise<void> {
   await suggestionCache.refresh()
 }
 
-export function buildSearchQueryFromSuggestions(suggestions: Record<string, string>): SearchQuery {
-  const searchQuery: SearchQuery = {}
+export function buildSearchQueryFromSuggestions(suggestions: Record<string, string>): VideoSearchParams {
+  const searchQuery: VideoSearchParams = VideoSearchParamsSchema.parse({});
 
-  const typeMapping: Record<string, keyof SearchQuery> = {
+  const typeMapping: Record<string, keyof VideoSearchParams> = {
     face: 'faces',
     emotion: 'emotions',
     shot_type: 'shot_type',

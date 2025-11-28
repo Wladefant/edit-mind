@@ -189,7 +189,7 @@ const getAllVideos = async (): Promise<Video[]> => {
 const getAllVideosWithScenes = async (
   limit = 20,
   offset = 0,
-  searchFilters?: Partial<Filters>
+  searchFilters?: VideoSearchParams
 ): Promise<{ videos: VideoWithScenes[]; allSources: string[]; filters: Filters }> => {
   try {
     const cacheKey = `videos:paginated:${offset}:${limit}:${JSON.stringify(searchFilters || {})}`
@@ -957,6 +957,7 @@ async function getScenesByYear(year: number): Promise<{
     const videosDict: Record<string, VideoWithScenes> = {}
     const globalStats = {
       totalEmotions: new Map<string, number>(),
+      totalWords: new Map<string, number>(),
       totalObjects: new Map<string, number>(),
       totalFaces: new Map<string, number>(),
       totalShotTypes: new Map<string, number>(),
@@ -1001,6 +1002,11 @@ async function getScenesByYear(year: number): Promise<{
           globalStats.totalEmotions.set(emotion, (globalStats.totalEmotions.get(emotion) || 0) + 1)
         })
 
+        scene.transcriptionWords?.forEach((e) => {
+          const word = e.word
+          if (word.toLocaleLowerCase().includes('n/a')) return
+          globalStats.totalWords.set(word, (globalStats.totalWords.get(word) || 0) + 1)
+        })
         scene.objects?.forEach((obj) => {
           if (obj.toLocaleLowerCase().includes('person')) return
           globalStats.totalObjects.set(obj, (globalStats.totalObjects.get(obj) || 0) + 1)
@@ -1050,15 +1056,18 @@ async function getScenesByYear(year: number): Promise<{
 
           if (scene.faces)
             scene.faces.forEach((f) => {
-              if (!videosDict[source].faces?.includes(f) && !f.toLocaleLowerCase().includes("unknown")) videosDict[source].faces.push(f)
+              if (!videosDict[source].faces?.includes(f) && !f.toLocaleLowerCase().includes('unknown'))
+                videosDict[source].faces.push(f)
             })
           if (scene.emotions)
             scene.emotions.forEach((e) => {
-              if (!videosDict[source].emotions?.includes(e.emotion)  && !e.emotion.toLocaleLowerCase().includes("n/a")) videosDict[source].emotions.push(e.emotion)
+              if (!videosDict[source].emotions?.includes(e.emotion) && !e.emotion.toLocaleLowerCase().includes('n/a'))
+                videosDict[source].emotions.push(e.emotion)
             })
           if (scene.objects)
             scene.objects.forEach((o) => {
-              if (!videosDict[source].objects?.includes(o)  && !o.toLocaleLowerCase().includes("person")) videosDict[source].objects.push(o)
+              if (!videosDict[source].objects?.includes(o) && !o.toLocaleLowerCase().includes('person'))
+                videosDict[source].objects.push(o)
             })
           if (scene.shot_type && !videosDict[source].shotTypes?.includes(scene.shot_type))
             videosDict[source].shotTypes.push(scene.shot_type)
@@ -1086,6 +1095,10 @@ async function getScenesByYear(year: number): Promise<{
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
         .map(([emotion, count]) => ({ emotion, count })),
+      topWords: Array.from(globalStats.totalWords.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([word, count]) => ({ word, count })),
       topObjects: Array.from(globalStats.totalObjects.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 15)
