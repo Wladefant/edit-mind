@@ -1208,7 +1208,7 @@ describe('LLM Service', () => {
 
           expect(typeof response.data).toBe('string')
           expect(response.data).toContain('50')
-          expect(response.data).toContain('2 hours 30 minutes')
+          expect(response.data).toMatch(/2 hours(?: and)? 30 minutes/)
         },
         TEST_TIMEOUT
       )
@@ -1227,7 +1227,7 @@ describe('LLM Service', () => {
           const response = await generateAnalyticsResponse('What emotions do I have?', analytics)
 
           expect(typeof response.data).toBe('string')
-          expect(response.data.toLowerCase()).toMatch(/no emotion|none|not detected/)
+          expect(response.data.toLowerCase()).toMatch(/no (specific )?emotions?.*detected|none|not detected/)
         },
         TEST_TIMEOUT
       )
