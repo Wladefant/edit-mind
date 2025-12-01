@@ -5,7 +5,15 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import path from 'path'
 
 export default defineConfig({
-  plugins: [tailwindcss(), reactRouter(), tsconfigPaths({ ignoreConfigErrors: true })],
+  plugins: [
+    tailwindcss(),
+    reactRouter(),
+    tsconfigPaths({ ignoreConfigErrors: true }),
+
+  ],
+  server: {
+    allowedHosts: ['web', 'localhost', '127.0.0.1'],
+  },
   resolve: {
     alias: {
       '~': path.resolve(__dirname, 'app'),
@@ -16,27 +24,35 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['node-llama-cpp', '@node-llama-cpp/*', '@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe', 'pino-pretty'],
+    exclude: [
+      'node-llama-cpp',
+      '@node-llama-cpp/*',
+      '@ffmpeg-installer/ffmpeg',
+      '@ffprobe-installer/ffprobe',
+      'pino-pretty',
+      'shrap',
+      'chromadb',
+      'onnxruntime-node',
+      '@xenova/transformers',
+    ],
   },
   ssr: {
-    noExternal: ['node-llama-cpp', '@node-llama-cpp/*'],
     external: [
       'node-llama-cpp',
       '@node-llama-cpp/*',
       '@ffmpeg-installer/ffmpeg',
       '@ffprobe-installer/ffprobe',
-      'pino-pretty'
+      'pino-pretty',
+      'onnxruntime-node',
+      '@xenova/transformers',
     ],
   },
   build: {
     rollupOptions: {
       external: [
-        'chromadb',
-        'onnxruntime-node',
         '@ffmpeg-installer/ffmpeg',
         '@ffprobe-installer/ffprobe',
-        'sharp',
-        'egm96-universal',
+        'onnxruntime-node',
         '@xenova/transformers',
       ],
     },
