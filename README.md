@@ -273,6 +273,10 @@ For detailed instructions on each application, refer to their respective `README
 *   [**`apps/background-jobs/README.md`**](apps/background-jobs/README.md)
 
 ---
+## 🤝 Special Shoutout
+
+I would like to thank the community of/r/selfhost for their amazing support and feedback (https://www.reddit.com/r/selfhosted/comments/1ogis3j/i_built_a_selfhosted_alternative_to_googles_video/)
+
 
 ## 🤝 Contributing
 
