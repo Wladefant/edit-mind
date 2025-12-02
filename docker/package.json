@@ -1,9 +1,0 @@
-{
-	"devDependencies": {
-		"@types/lodash": "^4.17.20"
-	},
-	"dependencies": {
-		"ioredis": "^5.4.2",
-		"redis": "^5.9.0"
-	}
-}
