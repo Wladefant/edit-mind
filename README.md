@@ -25,12 +25,8 @@ All video files, frames, and extracted metadata remain fully **local**. The proj
 ## 📺 Demo
 
 ### YouTube Walkthrough
-[![Edit Mind Demo](https://img.youtube.com/vi/Ky9v85Mk6aY/maxresdefault.jpg)](https://www.youtube.com/watch?v=Ky9v85Mk6aY)  
+[![Edit Mind Demo](https://img.youtube.com/vi/YrVaJ33qmtg/maxresdefault.jpg)](https://www.youtube.com/watch?v=YrVaJ33qmtg)  
 *Click to watch a walkthrough of Edit Mind's core features.*
-
-### GIF Demo
-![Edit Mind Demo GIF](./demo.gif)  
-*Quick demonstration of the video prompting feature*
 
 ---
 
