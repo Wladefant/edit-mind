@@ -1,8 +1,9 @@
 services:
   background-jobs:
     build:
+      target: development
       context: ..
-      dockerfile: docker/Dockerfile.background-jobs.dev
+      dockerfile: docker/Dockerfile.background-jobs
       args:
         NODE_VERSION: 22.20.0
         PNPM_VERSION: 10.20.0
@@ -39,7 +40,7 @@ services:
     container_name: edit-mind-web-dev
     build:
       context: ..
-      dockerfile: docker/Dockerfile.web.dev
+      dockerfile: docker/Dockerfile.web
       target: development
       args:
         NODE_VERSION: 22.20.0
