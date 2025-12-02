@@ -123,11 +123,11 @@ HOST_MEDIA_PATH="/Users/yourusername/Videos"
 
 # 2. CHOOSE AI MODEL (Pick one option)
 # Option A: Use Gemini API (easier, requires API key)
-USE_LOCAL_MODEL="true"
+USE_LOCAL_MODEL="false"
 GEMINI_API_KEY="your-gemini-api-key-from-google-ai-studio"
 
 # Option B: Use Local Model (more private, requires model download)
-# USE_LOCAL_MODEL="false"
+# USE_LOCAL_MODEL="true"
 # SEARCH_AI_MODEL="/app/models/path/to/.gguf"
 # The AI model should be downloaded and saved it to models folder in the project root dir
 
