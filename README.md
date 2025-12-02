@@ -14,12 +14,6 @@ Perfect for creators, editors, and researchers who need smarter video management
 > ⚠️ **Development Status:** Edit Mind is currently in **active development** and **not yet production-ready**.
 > Expect incomplete features and occasional bugs. We welcome contributors to help us reach **v1.0**!
 
-### 🧠 Your Video Library, Reimagined
-
-**Edit Mind** is a comprehensive, cross-platform application (with both Desktop and Web interfaces) designed for intelligent video analysis, management, and search. It leverages a sophisticated backend system to process video files, extracting a rich set of metadata through AI-powered analysis. This allows users to perform deep searches on their video library, not just by filename, but by the actual content within the videos, such as recognized faces, spoken words, detected objects, and events.
-
-All video files, frames, and extracted metadata remain fully **local**. The project emphasizes a **Docker-first development and deployment strategy**, ensuring a consistent environment across various platforms.
-
 ---
 
 ## 📺 Demo
