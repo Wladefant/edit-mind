@@ -1,7 +1,7 @@
-from typing import List, Dict, Any
+from typing import List, Dict
 import numpy as np
 from collections import deque
-from plugins.base import AnalyzerPlugin
+from plugins.base import AnalyzerPlugin, FrameAnalysis, PluginResult
 
 class ShotTypePlugin(AnalyzerPlugin):
     """
@@ -9,23 +9,23 @@ class ShotTypePlugin(AnalyzerPlugin):
     Depends on face detection data from FaceRecognitionPlugin.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, str]):
         super().__init__(config)
         self.CLOSE_UP_THRESHOLD = config.get("close_up_threshold", 0.3)
         self.MEDIUM_SHOT_THRESHOLD = config.get("medium_shot_threshold", 0.1)
-        self.ratio_window = deque(maxlen=config.get("smoothing_window", 5))
+        self.ratio_window: deque = deque(maxlen=config.get("smoothing_window", 5))
 
     def setup(self):
         pass
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: FrameAnalysis, video_path: str) -> FrameAnalysis:
         frame_height, frame_width = frame.shape[:2]
         faces = frame_analysis.get("faces", [])
         shot_type = self.classify(frame_width, frame_height, faces)
         frame_analysis["shot_type"] = shot_type
         return frame_analysis
 
-    def classify(self, frame_width: int, frame_height: int, faces: List[Dict]) -> str:
+    def classify(self, frame_width: int, frame_height: int, faces: List[Dict[str, str]]) -> str:
         if not faces:
             return "long-shot"
 
@@ -48,8 +48,8 @@ class ShotTypePlugin(AnalyzerPlugin):
             return "medium-shot"
         return "long-shot"
 
-    def get_results(self) -> Any:
+    def get_results(self) -> PluginResult:
         return None
 
-    def get_summary(self) -> Any:
+    def get_summary(self) -> PluginResult:
         return None

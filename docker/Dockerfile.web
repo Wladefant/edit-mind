@@ -1,0 +1,88 @@
+ARG NODE_VERSION=22.20.0
+ARG PNPM_VERSION=10.20.0
+
+FROM node:${NODE_VERSION}-slim AS base
+
+ARG PNPM_VERSION
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+WORKDIR /app
+
+FROM base AS dependencies
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json prisma.config.ts ./
+COPY apps/web/package.json ./apps/web/
+COPY apps/background-jobs/package.json ./apps/background-jobs/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/prisma ./packages/prisma/
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+FROM dependencies AS builder
+
+COPY apps ./apps
+COPY packages ./packages
+COPY tsconfig.json ./
+
+RUN pnpm --filter prisma generate
+
+RUN pnpm rebuild @tailwindcss/oxide rollup sharp
+
+RUN pnpm --filter shared build
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+RUN pnpm --filter web build
+
+FROM base AS production
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/pnpm-workspace.yaml /app/
+COPY --from=builder /app/pnpm-lock.yaml /app/
+COPY --from=builder /app/package.json /app/
+COPY --from=builder /app/prisma.config.ts /app/
+
+COPY --from=builder /app/apps/web/package.json /app/apps/web/
+COPY --from=builder /app/apps/background-jobs/package.json /app/apps/background-jobs/
+COPY --from=builder /app/packages/shared/package.json /app/packages/shared/
+COPY --from=builder /app/packages/prisma/package.json /app/packages/prisma/
+
+COPY --from=builder /app/packages/prisma /app/packages/prisma
+
+COPY --from=builder /app/packages/shared/dist /app/packages/shared/dist
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+COPY --from=builder /app/apps/web/build /app/apps/web/build
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3745
+ENV HOST=0.0.0.0
+
+EXPOSE 3745
+
+CMD ["sh", "-c", "\
+  pnpm --filter prisma migrate deploy && \
+  pnpm --filter prisma generate && \
+  pnpm --filter prisma seed && \
+  pnpm --filter web start \
+"]

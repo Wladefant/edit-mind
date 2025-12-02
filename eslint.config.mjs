@@ -72,6 +72,7 @@ export default [
       'react/react-in-jsx-scope': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      
 
       // TypeScript specific rules
       '@typescript-eslint/no-unused-vars': [
@@ -83,7 +84,7 @@ export default [
       ],
 
       // General rules
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': ['warn', { allow: ['warn', 'error', 'debug'] }],
       '@typescript-eslint/no-explicit-any': 'off',
 
       // Global modification rules

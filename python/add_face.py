@@ -3,7 +3,7 @@ import os
 import json
 import face_recognition
 
-def add_face(name, image_path, known_faces_file):
+def add_face(name: str, image_path: str, known_faces_file: str) -> None:
     """
     Extracts a face encoding from an image and adds it to the known faces file.
     """

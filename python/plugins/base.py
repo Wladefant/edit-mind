@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Union, List
 import numpy as np
+
+
+FrameAnalysis = Dict[str, str]
+PluginResult = Union[Dict, List, object, None]
 
 
 class AnalyzerPlugin(ABC):
@@ -11,7 +15,7 @@ class AnalyzerPlugin(ABC):
     and extracting specific types of information (objects, faces, etc).
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, str]):
         """
         Initialize plugin with configuration.
         
@@ -32,9 +36,9 @@ class AnalyzerPlugin(ABC):
     def analyze_frame(
         self, 
         frame: np.ndarray, 
-        frame_analysis: Dict[str, Any], 
+        frame_analysis: FrameAnalysis, 
         video_path: str
-    ) -> Dict[str, Any]:
+    ) -> FrameAnalysis:
         """
         Analyze a single video frame.
         
@@ -49,7 +53,7 @@ class AnalyzerPlugin(ABC):
         pass
 
     @abstractmethod
-    def get_results(self) -> Any:
+    def get_results(self) -> PluginResult:
         """
         Return accumulated results from all processed frames.
         Called after all frames have been analyzed.
@@ -57,7 +61,7 @@ class AnalyzerPlugin(ABC):
         pass
 
     @abstractmethod
-    def get_summary(self) -> Any:
+    def get_summary(self) -> PluginResult:
         """
         Return high-level summary of analysis results.
         Called after processing is complete.

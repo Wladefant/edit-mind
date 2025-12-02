@@ -1,8 +1,8 @@
-from .base import AnalyzerPlugin
-from typing import Dict, Any
+from .base import AnalyzerPlugin, FrameAnalysis, PluginResult
+from typing import Dict, Optional, Union, List, Tuple
 import numpy as np
 import logging
-
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -13,76 +13,113 @@ except ImportError:
     EASYOCR_AVAILABLE = False
 
 class TextDetectionPlugin(AnalyzerPlugin):
-    """
-    Analyzes frames to detect and recognize text using EasyOCR.
-    """
+    """Analyzes frames to detect and recognize text using EasyOCR."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Union[str, bool, int, float]]):
         super().__init__(config)
-        self.reader = None
+        self.reader: Optional[easyocr.Reader] = None
+        self.text_scale = float(config.get('text_scale', 0.5))
+        self.min_confidence = float(config.get('min_text_confidence', 0.3))
+        self.use_gpu = config.get('device') != 'cpu'
 
-    def setup(self):
-        """
-        Initializes the EasyOCR reader. This is done once when the plugin is loaded.
-        """
+    def setup(self) -> None:
+        """Initialize the EasyOCR reader."""
         if not EASYOCR_AVAILABLE:
             logger.warning("EasyOCR not installed. Text detection will be skipped. Please run: pip install easyocr")
             return
 
         try:
-            # Initialize the reader for English. It will download the model on the first run.
-            self.reader = easyocr.Reader(['en'], gpu=self.config.get('device') != 'cpu')
-            logger.info("EasyOCR reader initialized for text detection.")
+            self.reader = easyocr.Reader(
+                ['en'], 
+                gpu=self.use_gpu,
+                verbose=False,
+                download_enabled=True
+            )
+            logger.info(f"EasyOCR reader initialized (GPU: {self.use_gpu}, Scale: {self.text_scale})")
         except Exception as e:
             logger.error(f"Failed to initialize EasyOCR reader: {e}")
             self.reader = None
 
-    def analyze_frame(self, frame: np.ndarray, frame_analysis: Dict[str, Any], video_path: str) -> Dict[str, Any]:
-        """
-        Detects text in a single frame.
-
-        :param frame: The frame to analyze (as a NumPy array).
-        :param frame_analysis: Existing analysis for this frame.
-        :return: Updated analysis dictionary with detected text.
-        """
-        # Check if reader is initialized
+    def analyze_frame(self, frame: np.ndarray, frame_analysis: FrameAnalysis, video_path: str) -> FrameAnalysis:
+        """Detect text in a single frame with optimizations."""
         if self.reader is None:
-            return {}
+            return frame_analysis
 
         try:
-            # EasyOCR expects images in RGB format
-            frame_rgb = frame[:, :, ::-1]
+            scale_factor = float(frame_analysis.get('scale_factor', 1.0))
             
-            # Perform text detection and recognition
-            results = self.reader.readtext(frame_rgb, detail=1)
+            if self.text_scale != 1.0:
+                small_frame = cv2.resize(
+                    frame, 
+                    (0, 0), 
+                    fx=self.text_scale, 
+                    fy=self.text_scale,
+                    interpolation=cv2.INTER_LINEAR
+                )
+            else:
+                small_frame = frame
             
-            detected_texts = []
+            frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            
+            results = self.reader.readtext(
+                frame_rgb,
+                detail=1,
+                paragraph=False,
+                min_size=10,
+                text_threshold=self.min_confidence,
+                low_text=self.min_confidence,
+                link_threshold=0.4,
+                canvas_size=2560, 
+                mag_ratio=1.0
+            )
+            
+            if not results:
+                frame_analysis['detected_text'] = []
+                return frame_analysis
+            
+            detected_texts: List[Dict[str, Union[str, float, List[List[int]], Dict[str, int]]]] = []
+            scale_inverse = 1.0 / self.text_scale
+            
             for (bbox, text, prob) in results:
-                # bbox is a list of 4 points (x, y)
-                # Convert numpy types to native Python types for JSON serialization
+                if prob < self.min_confidence:
+                    continue
+                
+                scaled_bbox = [
+                    [int(p[0] * scale_inverse * scale_factor), 
+                     int(p[1] * scale_inverse * scale_factor)] 
+                    for p in bbox
+                ]
+                
+                x_coords = [p[0] for p in scaled_bbox]
+                y_coords = [p[1] for p in scaled_bbox]
+                
+                x_min = min(x_coords)
+                y_min = min(y_coords)
+                x_max = max(x_coords)
+                y_max = max(y_coords)
+                
                 detected_texts.append({
                     'text': text,
                     'confidence': float(prob),
-                    'bounding_box': [[int(p[0]), int(p[1])] for p in bbox]
+                    'bounding_box': scaled_bbox,
+                    'bbox': {
+                        'x': x_min,
+                        'y': y_min,
+                        'width': x_max - x_min,
+                        'height': y_max - y_min
+                    }
                 })
-
             
-            if detected_texts:
-                return {'detected_text': detected_texts}
+            frame_analysis['detected_text'] = detected_texts
 
         except Exception as e:
             logger.error(f"Error during text detection: {e}")
+            frame_analysis['detected_text'] = []
 
-        return {}
+        return frame_analysis
 
-    def get_results(self) -> Any:
-        """
-        This plugin does not aggregate scene-level results.
-        """
+    def get_results(self) -> PluginResult:
         return None
 
-    def get_summary(self) -> Any:
-        """
-        This plugin does not provide a summary.
-        """
+    def get_summary(self) -> PluginResult:
         return None

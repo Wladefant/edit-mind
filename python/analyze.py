@@ -3,7 +3,7 @@ import json
 import importlib
 import inspect
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Optional, Tuple, Iterator, Callable
+from typing import List, Dict, Optional, Tuple, Iterator, Callable, Union
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 import gc
+from plugins.base import AnalyzerPlugin, FrameAnalysis
 
 warnings.filterwarnings('ignore', category=FutureWarning, module='ultralytics')
 
@@ -38,14 +39,13 @@ from plugins.base import AnalyzerPlugin
 @dataclass
 class AnalysisConfig:
     """Video analysis configuration with environment-based overrides."""
-    sample_interval_seconds: float = 2.0
+    sample_interval_seconds: float = 2.5
     max_workers: int = 4
     batch_size: int = 16
-    yolo_confidence: float = 0.35
+    yolo_confidence: float = 0.5
     yolo_iou: float = 0.45
-    resize_to_720p: bool = True
     known_faces_file: str = 'known_faces.json'
-    yolo_model: str = 'yolov8n.pt'
+    yolo_model: str = 'yolov8s.pt'
     output_dir: str = 'analysis_results'
     unknown_faces_dir: str = 'unknown_faces'
     enable_streaming: bool = True
@@ -56,11 +56,20 @@ class AnalysisConfig:
     batch_timeout_seconds: int = 300
     memory_cleanup_interval: int = 50
     lazy_plugin_init: bool = True
-
-    def __post_init__(self):
+    target_resolution_height: int = 720 
+    plugin_skip_interval: Optional[Dict[str, int]] = None
+    
+    def __post_init__(self) -> None:
         self._load_settings()
         self._adjust_for_memory()
         self.enable_streaming = True
+        
+        if self.plugin_skip_interval is None:
+            self.plugin_skip_interval = {
+                'DominantColorPlugin': 2,
+                'TextDetectionPlugin': 3,
+                'EmotionDetectionPlugin': 2,
+            }
 
     def _load_settings(self) -> None:
         """Load settings from external JSON file if available."""
@@ -86,14 +95,26 @@ class AnalysisConfig:
         if available_gb < 8:
             self.max_workers = 2
             self.frame_buffer_limit = 4
+            self.target_resolution_height = 480
             logger.warning(
                 f"Low memory detected ({available_gb:.1f}GB). "
-                f"Reducing workers to {self.max_workers}"
+                f"Reducing workers to {self.max_workers}, resolution to {self.target_resolution_height}p"
             )
+        elif available_gb < 16:
+            self.target_resolution_height = 720
+            logger.info(f"Medium memory ({available_gb:.1f}GB). Using 720p resolution")
 
     @property
     def device(self) -> str:
-        """Return processing device (CPU-only for stability)."""
+        """Return processing device with auto-detection."""
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+        except ImportError:
+            pass
         return 'cpu'
 
 
@@ -107,26 +128,38 @@ class PerformanceMetrics:
     memory_mb: Optional[float] = None
     peak_memory_mb: Optional[float] = None
 
+@dataclass
+class PluginMetrics:
+    """Performance metrics for individual plugins."""
+    plugin_name: str
+    total_duration_seconds: float
+    frames_processed: int
+    avg_time_per_frame_ms: float
+    min_time_ms: float
+    max_time_ms: float
+    timeout_count: int = 0
+    error_count: int = 0
+
 
 @dataclass
 class VideoAnalysisResult:
     """Complete video analysis result container."""
     video_file: str
-    scene_analysis: Dict
-    detected_activities: List[Dict]
-    face_recognition_summary: Dict
-    frame_analysis: List[Dict]
-    summary: Dict
-    performance_metrics: Optional[List[Dict]] = None
+    scene_analysis: Dict[str, Union[str, int, float, bool, List, Dict]]
+    detected_activities: List[Dict[str, Union[str, int, float]]]
+    face_recognition_summary: Dict[str, Union[str, int, float, List]]
+    frame_analysis: List[FrameAnalysis]
+    summary: Dict[str, Union[str, int, float, List, Dict]]
+    performance_metrics: Optional[List[Dict[str, Union[str, int, float]]]] = None
     error: Optional[str] = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Union[str, int, float, bool, List, Dict, None]]:
         """Convert to JSON-serializable dictionary."""
         data_dict = asdict(self)
         return self._convert_numpy_types(data_dict)
 
     @staticmethod
-    def _convert_numpy_types(obj):
+    def _convert_numpy_types(obj: Union[Dict, List, np.bool_, np.int_, np.float_, np.ndarray, str, int, float, bool, None]) -> Union[Dict, List, str, int, float, bool, None]:
         """Recursively convert NumPy types to Python native types."""
         if isinstance(obj, dict):
             return {k: VideoAnalysisResult._convert_numpy_types(v) for k, v in obj.items()}
@@ -142,11 +175,12 @@ class VideoAnalysisResult:
 class MemoryMonitor:
     """Aggressive memory management and monitoring."""
     
-    def __init__(self, config: AnalysisConfig):
-        self.config = config
-        self.process = psutil.Process() if HAS_PSUTIL else None
-        self.peak_memory = 0.0
-        self.cleanup_count = 0
+    def __init__(self, config: AnalysisConfig) -> None:
+        self.config: AnalysisConfig = config
+        self.process: Optional['psutil.Process'] = psutil.Process() if HAS_PSUTIL else None
+        self.peak_memory: float = 0.0
+        self.cleanup_count: int = 0
+        self.last_cleanup_time: float = time.time()
 
     def get_memory_mb(self) -> float:
         """Get current memory usage in MB."""
@@ -156,27 +190,33 @@ class MemoryMonitor:
         self.peak_memory = max(self.peak_memory, mem)
         return mem
 
-    def force_cleanup(self) -> None:
+    def force_cleanup(self, aggressive: bool = False) -> None:
         """Force Python garbage collection and clear caches."""
         if not self.config.enable_aggressive_gc:
             return
-            
-        for _ in range(3):
-            gc.collect()
         
+        now = time.time()
+        if not aggressive and (now - self.last_cleanup_time) < 5.0:
+            return
+        
+        self.last_cleanup_time = now
+        collected = gc.collect()
         self.cleanup_count += 1
         
         try:
             import torch
             if torch.backends.mps.is_available():
                 torch.mps.empty_cache()
-        except ImportError:
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except (ImportError, AttributeError):
             pass
 
-        if self.cleanup_count % 10 == 0:
+        if self.cleanup_count % 10 == 0 or aggressive:
             logger.debug(
                 f"Memory cleanup #{self.cleanup_count}: "
-                f"{self.get_memory_mb():.0f}MB (peak: {self.peak_memory:.0f}MB)"
+                f"{self.get_memory_mb():.0f}MB (peak: {self.peak_memory:.0f}MB) "
+                f"[collected {collected} objects]"
             )
 
     def check_memory_warning(self) -> bool:
@@ -209,20 +249,20 @@ class MemoryMonitor:
 class StageTracker:
     """Context manager for performance tracking."""
     
-    def __init__(self, analyzer: 'VideoAnalyzer', stage_name: str):
-        self.analyzer = analyzer
-        self.stage_name = stage_name
-        self.start_time = None
-        self.start_memory = None
-        self.frames_processed = 0
+    def __init__(self, analyzer: "VideoAnalyzer", stage_name: str) -> None:
+        self.analyzer: VideoAnalyzer = analyzer
+        self.stage_name: str = stage_name
+        self.start_time: Optional[float] = None
+        self.start_memory: Optional[float] = None
+        self.frames_processed: int = 0
 
-    def __enter__(self):
+    def __enter__(self) -> "StageTracker":
         self.start_time = time.time()
         self.start_memory = self.analyzer.memory_monitor.get_memory_mb()
         logger.info(f"Starting stage: {self.stage_name}")
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: object) -> None:
         duration = time.time() - self.start_time
         end_memory = self.analyzer.memory_monitor.get_memory_mb()
         memory_delta = end_memory - self.start_memory if self.start_memory else None
@@ -248,17 +288,15 @@ class StageTracker:
 class FrameProcessor:
     """Zero-disk-IO streaming frame extraction and preprocessing."""
 
-    def __init__(self, config: AnalysisConfig):
-        self.config = config
+    def __init__(self, config: AnalysisConfig) -> None:
+        self.config: AnalysisConfig = config
+        self.frame_count: int = 0
 
     def extract_frames_streaming_generator(
         self, 
         video_path: str
-    ) -> Iterator[Tuple[Dict, float, int]]:
-        """
-        Memory-efficient streaming generator that yields frames directly.
-        No disk writes - everything stays in RAM.
-        """
+    ) -> Iterator[Tuple[Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]], float, int]]:
+        """Memory-efficient streaming generator that yields frames directly."""
         cap = cv2.VideoCapture(video_path)
         
         try:
@@ -284,17 +322,19 @@ class FrameProcessor:
                     logger.warning(f"Failed to read frame at index {frame_idx}")
                     break
 
-                processed_frame = self._preprocess_frame(frame)
+                processed_frame, scale_factor, original_size = self._preprocess_frame(frame)
                 
                 timestamp_ms = round((frame_idx / fps) * 1000)
                 next_frame_idx = min(frame_idx + sample_interval, total_frames)
                 end_timestamp_ms = round((next_frame_idx / fps) * 1000)
 
-                frame_data = {
+                frame_data: Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]] = {
                     'frame': processed_frame,
                     'timestamp_ms': timestamp_ms,
                     'end_timestamp_ms': end_timestamp_ms,
-                    'frame_idx': frame_idx
+                    'frame_idx': frame_idx,
+                    'scale_factor': scale_factor,  
+                    'original_size': original_size  
                 }
                 
                 yield frame_data, fps, total_frames
@@ -307,38 +347,50 @@ class FrameProcessor:
             if cap is not None:
                 cap.release()
 
-    def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
-        """Resize frame for optimal processing. Returns new array for GC."""
+    def _preprocess_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Tuple[int, int]]:
+        """Resize frame for optimal processing with better scaling."""
         if frame is None:
             raise ValueError("Received None frame")
         
-        if self.config.resize_to_720p and frame.shape[0] > 720:
-            h, w = frame.shape[:2]
-            target_h = 720
-            target_w = int(w * (target_h / h))
-            return cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        original_h, original_w = frame.shape[:2]
         
-        return frame.copy()
+        if original_h > self.config.target_resolution_height:
+            target_h = self.config.target_resolution_height
+            target_w = int(original_w * (target_h / original_h))
+            
+            resized = cv2.resize(
+                frame, 
+                (target_w, target_h), 
+                interpolation=cv2.INTER_LINEAR
+            )
+            scale_factor = original_h / target_h  
+            return resized, scale_factor, (original_w, original_h)
+        
+        return frame.copy(), 1.0, (original_w, original_h)
 
 
 def load_plugins(config: AnalysisConfig) -> List[AnalyzerPlugin]:
-    """Dynamically load all analyzer plugins from plugins directory."""
+    """Dynamically load plugins in priority order for optimal performance."""
     plugins = []
     plugin_dir = Path(__file__).parent / "plugins"
     config_dict = asdict(config)
-    config_dict['device'] = 'cpu'
+    config_dict['device'] = config.device
 
     logger.info(f"Loading plugins from {plugin_dir}...")
+    logger.info(f"Target device: {config.device}")
 
-    plugin_module_map = {
-        "ObjectDetectionPlugin": "object_detection",
-        "FaceRecognitionPlugin": "face_recognition",
-        "ShotTypePlugin": "shot_type",
-        "EnvironmentPlugin": "environment",
-        "DominantColorPlugin": "dominant_color",
-    }
+    plugin_module_map = [
+        ("ObjectDetectionPlugin", "object_detection"),
+        ("FaceRecognitionPlugin", "face_recognition"),
+        ("ShotTypePlugin", "shot_type"),
+        ("DominantColorPlugin", "dominant_color"),
+        ("EnvironmentPlugin", "environment"),
+        ("ActivityPlugin", "activity"),
+        ("EmotionDetectionPlugin", "emotion_detection"),
+        ("TextDetectionPlugin", "text_detection"),
+    ]
 
-    for plugin_name, module_stem in plugin_module_map.items():
+    for plugin_name, module_stem in plugin_module_map:
         module_name = f"plugins.{module_stem}"
         
         try:
@@ -360,25 +412,31 @@ def load_plugins(config: AnalysisConfig) -> List[AnalyzerPlugin]:
     logger.info(f"Total plugins loaded: {len(plugins)}\n")
     return plugins
 
-
 class VideoAnalyzer:
     """Main video analysis coordinator with memory-optimized streaming."""
 
-    def __init__(self, video_path: str, config: Optional[AnalysisConfig] = None):
-        self.video_path = video_path
-        self.config = config or AnalysisConfig()
-        self.video_base_name = Path(self.video_path).stem
+    def __init__(
+        self, video_path: str, config: Optional[AnalysisConfig] = None
+    ) -> None:
+        self.video_path: str = video_path
+        self.config: AnalysisConfig = config or AnalysisConfig()
+        self.video_base_name: str = Path(self.video_path).stem
         self.metrics: List[PerformanceMetrics] = []
-        self.frame_processor = FrameProcessor(self.config)
-        self.memory_monitor = MemoryMonitor(self.config)
-        self.progress_callback: Optional[Callable] = None
-        self.start_time = None
-        self.frames_analyzed = 0
-        
+        self.frame_processor: FrameProcessor = FrameProcessor(self.config)
+        self.memory_monitor: MemoryMonitor = MemoryMonitor(self.config)
+        self.progress_callback: Optional[
+            Callable[[float, float, float, float], None]
+        ] = None
+        self.start_time: Optional[float] = None
+        self.frames_analyzed: int = 0
+        self.plugin_frame_counters: Dict[str, int] = {}
+        self.plugin_metrics: Dict[str, List[float]] = {}
+        self.plugin_errors: Dict[str, int] = {}
+        self.plugin_timeouts: Dict[str, int] = {}
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
-        
-        self.plugin_definitions = load_plugins(self.config)
-        self.plugins = []
+
+        self.plugin_definitions: List[AnalyzerPlugin] = load_plugins(self.config)
+        self.plugins: List[AnalyzerPlugin] = []
 
     def _track_stage(self, stage_name: str) -> StageTracker:
         """Create performance tracking context manager."""
@@ -388,6 +446,9 @@ class VideoAnalyzer:
         """Execute complete video analysis pipeline."""
         start_time = time.time()
         self.start_time = start_time
+        
+        if self.progress_callback:
+            self.progress_callback(0, 0.0, 0, 0)
 
         try:
             if not Path(self.video_path).exists():
@@ -418,7 +479,8 @@ class VideoAnalyzer:
                     "confidence": activities[0]['confidence'] if activities else 0.0,
                     "total_analysis_time_seconds": total_time,
                     "peak_memory_mb": self.memory_monitor.peak_memory,
-                    "memory_cleanups": self.memory_monitor.cleanup_count
+                    "memory_cleanups": self.memory_monitor.cleanup_count,
+                    "plugin_performance": self._get_plugin_performance_summary() 
                 },
                 performance_metrics=[asdict(m) for m in self.metrics]
             )
@@ -441,11 +503,9 @@ class VideoAnalyzer:
                 logger.info("Initializing plugins sequentially...")
                 for name, cls, config_dict in self.plugin_definitions:
                     try:
-                        logger.info(f"  Initializing {name}...")
-                        plugin = cls(config_dict)
+                        plugin: AnalyzerPlugin = cls(config_dict)
                         plugin.setup()
                         self.plugins.append(plugin)
-                        logger.info(f"  ✓ {name} ready")
                     except Exception as e:
                         logger.error(f"  ✗ Failed to setup {name}: {e}")
             else:
@@ -454,7 +514,9 @@ class VideoAnalyzer:
                     try:
                         plugin.setup()
                     except Exception as e:
-                        logger.error(f"Failed to setup {plugin.__class__.__name__}: {e}")
+                        logger.error(
+                            f"Failed to setup {plugin.__class__.__name__}: {e}"
+                        )
         else:
             self.plugins = self.plugin_definitions
             for plugin in self.plugins:
@@ -465,13 +527,10 @@ class VideoAnalyzer:
 
         logger.info(f"Successfully loaded {len(self.plugins)} plugins\n")
 
-    def _analyze_streaming_optimized(self) -> List[Dict]:
-        """
-        Stream-process video frames with aggressive memory cleanup.
-        Batches are immediately cleared after processing.
-        """
-        frame_analyses = []
-        batch = []
+    def _analyze_streaming_optimized(self) -> List[FrameAnalysis]:
+        """Stream-process video frames with optimized batching."""
+        frame_analyses: List[FrameAnalysis] = []
+        batch: List[Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]]] = []
         
         cap = cv2.VideoCapture(self.video_path)
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -480,8 +539,43 @@ class VideoAnalyzer:
         total_sampled = (total_frames // sample_interval) + 1
         cap.release()
         
+        if HAS_PSUTIL:
+            available_gb = psutil.virtual_memory().available / (1024**3)
+            if available_gb < 4:
+                self.config.frame_buffer_limit = 2
+            elif available_gb < 8:
+                self.config.frame_buffer_limit = 4
+        
         with self._track_stage("streaming_analysis") as stage:
-            with tqdm(total=total_sampled, desc="  Processing", unit="frame", file=sys.stderr) as pbar:
+            class CallbackTqdm(tqdm):
+                def __init__(self, *args: object, callback: Optional[Callable[[float, float, float, float], None]] = None, **kwargs: object):
+                    self.callback = callback
+                    self.start_time = time.time()
+                    super().__init__(*args, **kwargs)
+                
+                def update(self, n: int = 1) -> bool:
+                    result = super().update(n)
+                    if self.callback and self.total:
+                        try:
+                            elapsed = time.time() - self.start_time
+                            progress_percent = min(100.0, (self.n / self.total) * 100.0)
+                            self.callback(
+                                progress_percent,
+                                elapsed,
+                                float(self.n),
+                                float(self.total)
+                            )
+                        except Exception as e:
+                            logger.debug(f"Progress callback error: {e}")
+                    return result
+            
+            with CallbackTqdm(
+                total=total_sampled, 
+                desc="  Processing", 
+                unit="frame", 
+                file=sys.stderr,
+                callback=self.progress_callback
+            ) as pbar:
                 try:
                     frame_generator = self.frame_processor.extract_frames_streaming_generator(
                         self.video_path
@@ -498,17 +592,12 @@ class VideoAnalyzer:
                             batch.clear()
                             
                             if self.memory_monitor.check_memory_warning():
-                                logger.warning("Memory pressure detected, pausing...")
+                                logger.warning("Memory pressure detected, forcing aggressive cleanup...")
+                                self.memory_monitor.force_cleanup(aggressive=True)
                                 time.sleep(0.5)
                         
                         if frame_idx > 0 and frame_idx % self.config.memory_cleanup_interval == 0:
                             self.memory_monitor.force_cleanup()
-                            mem_stats = self.memory_monitor.get_memory_stats()
-                            logger.info(
-                                f"Checkpoint: {self.frames_analyzed} frames | "
-                                f"Mem: {mem_stats.get('current_mb', 0):.0f}MB / "
-                                f"Peak: {mem_stats.get('peak_mb', 0):.0f}MB"
-                            )
                     
                     if batch:
                         batch_results = self._process_and_cleanup_batch(
@@ -523,33 +612,26 @@ class VideoAnalyzer:
             
             stage.frames_processed = len(frame_analyses)
         
-        self.memory_monitor.force_cleanup()
+        self.memory_monitor.force_cleanup(aggressive=True)
         logger.info(f"\n✓ Analysis complete: {len(frame_analyses)} frames")
         
         return frame_analyses
 
     def _process_and_cleanup_batch(
-        self, 
-        batch: List[Dict], 
-        frame_idx: int, 
-        pbar, 
-        is_final: bool = False
-    ) -> List[Dict]:
+        self,
+        batch: List[Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]]],
+        frame_idx: int,
+        pbar: tqdm,
+        is_final: bool = False,
+    ) -> List[FrameAnalysis]:
         """Process batch and aggressively clean up memory."""
-        batch_results = []
+        batch_results: List[FrameAnalysis] = []
         
         try:
             batch_results = self._process_micro_batch(batch)
             pbar.update(len(batch_results))
             self.frames_analyzed += len(batch_results)
-            
-            if self.progress_callback:
-                elapsed = time.time() - self.start_time
-                progress_percent = min(100.0, math.ceil((self.frames_analyzed / pbar.total) * 100.0))
-                self.progress_callback(
-                    progress_percent, elapsed, self.frames_analyzed, int(pbar.total)
-                )
-
+                
         except Exception as e:
             logger.error(f"Error processing batch at frame {frame_idx}: {e}")
         finally:
@@ -560,85 +642,131 @@ class VideoAnalyzer:
                 logger.debug("Final batch processed and cleaned up")
         
         return batch_results
-
-    def _cleanup_batch_frames(self, batch: List[Dict]) -> None:
+    
+    def _cleanup_batch_frames(self, batch: List[Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]]]) -> None:
         """Delete all frame arrays from memory."""
         for frame_data in batch:
             frame_data.pop('frame', None)
-
-    def _process_micro_batch(self, batch: List[Dict]) -> List[Dict]:
-        """Process batch through all plugins with limited parallelism."""
-        results = [
+            
+    def _should_run_plugin(self, plugin: AnalyzerPlugin, frame_idx: int) -> bool:
+        """Determine if plugin should run on this frame based on skip interval."""
+        plugin_name = plugin.__class__.__name__
+        
+        critical_plugins = ['ObjectDetectionPlugin', 'FaceRecognitionPlugin']
+        if plugin_name in critical_plugins:
+            return True
+        
+        if self.config.plugin_skip_interval is None:
+            return True
+        skip_interval = self.config.plugin_skip_interval.get(plugin_name, 1)
+        
+        if plugin_name not in self.plugin_frame_counters:
+            self.plugin_frame_counters[plugin_name] = 0
+        
+        self.plugin_frame_counters[plugin_name] += 1
+        
+        return self.plugin_frame_counters[plugin_name] % skip_interval == 0
+    
+    def _process_micro_batch(self, batch: List[Dict[str, Union[np.ndarray, int, float, Tuple[int, int]]]]) -> List[FrameAnalysis]:
+        """Process batch through plugins with selective execution."""
+        results: List[FrameAnalysis] = [
             {
                 'start_time_ms': b['timestamp_ms'],
                 'end_time_ms': b['end_timestamp_ms'],
-                'duration_ms': b['end_timestamp_ms'] - b['timestamp_ms']
+                'duration_ms': b['end_timestamp_ms'] - b['timestamp_ms'],
+                'frame_idx': b['frame_idx']
             }
             for b in batch
         ]
         
         for plugin in self.plugins:
-            executor = None
+            plugin_name = plugin.__class__.__name__
             
-            try:
-                executor = ThreadPoolExecutor(
-                    max_workers=min(self.config.max_workers, len(batch))
-                )
+            for i in range(len(batch)):
+                frame_idx = batch[i]['frame_idx']
                 
-                futures = [
-                    executor.submit(
-                        self._safe_plugin_call,
+                if not self._should_run_plugin(plugin, frame_idx):
+                    logger.debug(f"Skipping {plugin_name} for frame {frame_idx}")
+                    continue
+                
+                try:
+                    plugin_result = self._safe_plugin_call(
                         plugin,
                         batch[i]['frame'],
-                        results[i].copy()
+                        results[i].copy(),
                     )
-                    for i in range(len(batch))
-                ]
-                
-                for i, future in enumerate(futures):
-                    try:
-                        plugin_result = future.result(timeout=self.config.plugin_timeout_seconds)
-                        if plugin_result and isinstance(plugin_result, dict):
-                            results[i].update(plugin_result)
-                    except TimeoutError:
-                        logger.warning(
-                            f"Timeout: Frame {i} in {plugin.__class__.__name__} took too long"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Frame {i} failed in {plugin.__class__.__name__}: {e}")
+                    if plugin_result and isinstance(plugin_result, dict):
+                        results[i].update(plugin_result)
+                        
+                except TimeoutError:
+                    logger.warning(
+                        f"Timeout: Frame {i} in {plugin_name} took too long"
+                    )
+                except Exception as e:
+                    logger.warning(f"Frame {i} failed in {plugin.__class__.__name__}: {e}")
 
-            except Exception as e:
-                logger.error(f"Error in {plugin.__class__.__name__} batch processing: {e}")
-            finally:
-                if executor is not None:
-                    try:
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    except TypeError:
-                        executor.shutdown(wait=False)
-        
         return results
 
     def _safe_plugin_call(
-        self, 
-        plugin: AnalyzerPlugin, 
-        frame: np.ndarray, 
-        frame_analysis: Dict
-    ) -> Dict:
+        self, plugin: AnalyzerPlugin, frame: np.ndarray, frame_analysis: FrameAnalysis
+    ) -> FrameAnalysis:
         """Safely call plugin with error handling."""
+        plugin_name = plugin.__class__.__name__
+
+        if plugin_name not in self.plugin_metrics:
+            self.plugin_metrics[plugin_name] = []
+            self.plugin_errors[plugin_name] = 0
+            self.plugin_timeouts[plugin_name] = 0
+        
+        start_time = time.time()
+        
         try:
-            return plugin.analyze_frame(frame, frame_analysis, self.video_path)
+            result = plugin.analyze_frame(frame, frame_analysis, self.video_path)
+            duration_ms = (time.time() - start_time) * 1000
+            self.plugin_metrics[plugin_name].append(duration_ms)
+            return result
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            self.plugin_timeouts[plugin_name] += 1
             logger.warning(f"Error in {plugin.__class__.__name__}: {e}")
             return frame_analysis
-
+        
+    def _get_plugin_performance_summary(self) -> List[Dict[str, Union[str, int, float]]]:
+        """Calculate performance statistics for each plugin."""
+        summary = []
+        
+        for plugin_name, timings in self.plugin_metrics.items():
+            if not timings:
+                continue
+                
+            total_duration_s = sum(timings) / 1000
+            frames_processed = len(timings)
+            avg_time_ms = sum(timings) / len(timings)
+            min_time_ms = min(timings)
+            max_time_ms = max(timings)
+            
+            summary.append({
+                'plugin_name': plugin_name,
+                'total_duration_seconds': round(total_duration_s, 3),
+                'frames_processed': frames_processed,
+                'avg_time_per_frame_ms': round(avg_time_ms, 2),
+                'min_time_ms': round(min_time_ms, 2),
+                'max_time_ms': round(max_time_ms, 2),
+                'timeout_count': self.plugin_timeouts.get(plugin_name, 0),
+                'error_count': self.plugin_errors.get(plugin_name, 0)
+            })
+        
+            summary.sort(key=lambda x: x['total_duration_seconds'], reverse=True)
+            return summary
+        
     def _run_post_processing(
-        self, 
-        frame_analyses: List[Dict]
-    ) -> Tuple[Dict, List[Dict], Dict]:
+        self, frame_analyses: List[FrameAnalysis]
+    ) -> Tuple[Dict[str, Union[str, int, float, bool, List, Dict]], 
+               List[Dict[str, Union[str, int, float]]], Dict[str, Union[str, int, float, List]]]:
         """Execute post-processing plugins."""
-        scene_analysis = {}
-        detected_activities = []
-        face_summary = {}
+        scene_analysis: List[FrameAnalysis] = {}
+        detected_activities: List[Dict[str, Union[str, int, float]]] = []
+        face_summary: Dict[str, Union[str, int, float, List]] = {}
 
         logger.info("Running post-processing...")
 
@@ -692,8 +820,38 @@ class VideoAnalyzer:
             
             if metric.peak_memory_mb is not None:
                 logger.info(f"  Peak Memory: {metric.peak_memory_mb:.0f} MB")
-
-    def _create_error_result(self, error: str) -> VideoAnalysisResult:
+        plugin_summary = self._get_plugin_performance_summary()
+        
+        if plugin_summary:
+            logger.info("\n" + "="*70)
+            logger.info("PLUGIN PERFORMANCE:")
+            logger.info("="*70)
+            
+            total_plugin_time = sum(p['total_duration_seconds'] for p in plugin_summary)
+            
+            for i, plugin_stats in enumerate(plugin_summary, 1):
+                percentage = (plugin_stats['total_duration_seconds'] / total_plugin_time * 100) if total_plugin_time > 0 else 0
+                
+                logger.info(f"\n  #{i}. {plugin_stats['plugin_name']}")
+                logger.info(f"      Total Time: {plugin_stats['total_duration_seconds']:.3f}s ({percentage:.1f}%)")
+                logger.info(f"      Frames: {plugin_stats['frames_processed']}")
+                logger.info(f"      Avg/Frame: {plugin_stats['avg_time_per_frame_ms']:.2f}ms")
+                logger.info(f"      Range: {plugin_stats['min_time_ms']:.2f}ms - {plugin_stats['max_time_ms']:.2f}ms")
+                
+                if plugin_stats['error_count'] > 0:
+                    logger.info(f"      ⚠ Errors: {plugin_stats['error_count']}")
+                if plugin_stats['timeout_count'] > 0:
+                    logger.info(f"      ⚠ Timeouts: {plugin_stats['timeout_count']}")
+            
+            logger.info(f"\n  Total Plugin Time: {total_plugin_time:.2f}s")
+            logger.info(f"  Overall Processing Time: {total_time:.2f}s")
+            overhead = total_time - total_plugin_time
+            logger.info(f"  Framework Overhead: {overhead:.2f}s ({overhead/total_time*100:.1f}%)")
+        
+        logger.info("\n" + "="*70 + "\n")
+        
+        
+    def _create_error_result(self, error: str) -> "VideoAnalysisResult":
         """Create error result object."""
         return VideoAnalysisResult(
             video_file=self.video_path,
@@ -715,13 +873,13 @@ class OutputManager:
     """Manages analysis result serialization."""
     
     @staticmethod
-    def get_output_path(video_path: str, output_dir: str) -> Path:
+    def get_output_path(video_path: str, output_dir: str) -> "Path":
         """Generate output JSON path for video file."""
         video_name = Path(video_path).stem
         return Path(output_dir) / f"{video_name}_analysis.json"
     
     @staticmethod
-    def save_result(result: VideoAnalysisResult, output_path: Path) -> bool:
+    def save_result(result: "VideoAnalysisResult", output_path: "Path") -> bool:
         """Save analysis result to JSON file."""
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -784,11 +942,11 @@ def main():
     parser.add_argument("--buffer", type=int, help="Frame buffer limit")
     parser.add_argument("--interval", type=float, help="Sample interval in seconds")
     parser.add_argument("--cleanup", type=int, help="Force cleanup every N frames")
-    parser.add_argument("--no-resize", action="store_true", help="Disable 720p resize")
     parser.add_argument("--no-report", action="store_true", help="Disable performance report")
     parser.add_argument("--no-aggressive-gc", action="store_true", help="Disable aggressive GC")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    
+    parser.add_argument("--fast", action="store_true", help="Enable all speed optimizations")
+
     args = parser.parse_args()
     
     if not Path(args.video_file).exists():
@@ -805,25 +963,30 @@ def main():
         config.sample_interval_seconds = args.interval
     if args.cleanup:
         config.memory_cleanup_interval = args.cleanup
-    if args.no_resize:
-        config.resize_to_720p = False
     if args.no_report:
         config.enable_performance_report = False
     if args.no_aggressive_gc:
         config.enable_aggressive_gc = False
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    if args.fast:
+        config.sample_interval_seconds = 3.0  # Sample every 3 seconds instead of 2
+        config.target_resolution_height = 480  # Lower resolution
+        config.frame_buffer_limit = 4  # Smaller batches
+        config.plugin_skip_interval = {
+            'TextDetectionPlugin': 5,
+            'EmotionDetectionPlugin': 3,
+            'DominantColorPlugin': 3,
+        }
+        logger.info("⚡ Fast mode enabled - trading some accuracy for speed")
     
+        
     output_path = args.output or OutputManager.get_output_path(
         args.video_file, 
         config.output_dir
     )
     
-    logger.info(f"Video: {args.video_file}")
-    logger.info(f"Output: {output_path}")
-    logger.info(f"Workers: {config.max_workers}")
-    logger.info(f"Buffer limit: {config.frame_buffer_limit} frames")
-    logger.info(f"Sample interval: {config.sample_interval_seconds}s")
 
     try:
         analyze_and_save(args.video_file, output_path, config)

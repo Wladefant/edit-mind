@@ -1,0 +1,36 @@
+# Node
+node_modules
+.npmrc
+.pnpm-store
+
+# Python
+.venv
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+
+apps/desktop
+dist
+out
+.DS_Store
+*.log*
+temp
+.thumbnails
+python/.venv
+.results
+.env
+.faces
+analysis_results
+*.pt
+output-videos
+__pycache__
+.chroma_db
+.locations.json
+.venv
+apps/web/.react-router
+test-videos
+internal
+apps/background-jobs/known_faces.json
+.faces.json
+*.gguf

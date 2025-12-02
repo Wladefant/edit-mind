@@ -7,20 +7,23 @@ tqdm>=4.66.0
 torch>=2.1.0
 torchvision>=0.16.0
 ultralytics>=8.0.0
+transformers>=4.35.0
 
 # Face recognition
 face-recognition>=1.3.0
 dlib>=19.24.0
 
 # Emotion detection (optional - can be heavy)
-fer>=22.5.0
+fer===25.10.3
 tensorflow>=2.13.0
 
-# Vector database
-chromadb>=0.4.0
+# Video processing with audio support
+ffmpeg-python>=0.2.0
+moviepy>=1.0.3
+
 
 # Audio transcription
-openai-whisper>=20230314
+faster-whisper>=1.2.1
 
 # Color analysis
 scikit-learn>=1.3.0
@@ -38,4 +41,6 @@ python-multipart>=0.0.6
 
 # Testing
 pytest>=7.4.0
-pytest-mock>=3.12.0
+coverage>=7.11.0
+
+python-dotenv>=1.2.1
