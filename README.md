@@ -153,21 +153,6 @@ cp .env.example docker/.env
 cp .env.system.example docker/.env.system
 ```
 
-#### Step 3.3: Advanced Configuration (Optional)
-
-The `docker/.env.system` file contains system-level defaults. **Most users don't need to modify this file.**
-
-If you need to customize internal paths, ports, or service configurations:
-```bash
-# View system defaults
-cat docker/.env.system
-
-# Edit if needed (advanced users only)
-nano docker/.env.system 
-
-# use VS code
-code docker/.env.system 
-```
 
 ### 4. Start the Services
 
