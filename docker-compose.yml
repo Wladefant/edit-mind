@@ -1,6 +1,6 @@
 services:
   background-jobs:
-    image: ghcr.io/iliashad/edit-mind/edit-mind-background-jobs:${VERSION:-latest}
+    image: ghcr.io/iliashad/edit-mind-background-jobs:${VERSION:-latest}
     container_name: edit-mind-background-jobs
     ports:
       - "${BACKGROUND_JOBS_PORT:-4000}:4000"
@@ -23,7 +23,7 @@ services:
       - yolo-models:/app/models/yolo:rw
 
   web:
-    image: ghcr.io/iliashad/edit-mind/edit-mind-web:${VERSION:-latest}
+    image: ghcr.io/iliashad/edit-mind-web:${VERSION:-latest}
     container_name: edit-mind-web
     environment:
       NODE_ENV: "production"
