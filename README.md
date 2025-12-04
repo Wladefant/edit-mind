@@ -105,14 +105,14 @@ cd edit-mind
 ### 3. Configure Environment Variables
 
 Edit Mind uses a **two-file environment configuration**:
-- **`.env`** (in project root) - Your personal configuration (required)
-- **`.env.system`** (in `docker/` folder) - System defaults (optional, for advanced users)
+- **`.env`** - Your personal configuration (required)
+- **`.env.system`** - System defaults (required)
 
 #### Step 3.1: Create Your Personal Configuration
 
 Copy the example file and customize it:
 ```bash
-cp .env.example docker/.env
+cp .env.example .env
 ```
 
 **Edit the `.env` file and configure these critical settings:**
@@ -149,8 +149,7 @@ openssl rand -hex 32
 
 #### Step 3.2: Copy Configuration to Docker Directory
 ```bash
-cp .env.example docker/.env
-cp .env.system.example docker/.env.system
+cp .env.system.example .env.system
 ```
 
 
@@ -159,7 +158,7 @@ cp .env.system.example docker/.env.system
 Start all services with a single command:
 
 ```bash
-docker compose up --build
+docker compose up
 ```
 
 **First-time startup will take 5-10+ minutes** as Docker:
