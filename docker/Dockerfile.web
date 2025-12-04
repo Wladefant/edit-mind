@@ -75,6 +75,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 
 COPY --from=builder /app/apps/web/build ./apps/web/build
 
+COPY --from=builder /app/apps/web/app ./apps/web/app
+COPY --from=builder /app/apps/web/vite.config.ts ./apps/web/
+COPY --from=builder /app/apps/web/react-router.config.ts ./apps/web/
+COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/
 
 WORKDIR /app
 
@@ -119,6 +123,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 COPY --from=builder /app/apps/web/build /app/apps/web/build
+COPY --from=builder /app/apps/web/app ./apps/web/app
+COPY --from=builder /app/apps/web/vite.config.ts ./apps/web/
+COPY --from=builder /app/apps/web/react-router.config.ts ./apps/web/
+COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/
 
 WORKDIR /app
 
@@ -132,5 +140,5 @@ CMD ["sh", "-c", "\
   pnpm --filter prisma migrate deploy && \
   pnpm --filter prisma generate && \
   pnpm --filter prisma seed && \
-  pnpm --filter web start \
+  pnpm --filter web dev \
 "]
