@@ -96,7 +96,7 @@ jobs:
   create-release:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
       - name: Create GitHub Release
@@ -104,7 +104,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          draft: false
+          draft: true
           prerelease: false
           files: |
             docker-compose.yml

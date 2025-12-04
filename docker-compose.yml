@@ -20,7 +20,7 @@ services:
     volumes:
       - ${HOST_MEDIA_PATH:-./media}:/media/videos:ro
       - whisper-models:/app/models:rw
-      - yolo-models:/app/models/yolo:rw
+      - yolo-models:/app/models/yolo:rw  
 
   web:
     image: ghcr.io/iliashad/edit-mind-web:${VERSION:-latest}
@@ -95,10 +95,15 @@ services:
 
 volumes:
   pgdata_edit_mind:
+    driver: local
   redis_data:
+    driver: local
   whisper-models:
+    driver: local
   yolo-models:
+    driver: local
   chroma-data:
+    driver: local
 
 networks:
   app-network:
