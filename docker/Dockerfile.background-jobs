@@ -61,7 +61,7 @@ COPY  python ./python
 COPY  tsconfig.json ./
 
 RUN pnpm rebuild @tailwindcss/oxide rollup sharp
-
+RUN pnpm --filter shared build
 RUN pnpm --filter background-jobs build
 
 FROM base AS production
@@ -83,24 +83,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 
-COPY --from=builder /app/pnpm-workspace.yaml /app/
-COPY --from=builder /app/pnpm-lock.yaml /app/
-COPY --from=builder /app/package.json /app/
-COPY --from=builder /app/prisma.config.ts /app/
-
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages ./packages
-
-COPY --from=builder /app/apps/background-jobs ./apps/background-jobs
-
-COPY --from=builder /app/.venv ./.venv
-
+COPY --from=builder /app /app
 
 ENV NODE_ENV=production \
     PATH="/app/.venv/bin:$PATH" \
     VIRTUAL_ENV="/app/.venv" 
 
-RUN  pnpm --filter background-jobs build
 
 WORKDIR /app/
 
