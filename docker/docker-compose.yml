@@ -27,9 +27,7 @@ services:
     volumes:
       - ${HOST_MEDIA_PATH:-./media}:/media/videos:ro
       - whisper-models:/app/models:rw
-      - yolo-models:/app/models/yolo:rw
-    platforms:
-        - linux/amd64  
+      - yolo-models:/app/models/yolo:rw 
   web:
     build:
       context: ..
