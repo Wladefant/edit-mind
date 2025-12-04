@@ -87,9 +87,13 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}
           push-to-registry: true
 
-      - name: Create Release
-        id: create_release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.ref_protected == true
+  create-release:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.ref_protected == true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -99,4 +103,4 @@ jobs:
           files: |
             docker-compose.yml
             .env.example
-            .env.system.example          
+            .env.system.example
