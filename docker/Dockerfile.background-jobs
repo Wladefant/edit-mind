@@ -13,7 +13,7 @@ WORKDIR /app
 
 RUN mkdir -p /app/models /app/models/yolo /tmp 
 
-FROM base AS dependencies
+FROM base AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3=3.11.* \
@@ -31,34 +31,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-COPY  pnpm-workspace.yaml pnpm-lock.yaml package.json prisma.config.ts ./
-COPY  apps/background-jobs/package.json ./apps/background-jobs/
-COPY  apps/web/package.json ./apps/web/
-COPY  packages/shared/package.json ./packages/shared/
-COPY  packages/prisma ./packages/prisma/
-
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json prisma.config.ts ./
+COPY apps/background-jobs/package.json ./apps/background-jobs/
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/prisma ./packages/prisma/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
-FROM dependencies AS python-deps
-
-COPY  python/requirements.txt ./python/
-
-RUN python3 -m venv /app/.venv 
-
+COPY python/requirements.txt ./python/
+RUN python3 -m venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
-
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r python/requirements.txt
 
-FROM python-deps AS builder
-
-COPY  apps ./apps
-COPY  packages ./packages
-COPY  python ./python
-COPY  tsconfig.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY python ./python
+COPY tsconfig.json ./
 
 RUN pnpm rebuild @tailwindcss/oxide rollup sharp
 RUN pnpm --filter shared build
@@ -82,13 +74,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-
 COPY --from=builder /app /app
 
 ENV NODE_ENV=production \
     PATH="/app/.venv/bin:$PATH" \
-    VIRTUAL_ENV="/app/.venv" 
-
+    VIRTUAL_ENV="/app/.venv"
 
 WORKDIR /app/
 
@@ -102,26 +92,7 @@ CMD ["sh", "-c", "\
 "]
 
 
-FROM base AS development
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3=3.11.* \
-    python3-venv \
-    python3-pip \
-    build-essential \
-    cmake \
-    libopenblas-dev \
-    liblapack-dev \
-    libx11-dev \
-    libgtk-3-dev \
-    libboost-all-dev \
-    ffmpeg \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-
-COPY --from=builder  /app /app
+FROM builder AS development
 
 ENV NODE_ENV=development \
     PATH="/app/.venv/bin:$PATH" \

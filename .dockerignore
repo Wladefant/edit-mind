@@ -35,3 +35,8 @@ apps/background-jobs/known_faces.json
 .faces.json
 *.gguf
 models
+apps/*/node_modules
+packages/*/node_modules
+*.mp4
+*.mkv
+models/yolo/*
