@@ -70,8 +70,7 @@ COPY --from=builder /app/packages/shared/dist /app/packages/shared/dist
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
-COPY --from=builder /app/apps/web/build /app/apps/web/build
-COPY --from=builder /app/apps/web/.react-router /app/apps/web/.react-router
+COPY --from=builder /app/apps/web /app/apps/web
 
 WORKDIR /app
 
