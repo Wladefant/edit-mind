@@ -30,4 +30,4 @@ test-results/*
 .env.testing
 .env.dev
 docker/.env.system
-docker/.env.system
+.env.system
