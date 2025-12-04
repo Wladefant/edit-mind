@@ -122,10 +122,11 @@ class PythonService {
         this.restartCount = 0
         logger.debug('✅ Connected to the Python service')
         return this.serviceUrl
-      } catch {
+      } catch (error) {
         if (attempt === maxAttempts) {
           logger.error('Failed to connect to Python service after max attempts')
           this.stop()
+          logger.error(error)
           throw new Error(`Python service failed to start within ${maxAttempts * delayMs}ms`)
         }
         logger.debug(`Attempt ${attempt} failed, retrying in ${delayMs}ms...`)
@@ -228,7 +229,7 @@ class PythonService {
     const message = {
       type: 'reindex_faces',
       specific_faces: specificFaces,
-      job_id: jobId
+      job_id: jobId,
     }
 
     this.client.send(JSON.stringify(message))
