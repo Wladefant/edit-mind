@@ -73,12 +73,8 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
-COPY --from=builder /app/apps/web/build ./apps/web/build
 
-COPY --from=builder /app/apps/web/app ./apps/web/app
-COPY --from=builder /app/apps/web/vite.config.ts ./apps/web/
-COPY --from=builder /app/apps/web/react-router.config.ts ./apps/web/
-COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/
+COPY --from=builder /app/apps/web ./apps/web
 
 WORKDIR /app
 

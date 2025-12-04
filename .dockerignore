@@ -28,7 +28,6 @@ __pycache__
 .chroma_db
 .locations.json
 .venv
-apps/web/.react-router
 test-videos
 internal
 apps/background-jobs/known_faces.json
