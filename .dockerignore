@@ -11,8 +11,6 @@ __pycache__/
 .venv/
 
 apps/desktop
-dist
-out
 .DS_Store
 *.log*
 temp
