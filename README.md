@@ -112,7 +112,7 @@ Edit Mind uses a **two-file environment configuration**:
 
 Copy the example file and customize it:
 ```bash
-cp .env.example .env
+cp .env.example docker/.env
 ```
 
 **Edit the `.env` file and configure these critical settings:**
@@ -149,7 +149,7 @@ openssl rand -hex 32
 
 #### Step 3.2: Copy Configuration to Docker Directory
 ```bash
-cp .env.system.example .env.system
+cp .env.system.example docker/.env.system
 ```
 
 
@@ -158,7 +158,7 @@ cp .env.system.example .env.system
 Start all services with a single command:
 
 ```bash
-docker compose up
+cd docker && docker compose up --build
 ```
 
 **First-time startup will take 5-10+ minutes** as Docker:
