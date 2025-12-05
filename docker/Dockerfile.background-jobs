@@ -53,7 +53,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
 COPY python/requirements.txt ./python/
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r python/requirements.txt
+    pip install --no-cache-dir -r python/requirements.txt 
 
 FROM node-deps AS builder
 

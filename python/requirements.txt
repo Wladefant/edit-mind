@@ -3,11 +3,12 @@ opencv-python>=4.8.0
 numpy>=1.24.0,<2.0.0
 tqdm>=4.66.0
 
-# ML/AI frameworks 
-torch>=2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
-torchvision>=0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
-ultralytics>=8.0.0
-transformers>=4.35.0
+# ML/AI frameworks (CPU ONLY)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.0
+torchvision==0.16.0
+
+--index-url https://pypi.org/simple
 
 # Face recognition
 face-recognition>=1.3.0
