@@ -25,7 +25,8 @@ class PythonService {
       throw new Error('PYTHON_PORT is not defined in the environment variables.')
     }
     this.port = PYTHON_PORT
-    this.serviceUrl = `ws://localhost:${this.port}`
+    const host = process.env.PYTHON_HOST || 'localhost'
+    this.serviceUrl = `ws://${host}:${this.port}`
   }
 
   public static getInstance(): PythonService {
