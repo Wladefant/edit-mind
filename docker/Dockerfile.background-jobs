@@ -53,14 +53,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
 COPY python/requirements.txt ./python/
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install face-recognition
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r python/requirements.txt 
-
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+        --compile \
+        face-recognition && \
+    pip install --no-cache-dir \
+        --compile \
+        -r python/requirements.txt
 
 FROM node-deps AS builder
 

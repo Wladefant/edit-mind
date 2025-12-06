@@ -106,10 +106,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
-            type=gha,scope=${{ matrix.service.name }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}:buildcache
-          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
-          provenance: false
+            type=gha,scope=${{ matrix.service.name }}-${{ matrix.platform }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}:buildcache-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}-${{ matrix.platform }}
           sbom: false
 
       - name: Generate artifact attestation
